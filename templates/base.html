@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LotoFácil IA{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-brain"></i>
+                <span>LotoFácil<strong>IA</strong></span>
+            </div>
+            <small class="version">v1.0 Quantum</small>
+        </div>
+
+        <ul class="nav-menu">
+            <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">
+                <i class="fas fa-chart-line"></i> Dashboard
+            </a></li>
+            <li><a href="/historico" class="{% if request.path == '/historico' %}active{% endif %}">
+                <i class="fas fa-database"></i> Histórico
+            </a></li>
+            <li><a href="/gerar" class="{% if request.path == '/gerar' %}active{% endif %}">
+                <i class="fas fa-magic"></i> Gerar Cartelas
+            </a></li>
+            <li><a href="/conferencia" class="{% if request.path == '/conferencia' %}active{% endif %}">
+                <i class="fas fa-check-double"></i> Conferência
+            </a></li>
+            <li><a href="/financeiro_page" class="{% if request.path == '/financeiro_page' %}active{% endif %}">
+                <i class="fas fa-dollar-sign"></i> Financeiro
+            </a></li>
+            <li><a href="/ia_painel" class="{% if request.path == '/ia_painel' %}active{% endif %}">
+                <i class="fas fa-robot"></i> Painel IA
+            </a></li>
+            <li><a href="/analise" class="{% if request.path == '/analise' %}active{% endif %}">
+                <i class="fas fa-chart-bar"></i> Análises
+            </a></li>
+            <li><a href="/premios"
+                class="{% if request.path == '/premios' %}active{% endif %}">
+                <i class="fas fa-trophy"></i> Prêmios Reais
+            </a></li>
+            <li><a href="/ia_auditoria"
+                class="{% if request.path == '/ia_auditoria' %}active{% endif %}">
+                <i class="fas fa-microscope"></i> Auditoria IA
+            </a></li>
+
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <span class="dot {% if status and status.ia_treinada %}green{% else %}red{% endif %}"></span>
+                IA: {% if status and status.ia_treinada %}Online{% else %}Offline{% endif %}
+            </div>
+            <div class="status-indicator">
+                <span class="dot {% if status and status.dados_carregados %}green{% else %}red{% endif %}"></span>
+                Dados: {% if status and status.ultimo_concurso %}{{ status.ultimo_concurso }}{% else %}0{% endif %} concursos
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="topbar">
+            <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+            <div class="topbar-actions">
+                <span id="progresso-status" class="progresso-texto">{{ status.progresso if status else '' }}</span>
+                <button onclick="atualizarStatus()" class="btn btn-sm btn-outline">
+                    <i class="fas fa-sync"></i> Atualizar
+                </button>
+            </div>
+        </header>
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

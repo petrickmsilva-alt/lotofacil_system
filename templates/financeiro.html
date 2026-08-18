@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Financeiro - LotoFácil IA{% endblock %}
+{% block page_title %}<i class="fas fa-dollar-sign"></i> Painel Financeiro{% endblock %}
+
+{% block content %}
+<div class="cards-grid">
+    <div class="card card-danger">
+        <div class="card-icon"><i class="fas fa-arrow-down"></i></div>
+        <div class="card-info">
+            <h3>R$ {{ "%.2f"|format(resumo.total_investido) }}</h3>
+            <p>Total Investido</p>
+        </div>
+    </div>
+    <div class="card card-success">
+        <div class="card-icon"><i class="fas fa-arrow-up"></i></div>
+        <div class="card-info">
+            <h3>R$ {{ "%.2f"|format(resumo.total_ganho) }}</h3>
+            <p>Total Ganho</p>
+        </div>
+    </div>
+    <div class="card {% if resumo.lucro_total >= 0 %}card-success{% else %}card-danger{% endif %}">
+        <div class="card-icon"><i class="fas fa-balance-scale"></i></div>
+        <div class="card-info">
+            <h3>R$ {{ "%.2f"|format(resumo.lucro_total) }}</h3>
+            <p>Lucro/Prejuízo</p>
+        </div>
+    </div>
+    <div class="card card-info">
+        <div class="card-icon"><i class="fas fa-percentage"></i></div>
+        <div class="card-info">
+            <h3>{{ resumo.roi }}%</h3>
+            <p>ROI</p>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2><i class="fas fa-trophy"></i> Distribuição de Acertos</h2>
+    <div class="acertos-grid">
+        <div class="acerto-card a11">
+            <span class="acerto-num">{{ resumo.total_11 }}</span>
+            <span class="acerto-label">11 Pontos</span>
+            <span class="acerto-premio">R$ 7,00 cada</span>
+        </div>
+        <div class="acerto-card a12">
+            <span class="acerto-num">{{ resumo.total_12 }}</span>
+            <span class="acerto-label">12 Pontos</span>
+            <span class="acerto-premio">R$ 14,00 cada</span>
+        </div>
+        <div class="acerto-card a13">
+            <span class="acerto-num">{{ resumo.total_13 }}</span>
+            <span class="acerto-label">13 Pontos</span>
+            <span class="acerto-premio">R$ 35,00 cada</span>
+        </div>
+        <div class="acerto-card a14">
+            <span class="acerto-num">{{ resumo.total_14 }}</span>
+            <span class="acerto-label">14 Pontos</span>
+            <span class="acerto-premio">Rateio</span>
+        </div>
+        <div class="acerto-card a15">
+            <span class="acerto-num">{{ resumo.total_15 }}</span>
+            <span class="acerto-label">15 Pontos</span>
+            <span class="acerto-premio">Rateio</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

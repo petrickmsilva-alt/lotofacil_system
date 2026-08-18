@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Prêmios - LotoFácil IA{% endblock %}
+{% block page_title %}<i class="fas fa-trophy"></i> Prêmios Reais da Caixa{% endblock %}
+
+{% block content %}
+
+<!-- Estimativa próximo concurso -->
+{% if estimativa %}
+<div class="section" style="border:2px solid rgba(108,92,231,0.4);">
+    <h2><i class="fas fa-star"></i> Próximo Concurso</h2>
+    <div class="cards-grid">
+        <div class="card card-primary">
+            <div class="card-icon"><i class="fas fa-hashtag"></i></div>
+            <div class="card-info">
+                <h3>{{ estimativa.proximo_concurso }}</h3>
+                <p>Número do Concurso</p>
+            </div>
+        </div>
+        <div class="card card-success">
+            <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
+            <div class="card-info">
+                <h3>R$ {{ "%.2f"|format(estimativa.estimativa_15) }}</h3>
+                <p>Estimativa 15 Pontos</p>
+            </div>
+        </div>
+        <div class="card card-info">
+            <div class="card-icon"><i class="fas fa-calendar"></i></div>
+            <div class="card-info">
+                <h3>{{ estimativa.data_proximo }}</h3>
+                <p>Data do Sorteio</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Médias históricas -->
+{% if medias %}
+<div class="section">
+    <h2><i class="fas fa-chart-bar"></i> Médias Históricas de Prêmios</h2>
+    <div class="acertos-grid">
+        <div class="acerto-card a11">
+            <span class="acerto-num">R$ {{ "%.2f"|format(medias.media_11) }}</span>
+            <span class="acerto-label">Média 11 pts</span>
+            <span class="acerto-premio">Fixo</span>
+        </div>
+        <div class="acerto-card a12">
+            <span class="acerto-num">R$ {{ "%.2f"|format(medias.media_12) }}</span>
+            <span class="acerto-label">Média 12 pts</span>
+            <span class="acerto-premio">Fixo</span>
+        </div>
+        <div class="acerto-card a13">
+            <span class="acerto-num">R$ {{ "%.2f"|format(medias.media_13) }}</span>
+            <span class="acerto-label">Média 13 pts</span>
+            <span class="acerto-premio">Fixo</span>
+        </div>
+        <div class="acerto-card a14">
+            <span class="acerto-num">R$ {{ "%.2f"|format(medias.media_14) }}</span>
+            <span class="acerto-label">Média 14 pts</span>
+            <span class="acerto-premio">Rateio</span>
+        </div>
+        <div class="acerto-card a15">
+            <span class="acerto-num">R$ {{ "%.0f"|format(medias.media_15) }}</span>
+            <span class="acerto-label">Média 15 pts</span>
+            <span class="acerto-premio">
+                Min: R$ {{ "%.0f"|format(medias.min_15) }}
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Tabela dos últimos concursos -->
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-list"></i> Últimos 20 Concursos</h2>
+        <button onclick="atualizarDiario()" class="btn btn-primary btn-sm">
+            <i class="fas fa-sync"></i> Atualizar da Caixa
+        </button>
+    </div>
+
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>Data</th>
+                    <th>11 pts</th>
+                    <th>12 pts</th>
+                    <th>13 pts</th>
+                    <th>14 pts</th>
+                    <th>15 pts</th>
+                    <th>Ganhadores 15</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in premios %}
+                <tr>
+                    <td><strong>{{ p.concurso }}</strong></td>
+                    <td>{{ p.data }}</td>
+                    <td class="premio-cell">
+                        R$ {{ "%.2f"|format(p.premio_11) }}
+                    </td>
+                    <td class="premio-cell">
+                        R$ {{ "%.2f"|format(p.premio_12) }}
+                    </td>
+                    <td class="premio-cell">
+                        R$ {{ "%.2f"|format(p.premio_13) }}
+                    </td>
+                    <td class="premio-cell destaque-14">
+                        R$ {{ "%.2f"|format(p.premio_14) }}
+                    </td>
+                    <td class="premio-cell destaque-15">
+                        R$ {{ "%.2f"|format(p.premio_15) }}
+                    </td>
+                    <td class="text-center">
+                        {% if p.ganhadores_15 > 0 %}
+                            <span class="badge badge-success">
+                                {{ p.ganhadores_15 }}
+                            </span>
+                        {% else %}
+                            <span class="badge badge-sem_premio">Acumulou</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function atualizarDiario() {
+    mostrarProgresso('Buscando dados da Caixa...');
+    fetch('/api/atualizar_diario', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            esconderProgresso();
+            alert(data.msg || 'Atualizado!');
+            location.reload();
+        })
+        .catch(function (err) {
+            esconderProgresso();
+            alert('Erro: ' + err);
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Conferência - LotoFácil IA{% endblock %}
+{% block page_title %}
+    <i class="fas fa-check-double"></i> Conferência de Jogos
+{% endblock %}
+
+{% block content %}
+
+<!-- Valores Oficiais -->
+<div class="section">
+    <h2><i class="fas fa-info-circle"></i> Valores Oficiais da Caixa</h2>
+    <div class="premios-oficiais-grid">
+        <div class="premio-oficial fixo">
+            <span class="po-pts">11 pts</span>
+            <span class="po-valor">R$ 7,00</span>
+            <span class="po-tipo">Fixo</span>
+        </div>
+        <div class="premio-oficial fixo">
+            <span class="po-pts">12 pts</span>
+            <span class="po-valor">R$ 14,00</span>
+            <span class="po-tipo">Fixo</span>
+        </div>
+        <div class="premio-oficial fixo">
+            <span class="po-pts">13 pts</span>
+            <span class="po-valor">R$ 35,00</span>
+            <span class="po-tipo">Fixo</span>
+        </div>
+        <div class="premio-oficial rateado">
+            <span class="po-pts">14 pts</span>
+            <span class="po-valor">Rateio</span>
+            <span class="po-tipo">Varia</span>
+        </div>
+        <div class="premio-oficial rateado destaque">
+            <span class="po-pts">15 pts</span>
+            <span class="po-valor">Rateio</span>
+            <span class="po-tipo">Jackpot</span>
+        </div>
+    </div>
+</div>
+
+<!-- Conferir concurso específico -->
+<div class="section">
+    <h2><i class="fas fa-search"></i> Conferir Concurso</h2>
+    <div class="form-inline">
+        <div class="form-group">
+            <label>Número do Concurso:</label>
+            <input type="number"
+                   id="input-concurso"
+                   class="form-control"
+                   placeholder="Ex: 3200"
+                   min="1"
+                   style="max-width:180px;">
+        </div>
+        <button id="btn-conferir-numero" class="btn btn-primary">
+            <i class="fas fa-search"></i> Conferir
+        </button>
+        <button id="btn-conferir-todas" class="btn btn-outline">
+            <i class="fas fa-check-double"></i> Conferir Todas Pendentes
+        </button>
+    </div>
+</div>
+
+<!-- Concursos com cartelas -->
+<div class="section">
+    <h2><i class="fas fa-list"></i> Concursos com Cartelas Geradas</h2>
+    <div class="table-container">
+        <table class="table" id="tabela-concursos">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>Cartelas</th>
+                    <th>Conferidas</th>
+                    <th>Premiadas</th>
+                    <th>Total Ganho</th>
+                    <th>Status</th>
+                    <th style="min-width:260px;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in concursos %}
+                <tr id="row-{{ c.concurso }}">
+                    <td><strong>{{ c.concurso }}</strong></td>
+                    <td>{{ c.total_cartelas }}</td>
+                    <td>{{ c.conferidas }}</td>
+                    <td>
+                        {% if c.premiadas > 0 %}
+                            <span class="badge badge-success">
+                                {{ c.premiadas }}
+                            </span>
+                        {% else %}
+                            <span class="badge badge-sem_premio">0</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.total_ganho > 0 %}
+                            <span class="valor positivo">
+                                R$ {{ "%.2f"|format(c.total_ganho) }}
+                            </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if c.pendentes > 0 %}
+                            <span class="badge badge-warning">
+                                {{ c.pendentes }} pendentes
+                            </span>
+                        {% else %}
+                            <span class="badge badge-success">OK</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="acoes-grupo">
+                            <button class="btn btn-sm btn-primary btn-ver"
+                                    data-concurso="{{ c.concurso }}"
+                                    title="Ver cartelas">
+                                <i class="fas fa-eye"></i> Ver
+                            </button>
+                            <button class="btn btn-sm btn-outline btn-conf"
+                                    data-concurso="{{ c.concurso }}"
+                                    title="Conferir cartelas">
+                                <i class="fas fa-check"></i> Conferir
+                            </button>
+                            <button class="btn btn-sm btn-success btn-add"
+                                    data-concurso="{{ c.concurso }}"
+                                    title="Adicionar mais cartelas">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger btn-del"
+                                    data-concurso="{{ c.concurso }}"
+                                    title="Apagar cartelas">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not concursos %}
+                <tr>
+                    <td colspan="7"
+                        style="text-align:center;color:var(--text-muted);">
+                        Nenhuma cartela gerada ainda.
+                        Vá em <a href="/gerar">Gerar Cartelas</a>.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Resumo Geral -->
+<div class="section">
+    <h2><i class="fas fa-trophy"></i> Resumo Geral de Acertos</h2>
+    <div class="acertos-grid">
+        <div class="acerto-card a11">
+            <span class="acerto-num">
+                {{ resumo.get(11, {}).get('qtd', 0) }}
+            </span>
+            <span class="acerto-label">11 Pontos</span>
+            <span class="acerto-premio">
+                R$ {{ "%.2f"|format(
+                    resumo.get(11, {}).get('total_premio', 0)) }}
+            </span>
+        </div>
+        <div class="acerto-card a12">
+            <span class="acerto-num">
+                {{ resumo.get(12, {}).get('qtd', 0) }}
+            </span>
+            <span class="acerto-label">12 Pontos</span>
+            <span class="acerto-premio">
+                R$ {{ "%.2f"|format(
+                    resumo.get(12, {}).get('total_premio', 0)) }}
+            </span>
+        </div>
+        <div class="acerto-card a13">
+            <span class="acerto-num">
+                {{ resumo.get(13, {}).get('qtd', 0) }}
+            </span>
+            <span class="acerto-label">13 Pontos</span>
+            <span class="acerto-premio">
+                R$ {{ "%.2f"|format(
+                    resumo.get(13, {}).get('total_premio', 0)) }}
+            </span>
+        </div>
+        <div class="acerto-card a14">
+            <span class="acerto-num">
+                {{ resumo.get(14, {}).get('qtd', 0) }}
+            </span>
+            <span class="acerto-label">14 Pontos</span>
+            <span class="acerto-premio">
+                R$ {{ "%.2f"|format(
+                    resumo.get(14, {}).get('total_premio', 0)) }}
+            </span>
+        </div>
+        <div class="acerto-card a15">
+            <span class="acerto-num">
+                {{ resumo.get(15, {}).get('qtd', 0) }}
+            </span>
+            <span class="acerto-label">15 Pontos</span>
+            <span class="acerto-premio">
+                R$ {{ "%.2f"|format(
+                    resumo.get(15, {}).get('total_premio', 0)) }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Painel resultado conferência -->
+<div id="painel-resultado" class="section painel-escondido">
+    <div class="section-header">
+        <h2 id="titulo-resultado">
+            <i class="fas fa-star"></i> Resultado
+        </h2>
+        <button id="btn-fechar-painel" class="btn btn-sm btn-outline">
+            <i class="fas fa-times"></i> Fechar
+        </button>
+    </div>
+    <div id="conteudo-resultado"></div>
+</div>
+
+<!-- Modal principal -->
+<div id="modal-principal" class="modal-overlay-container">
+    <div class="modal-overlay-bg" id="modal-bg"></div>
+    <div class="modal-box modal-grande">
+        <div class="modal-header">
+            <h2 id="modal-titulo">Cartelas</h2>
+            <button class="btn-close" id="btn-fechar-modal">✕</button>
+        </div>
+        <!-- Abas do modal -->
+        <div class="modal-abas" id="modal-abas"></div>
+        <div class="modal-body" id="modal-corpo">
+            <p>Carregando...</p>
+        </div>
+        <!-- Rodapé com ações -->
+        <div class="modal-footer" id="modal-footer"></div>
+    </div>
+</div>
+
+<!-- Modal confirmação apagar -->
+<div id="modal-confirmar" class="modal-overlay-container">
+    <div class="modal-overlay-bg" id="confirmar-bg"></div>
+    <div class="modal-box modal-pequeno">
+        <div class="modal-header">
+            <h2>Confirmar Exclusão</h2>
+            <button class="btn-close" id="btn-fechar-confirmar">✕</button>
+        </div>
+        <div class="modal-body">
+            <p id="texto-confirmar"></p>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+                <button id="btn-confirmar-sim"
+                        class="btn btn-danger btn-lg">
+                    <i class="fas fa-trash"></i> Apagar
+                </button>
+                <button id="btn-confirmar-nao"
+                        class="btn btn-outline btn-lg">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/conferencia.js') }}"></script>
+{% endblock %}

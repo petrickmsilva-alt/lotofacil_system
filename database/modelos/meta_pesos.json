@@ -1,0 +1,14 @@
+{
+  "pesos": {
+    "markov": 0.2,
+    "fisico": 0.1,
+    "gaussiano": 0.15,
+    "ml": 0.2,
+    "verlet": 0.1,
+    "quantum": 0.1,
+    "chi2": 0.05,
+    "bayes": 0.05,
+    "kl": 0.05
+  },
+  "historico": []
+}

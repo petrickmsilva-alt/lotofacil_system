@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - LotoFácil IA{% endblock %}
+{% block page_title %}<i class="fas fa-chart-line"></i> Dashboard Principal{% endblock %}
+
+{% block content %}
+
+<!-- Cards de Status -->
+<div class="cards-grid">
+    <div class="card card-primary">
+        <div class="card-icon"><i class="fas fa-database"></i></div>
+        <div class="card-info">
+            <h3>{{ status.ultimo_concurso }}</h3>
+            <p>Último Concurso</p>
+        </div>
+        <div class="card-action">
+            <button onclick="carregarDados()" class="btn btn-sm"
+                {% if status.carregando %}disabled{% endif %}>
+                <i class="fas fa-download"></i>
+                {% if status.carregando %}Carregando...{% else %}Carregar Dados{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <div class="card card-success">
+        <div class="card-icon"><i class="fas fa-brain"></i></div>
+        <div class="card-info">
+            <h3>{% if status.ia_treinada %}Ativa{% else %}Inativa{% endif %}</h3>
+            <p>IA Autônoma</p>
+        </div>
+        <div class="card-action">
+            <button onclick="treinarIA()" class="btn btn-sm btn-success"
+                {% if status.treinando %}disabled{% endif %}>
+                <i class="fas fa-cogs"></i>
+                {% if status.treinando %}Treinando...{% else %}Treinar IA{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <div class="card card-warning">
+        <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
+        <div class="card-info">
+            <h3>R$ {{ "%.2f"|format(financeiro.lucro_total) }}</h3>
+            <p>Lucro Total</p>
+        </div>
+    </div>
+
+    <div class="card card-info">
+        <div class="card-icon"><i class="fas fa-ticket-alt"></i></div>
+        <div class="card-info">
+            <h3>R$ {{ valor_aposta }}</h3>
+            <p>Valor da Aposta</p>
+        </div>
+    </div>
+</div>
+
+<!-- Resumo de Acertos -->
+<div class="section">
+    <h2><i class="fas fa-trophy"></i> Resumo de Acertos</h2>
+    <div class="acertos-grid">
+        <div class="acerto-card a11">
+            <span class="acerto-num">{{ conferencia.get(11, 0) }}</span>
+            <span class="acerto-label">11 Pontos</span>
+            <span class="acerto-premio">R$ 7,00</span>
+        </div>
+        <div class="acerto-card a12">
+            <span class="acerto-num">{{ conferencia.get(12, 0) }}</span>
+            <span class="acerto-label">12 Pontos</span>
+            <span class="acerto-premio">R$ 14,00</span>
+        </div>
+        <div class="acerto-card a13">
+            <span class="acerto-num">{{ conferencia.get(13, 0) }}</span>
+            <span class="acerto-label">13 Pontos</span>
+            <span class="acerto-premio">R$ 35,00</span>
+        </div>
+        <div class="acerto-card a14">
+            <span class="acerto-num">{{ conferencia.get(14, 0) }}</span>
+            <span class="acerto-label">14 Pontos</span>
+            <span class="acerto-premio">Rateio</span>
+        </div>
+        <div class="acerto-card a15">
+            <span class="acerto-num">{{ conferencia.get(15, 0) }}</span>
+            <span class="acerto-label">15 Pontos</span>
+            <span class="acerto-premio">Rateio</span>
+        </div>
+    </div>
+</div>
+
+<!-- Financeiro Rápido -->
+<div class="section">
+    <h2><i class="fas fa-chart-pie"></i> Resumo Financeiro</h2>
+    <div class="finance-grid">
+        <div class="finance-item">
+            <label>Total Investido</label>
+            <span class="valor negativo">
+                R$ {{ "%.2f"|format(financeiro.total_investido) }}
+            </span>
+        </div>
+        <div class="finance-item">
+            <label>Total Ganho</label>
+            <span class="valor positivo">
+                R$ {{ "%.2f"|format(financeiro.total_ganho) }}
+            </span>
+        </div>
+        <div class="finance-item">
+            <label>Lucro/Prejuízo</label>
+            {% if financeiro.lucro_total >= 0 %}
+                <span class="valor positivo">
+                    R$ {{ "%.2f"|format(financeiro.lucro_total) }}
+                </span>
+            {% else %}
+                <span class="valor negativo">
+                    R$ {{ "%.2f"|format(financeiro.lucro_total) }}
+                </span>
+            {% endif %}
+        </div>
+        <div class="finance-item">
+            <label>ROI</label>
+            {% if financeiro.roi >= 0 %}
+                <span class="valor positivo">{{ financeiro.roi }}%</span>
+            {% else %}
+                <span class="valor negativo">{{ financeiro.roi }}%</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Status da IA -->
+<div class="section">
+    <h2><i class="fas fa-robot"></i> Status da IA</h2>
+    <div class="ia-status-grid">
+        <div class="ia-item">
+            <label>Versão</label>
+            <span>{{ ia_status.versao }}</span>
+        </div>
+        <div class="ia-item">
+            <label>Treinada</label>
+            {% if ia_status.treinado %}
+                <span class="badge badge-success">Sim</span>
+            {% else %}
+                <span class="badge badge-danger">Não</span>
+            {% endif %}
+        </div>
+        <div class="ia-item">
+            <label>Peso Markov</label>
+            <span>{{ "%.2f"|format(ia_status.pesos.markov) }}</span>
+        </div>
+        <div class="ia-item">
+            <label>Peso ML</label>
+            <span>{{ "%.2f"|format(ia_status.pesos.ml) }}</span>
+        </div>
+        <div class="ia-item">
+            <label>Peso Físico</label>
+            <span>{{ "%.2f"|format(ia_status.pesos.fisico) }}</span>
+        </div>
+        <div class="ia-item">
+            <label>Peso Gauss</label>
+            <span>{{ "%.2f"|format(ia_status.pesos.gaussiano) }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Progresso -->
+<div id="progress-section" class="section progress-hidden">
+    <h2><i class="fas fa-spinner fa-spin"></i> Processando...</h2>
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <p id="progress-text" class="progress-text">
+        {{ status.progresso if status else '' }}
+    </p>
+</div>
+
+{% endblock %}

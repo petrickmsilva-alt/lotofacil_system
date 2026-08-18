@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Histórico - LotoFácil IA{% endblock %}
+{% block page_title %}<i class="fas fa-database"></i> Histórico de Resultados{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2>Últimos 100 Concursos</h2>
+        <button onclick="atualizarDados()" class="btn btn-sm btn-primary">
+            <i class="fas fa-sync"></i> Atualizar
+        </button>
+    </div>
+
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>Data</th>
+                    <th>Dezenas</th>
+                    <th>Soma</th>
+                    <th>Par/Ímpar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in resultados %}
+                <tr>
+                    <td><strong>{{ r.concurso }}</strong></td>
+                    <td>{{ r.data }}</td>
+                    <td class="dezenas-cell">
+                        {% for d in r.dezenas %}
+                        <span class="bola-mini">{{ "%02d"|format(d) }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ r.soma }}</td>
+                    <td>{{ r.pares }}P / {{ 15 - r.pares }}I</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

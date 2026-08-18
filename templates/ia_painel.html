@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Painel IA - LotoFácil IA{% endblock %}
+{% block page_title %}<i class="fas fa-robot"></i> Painel da IA Autônoma{% endblock %}
+
+{% block content %}
+
+<!-- Cards de Status -->
+<div class="cards-grid">
+    <div class="card card-primary">
+        <div class="card-icon"><i class="fas fa-microchip"></i></div>
+        <div class="card-info">
+            <h3>{{ status.versao }}</h3>
+            <p>Versão do Modelo</p>
+        </div>
+    </div>
+
+    <div class="card {% if status.treinado %}card-success{% else %}card-danger{% endif %}">
+        <div class="card-icon"><i class="fas fa-brain"></i></div>
+        <div class="card-info">
+            <h3>{% if status.treinado %}Online{% else %}Offline{% endif %}</h3>
+            <p>Status da IA</p>
+        </div>
+    </div>
+
+    <div class="card card-info">
+        <div class="card-icon"><i class="fas fa-database"></i></div>
+        <div class="card-info">
+            <h3>{{ status.concursos_treino }}</h3>
+            <p>Concursos Treinados</p>
+        </div>
+    </div>
+</div>
+
+<!-- Pesos dos Módulos -->
+<div class="section">
+    <h2><i class="fas fa-sliders-h"></i> Pesos dos Módulos</h2>
+    <div class="pesos-grid">
+
+        <!-- Markov -->
+        <div class="peso-item">
+            <label>Markov Engine</label>
+            <div class="peso-bar">
+                <div class="peso-fill"
+                     data-width="{{ (status.pesos.markov * 100) | round(1) }}">
+                </div>
+            </div>
+            <span>{{ "%.1f"|format(status.pesos.markov * 100) }}%</span>
+        </div>
+
+        <!-- Machine Learning -->
+        <div class="peso-item">
+            <label>Machine Learning</label>
+            <div class="peso-bar">
+                <div class="peso-fill ml"
+                     data-width="{{ (status.pesos.ml * 100) | round(1) }}">
+                </div>
+            </div>
+            <span>{{ "%.1f"|format(status.pesos.ml * 100) }}%</span>
+        </div>
+
+        <!-- Física Quântica -->
+        <div class="peso-item">
+            <label>Física Quântica</label>
+            <div class="peso-bar">
+                <div class="peso-fill fisico"
+                     data-width="{{ (status.pesos.fisico * 100) | round(1) }}">
+                </div>
+            </div>
+            <span>{{ "%.1f"|format(status.pesos.fisico * 100) }}%</span>
+        </div>
+
+        <!-- Filtros Gaussianos -->
+        <div class="peso-item">
+            <label>Filtros Gaussianos</label>
+            <div class="peso-bar">
+                <div class="peso-fill gauss"
+                     data-width="{{ (status.pesos.gaussiano * 100) | round(1) }}">
+                </div>
+            </div>
+            <span>{{ "%.1f"|format(status.pesos.gaussiano * 100) }}%</span>
+        </div>
+
+    </div>
+</div>
+
+<!-- Ações -->
+<div class="section">
+    <h2><i class="fas fa-cogs"></i> Ações da IA</h2>
+    <div class="actions-grid">
+        <button onclick="treinarIA()" class="btn btn-primary btn-lg">
+            <i class="fas fa-graduation-cap"></i> Retreinar IA
+        </button>
+        <button onclick="executarBacktesting()" class="btn btn-warning btn-lg">
+            <i class="fas fa-flask"></i> Backtesting
+        </button>
+    </div>
+</div>
+
+<!-- Resultado do Backtesting -->
+<div id="backtesting-result" class="section" style="display:none;">
+    <h2><i class="fas fa-chart-bar"></i> Resultado do Backtesting</h2>
+    <div id="backtesting-content"></div>
+</div>
+
+<!-- Histórico de Aprendizado -->
+{% if aprendizado %}
+<div class="section">
+    <h2><i class="fas fa-history"></i> Histórico de Aprendizado</h2>
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Época</th>
+                    <th>Data</th>
+                    <th>Acurácia Média</th>
+                    <th>Erro Médio</th>
+                    <th>Taxa 13pts</th>
+                    <th>Taxa 14pts</th>
+                    <th>Taxa 15pts</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in aprendizado %}
+                <tr>
+                    <td>{{ a['epoca'] }}</td>
+                    <td>{{ a['data'] }}</td>
+                    <td>{{ "%.4f"|format(a['acuracia_media'] or 0) }}</td>
+                    <td>{{ "%.4f"|format(a['erro_medio'] or 0) }}</td>
+                    <td>{{ "%.2f"|format((a['taxa_13_pontos'] or 0) * 100) }}%</td>
+                    <td>{{ "%.2f"|format((a['taxa_14_pontos'] or 0) * 100) }}%</td>
+                    <td>{{ "%.2f"|format((a['taxa_15_pontos'] or 0) * 100) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Aplica larguras das barras de peso via JavaScript
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.peso-fill').forEach(function (el) {
+        var width = parseFloat(el.getAttribute('data-width')) || 0;
+        el.style.width = width + '%';
+    });
+});
+
+// Backtesting
+function executarBacktesting() {
+    var resultDiv  = document.getElementById('backtesting-result');
+    var contentDiv = document.getElementById('backtesting-content');
+
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML =
+        '<p><i class="fas fa-spinner fa-spin"></i> Executando backtesting...' +
+        ' (pode levar alguns minutos)</p>';
+
+    fetch('/api/backtesting', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.status === 'ok') {
+                var html =
+                    '<div class="cards-grid">' +
+                        '<div class="card card-info">' +
+                            '<div class="card-info">' +
+                                '<h3>' + data.total_testes + '</h3>' +
+                                '<p>Concursos Testados</p>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="card card-primary">' +
+                            '<div class="card-info">' +
+                                '<h3>' + data.total_cartelas + '</h3>' +
+                                '<p>Cartelas Testadas</p>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="card card-success">' +
+                            '<div class="card-info">' +
+                                '<h3>' + (data.taxa_13 * 100).toFixed(2) + '%</h3>' +
+                                '<p>Taxa 13+ Pontos</p>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="card card-warning">' +
+                            '<div class="card-info">' +
+                                '<h3>' + (data.taxa_14 * 100).toFixed(2) + '%</h3>' +
+                                '<p>Taxa 14+ Pontos</p>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<h3 style="margin-top:16px;">Distribuição de Acertos:</h3>' +
+                    '<ul style="margin-top:12px; line-height:2;">' +
+                        '<li>13 Pontos: ' + (data.acertos['13'] || 0) + '</li>' +
+                        '<li>14 Pontos: ' + (data.acertos['14'] || 0) + '</li>' +
+                        '<li>15 Pontos: ' + (data.acertos['15'] || 0) + '</li>' +
+                    '</ul>';
+
+                contentDiv.innerHTML = html;
+            } else {
+                contentDiv.innerHTML =
+                    '<p class="alert alert-danger">' + data.msg + '</p>';
+            }
+        })
+        .catch(function (err) {
+            contentDiv.innerHTML =
+                '<p class="alert alert-danger">Erro: ' + err + '</p>';
+        });
+}
+</script>
+{% endblock %}
