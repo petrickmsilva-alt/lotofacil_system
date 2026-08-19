@@ -1062,3 +1062,96 @@ body {
     .acertos-grid { grid-template-columns: repeat(3, 1fr); }
     .finance-grid { grid-template-columns: repeat(2, 1fr); }
 }
+/* ── Terminal de log ─────────────────────────────────────── */
+.log-terminal {
+    background: #0a0a1a;
+    border-radius: 8px;
+    padding: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.log-linha {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 4px;
+    line-height: 1.6;
+}
+
+.log-ts   { color: #555; min-width: 60px; }
+.log-tipo { font-weight: 700; min-width: 110px; }
+.log-msg  { color: #ccc; }
+
+.tipo-INIT        { color: #74B9FF; }
+.tipo-DADOS       { color: #00B894; }
+.tipo-APRENDIZADO { color: #A29BFE; }
+.tipo-GRUPO_ELITE { color: #FDCB6E; }
+.tipo-FASE_1,
+.tipo-FASE_2,
+.tipo-FASE_3,
+.tipo-FASE_4,
+.tipo-FASE_5,
+.tipo-FASE_6      { color: #DFE6E9; }
+.tipo-COBERTURA   { color: #00CEC9; }
+.tipo-CONCLUIDO   { color: #00B894; }
+.tipo-CALIBRACAO  { color: #6C5CE7; }
+.tipo-ERRO        { color: #E17055; }
+.tipo-AVISO       { color: #FDCB6E; }
+
+/* ── Métricas do agente ──────────────────────────────────── */
+.agente-metricas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--dark-3);
+    border-radius: var(--radius);
+}
+
+.met-item {
+    text-align: center;
+    min-width: 120px;
+}
+
+.met-item span {
+    display: block;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--primary);
+}
+
+.met-item label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ── Filtros calibrados ──────────────────────────────────── */
+.filtros-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.filtro-item {
+    background: var(--dark-3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filtro-nome {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.filtro-val {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--success);
+}

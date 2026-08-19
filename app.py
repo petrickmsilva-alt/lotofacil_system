@@ -1,21 +1,59 @@
 """
 ============================================================
-SISTEMA LOTOFÁCIL - SERVIDOR PRINCIPAL FLASK
-IA Autônoma v3.0 — Física Quântica + Machine Learning
+SISTEMA LOTOFÁCIL — SERVIDOR PRINCIPAL FLASK
+Cérebro IA v6.0 — Módulo único de decisão autônoma
+============================================================
+MAPA DE ROTAS:
+  GET  /                          → index
+  GET  /historico                 → historico
+  GET  /gerar          POST       → gerar
+  GET  /conferencia               → conferencia_page
+  GET  /financeiro_page           → financeiro_page
+  GET  /analise                   → analise
+  GET  /premios                   → premios
+  GET  /ia_auditoria              → ia_auditoria
+  GET  /cerebro                   → cerebro_page
+
+  POST /api/carregar_dados        → api_carregar_dados
+  POST /api/atualizar_dados       → api_atualizar_dados
+  POST /api/treinar_ia            → api_treinar_ia
+  GET  /api/status                → api_status
+  GET  /api/status_base           → api_status_base
+  POST /api/conferir              → api_conferir
+  POST /api/conferir_concurso     → api_conferir_concurso
+  GET  /api/cartelas_concurso/<n> → api_cartelas_concurso
+  POST /api/apagar_cartelas       → api_apagar_cartelas
+  POST /api/apagar_cartelas_concurso → api_apagar_cartelas_concurso
+  POST /api/adicionar_cartelas_concurso → api_adicionar_cartelas_concurso
+  GET  /api/premios/<n>           → api_premios_concurso
+  GET  /api/ia_sessao/<n>         → api_ia_sessao
+  GET  /api/ia_log_tempo_real     → api_ia_log_tempo_real
+  GET  /api/cerebro/status        → api_cerebro_status
+  POST /api/cerebro/treinar       → api_cerebro_treinar
+  POST /api/cerebro/gerar         → api_cerebro_gerar
+  POST /api/cerebro/ciclo         → api_cerebro_ciclo
+  POST /api/cerebro/loop/iniciar  → api_cerebro_loop_iniciar
+  POST /api/cerebro/loop/parar    → api_cerebro_loop_parar
+  POST /api/cerebro/loop/pausar   → api_cerebro_loop_pausar
+  POST /api/cerebro/loop/retomar  → api_cerebro_loop_retomar
+  GET  /api/cerebro/fila/<n>      → api_cerebro_fila
+  GET  /api/cerebro/historico     → api_cerebro_historico
+  POST /api/cerebro/backtesting   → api_cerebro_backtesting
+  GET  /api/cerebro/log           → api_cerebro_log
 ============================================================
 """
 
-# ── Migração automática do banco ──────────────────────────────
+# ── Imports padrão ────────────────────────────────────────────
 import os
-import sys
+import time
 import traceback
 import threading
 import json
 from datetime import datetime
 
-import numpy as np  # ← ESTE ERA O QUE FALTAVA
+import numpy as np
 
-# ── Migrar banco antes de tudo ────────────────────────────────
+# ── Migração do banco ANTES de tudo ──────────────────────────
 try:
     from database.migrar import migrar
     migrar()
@@ -23,34 +61,28 @@ except Exception as _e:
     print("[AVISO] Migração: {}".format(_e))
 
 # ── Flask ─────────────────────────────────────────────────────
-from flask import (
-    Flask, render_template, request,
-    jsonify, redirect, url_for
-)
+from flask import Flask, render_template, request, jsonify
+
+app = Flask(__name__)
 
 # ── Módulos do sistema ────────────────────────────────────────
 from config import VALOR_APOSTA
-from database.db_manager import DBManager
-from core.data_loader        import DataLoader
-from core.bitmatrix          import BitMatrix
-from core.filtros_gaussianos import FiltrosGaussianos
-from core.markov_engine      import MarkovEngine
-from core.fisica_quantica    import FisicaQuantica
-from core.covering_designs   import CoveringDesigns
-from core.ia_autonoma        import IAAutonoma
-from core.conferencia        import Conferencia
-from core.financeiro         import Financeiro
-from core.ia_monitor         import IAMonitor
+from database.db_manager  import DBManager
+from core.data_loader     import DataLoader
+from core.bitmatrix       import BitMatrix
+from core.conferencia     import Conferencia
+from core.financeiro      import Financeiro
+from core.ia_monitor      import IAMonitor
+from core.cerebro_ia      import CerebroIA        # ← PROTAGONISTA ÚNICO
 
 # ── Instâncias globais ────────────────────────────────────────
-app         = Flask(__name__)
 db          = DBManager()
 data_loader = DataLoader()
 bitmatrix   = BitMatrix()
-ia          = IAAutonoma()
 conferencia = Conferencia()
 financeiro  = Financeiro()
 monitor     = IAMonitor()
+cerebro     = CerebroIA(n_cartelas=10)            # ← ÚNICA INSTÂNCIA DE IA
 
 # ── Status global ─────────────────────────────────────────────
 status_sistema = {
@@ -65,173 +97,42 @@ status_sistema = {
 
 
 # ============================================================
-# ROTAS PRINCIPAIS
+# HELPERS INTERNOS
 # ============================================================
 
-@app.route("/")
-def index():
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
-    status_sistema["total_concursos"] = db.get_total_concursos() or 0
-    status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
-
-    resumo_fin  = financeiro.get_resumo_geral()
-    resumo_conf = conferencia.resumo_conferencia()
-    ia_status   = ia.get_status()
-
-    # Converter resumo_conf para formato simples {pontos: qtd}
-    conf_simples = {}
-    for pts, dados in resumo_conf.items():
-        if isinstance(dados, dict):
-            conf_simples[pts] = dados.get("qtd", 0)
-        else:
-            conf_simples[pts] = dados
-
-    return render_template(
-        "index.html",
-        status      = status_sistema,
-        financeiro  = resumo_fin,
-        conferencia = conf_simples,
-        ia_status   = ia_status,
-        valor_aposta = VALOR_APOSTA,
-    )
-
-
-@app.route("/historico")
-def historico():
+def _gerar_sem_cerebro(n_cartelas: int):
+    """
+    Fallback estatístico simples quando o Cérebro ainda
+    não foi treinado. Usa frequência histórica + filtros básicos.
+    """
     resultados = db.get_todos_resultados()
-    lista = []
-    for r in list(resultados)[-100:]:
-        lista.append({
-            "concurso": r["concurso"],
-            "data":     r["data"],
-            "dezenas":  [r[f"d{i}"] for i in range(1, 16)],
-            "soma":     r["soma"],
-            "pares":    r["pares"],
-        })
-    lista.reverse()
-    return render_template("historico.html", resultados=lista)
+    freq       = np.zeros(25)
 
-
-@app.route("/gerar", methods=["GET", "POST"])
-def gerar():
-    import time
-    cartelas = []
-    msg      = ""
-
-    if request.method == "POST":
-        n_cartelas = int(request.form.get("n_cartelas", 10))
-        t_inicio   = time.time()
-
-        try:
-            resultados = db.get_todos_resultados()
-
-            if not resultados:
-                msg = "Carregue os dados primeiro."
-                return render_template("gerar.html",
-                                       cartelas=cartelas, msg=msg)
-
-            ultimo   = resultados[-1]
-            proximo  = ultimo["concurso"] + 1
-
-            print("[GERAR] Iniciando geração de {} cartelas...".format(
-                n_cartelas
-            ))
-
-            # Gerar cartelas
-            # Se IA treinada, usar IA. Senão, usar fallback inteligente.
-            if ia.treinado:
-                cartelas_geradas = ia.gerar_cartelas(ultimo, n_cartelas)
-            else:
-                print("[GERAR] IA não treinada, usando geração estatística")
-                cartelas_geradas = _gerar_sem_ia(
-                    resultados, n_cartelas
-                )
-
-            # Garantir que temos cartelas
-            if not cartelas_geradas:
-                cartelas_geradas = ia._gerar_fallback(n_cartelas)
-
-            # Salvar no banco
-            salvos = 0
-            for c in cartelas_geradas:
-                try:
-                    dez = c.get("dezenas", [])
-                    if len(dez) != 15:
-                        continue
-
-                    dados = (
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        proximo,
-                        dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
-                        dez[5],  dez[6],  dez[7],  dez[8],  dez[9],
-                        dez[10], dez[11], dez[12], dez[13], dez[14],
-                        c.get("bitmask",       0),
-                        c.get("score_ia",      0),
-                        c.get("score_markov",  0),
-                        c.get("score_fisico",  0),
-                        c.get("score_entropia",0),
-                        c.get("score_total",   0),
-                    )
-                    db.inserir_cartela(dados)
-                    salvos += 1
-                except Exception as e:
-                    print("[GERAR] Erro salvar cartela: {}".format(e))
-
-            cartelas = cartelas_geradas
-            custo    = salvos * VALOR_APOSTA
-            tempo    = time.time() - t_inicio
-
-            msg = (
-                "{} cartelas geradas para o concurso {} "
-                "em {:.1f}s. Custo: R$ {:.2f}"
-            ).format(salvos, proximo, tempo, custo)
-
-            print("[GERAR] " + msg)
-
-        except Exception as e:
-            msg = "Erro ao gerar: {}".format(str(e))
-            traceback.print_exc()
-
-    return render_template("gerar.html", cartelas=cartelas, msg=msg)
-
-
-def _gerar_sem_ia(resultados, n_cartelas):
-    """
-    Gera cartelas estatísticas sem IA treinada.
-    Usa frequência histórica + filtros básicos.
-    """
-    # Calcular frequência das dezenas
-    freq = np.zeros(25)
-    for r in resultados[-200:]:
+    for r in list(resultados)[-200:]:
         for i in range(1, 16):
             d = r["d{}".format(i)]
             if 1 <= d <= 25:
                 freq[d - 1] += 1
 
-    if freq.sum() > 0:
-        freq /= freq.sum()
-    else:
-        freq = np.ones(25) / 25
+    s = freq.sum()
+    freq = freq / s if s > 0 else np.ones(25) / 25.0
 
     cartelas = []
     bm       = BitMatrix()
 
-    for i in range(n_cartelas * 5):
+    for i in range(n_cartelas * 8):
         if len(cartelas) >= n_cartelas:
             break
         try:
-            np.random.seed(i + int(datetime.now().timestamp()))
-            idx = np.random.choice(25, size=15, replace=False, p=freq)
-            dez = sorted([int(j + 1) for j in idx])
-
-            # Filtros básicos
-            soma  = sum(dez)
-            pares = sum(1 for d in dez if d % 2 == 0)
+            np.random.seed(i + int(time.time()) % 100000)
+            idx  = np.random.choice(25, size=15, replace=False, p=freq)
+            dez  = sorted([int(j + 1) for j in idx])
+            soma = sum(dez)
+            par  = sum(1 for d in dez if d % 2 == 0)
             if soma < 170 or soma > 235:
                 continue
-            if pares < 5 or pares > 10:
+            if par < 5 or par > 10:
                 continue
-
             mask = bm.dezenas_para_bitmask(dez)
             cartelas.append({
                 "dezenas":         dez,
@@ -241,47 +142,166 @@ def _gerar_sem_ia(resultados, n_cartelas):
                 "score_fisico":    0.50,
                 "score_gaussiano": 0.50,
                 "score_entropia":  0.50,
-                "score_total":     round(float(np.mean([freq[d-1] for d in dez])), 4),
+                "score_total":     round(
+                    float(np.mean([freq[d - 1] for d in dez])), 4
+                ),
+                "scores": {},
             })
         except Exception:
             continue
 
     # Completar se necessário
     while len(cartelas) < n_cartelas:
-        np.random.seed(len(cartelas) + 9999)
-        idx = np.random.choice(25, size=15, replace=False)
-        dez = sorted([int(j + 1) for j in idx])
+        np.random.seed(len(cartelas) + 88888)
+        idx  = np.random.choice(25, size=15, replace=False)
+        dez  = sorted([int(j + 1) for j in idx])
         mask = BitMatrix().dezenas_para_bitmask(dez)
         cartelas.append({
-            "dezenas":     dez,
-            "bitmask":     mask,
-            "score_ia":    0.50,
-            "score_markov":0.50,
-            "score_fisico":0.50,
-            "score_gaussiano":0.50,
-            "score_entropia":0.50,
-            "score_total": 0.50,
+            "dezenas":         dez,
+            "bitmask":         mask,
+            "score_ia":        0.50,
+            "score_markov":    0.50,
+            "score_fisico":    0.50,
+            "score_gaussiano": 0.50,
+            "score_entropia":  0.50,
+            "score_total":     0.50,
+            "scores": {},
         })
 
     return cartelas[:n_cartelas]
 
 
+def _salvar_cartelas_banco(cartelas, concurso_alvo):
+    """Salva lista de cartelas no banco. Retorna quantidade salva."""
+    salvos = 0
+    for c in cartelas:
+        try:
+            dez = c.get("dezenas", [])
+            if len(dez) != 15:
+                continue
+            dados = (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                concurso_alvo,
+                dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
+                dez[5],  dez[6],  dez[7],  dez[8],  dez[9],
+                dez[10], dez[11], dez[12], dez[13], dez[14],
+                int(c.get("bitmask", 0)),
+                float(c.get("score_total", 0)),
+                float(c.get("scores", {}).get("markov",   0)),
+                float(c.get("scores", {}).get("verlet",   0)),
+                float(c.get("scores", {}).get("ev_prob",  0)),
+                float(c.get("score_total", 0)),
+            )
+            db.inserir_cartela(dados)
+            salvos += 1
+        except Exception as e:
+            print("[SALVAR_CARTELA] {}".format(e))
+    return salvos
+
+
 # ============================================================
-# ROTAS DE CONFERÊNCIA — bloco único, sem duplicatas
+# ROTAS PRINCIPAIS — PÁGINAS
 # ============================================================
+
+@app.route("/")
+def index():
+    """Dashboard principal"""
+    status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso() or 0
+    status_sistema["total_concursos"]  = db.get_total_concursos() or 0
+    status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
+    status_sistema["ia_treinada"]      = cerebro.treinado
+
+    resumo_fin  = financeiro.get_resumo_geral()
+    resumo_conf = conferencia.resumo_conferencia()
+    ia_status   = cerebro.get_status()
+
+    conf_simples = {}
+    for pts, dados in resumo_conf.items():
+        conf_simples[pts] = dados.get("qtd", 0) \
+            if isinstance(dados, dict) else dados
+
+    return render_template(
+        "index.html",
+        status       = status_sistema,
+        financeiro   = resumo_fin,
+        conferencia  = conf_simples,
+        ia_status    = ia_status,
+        valor_aposta = VALOR_APOSTA,
+    )
+
+
+@app.route("/historico")
+def historico():
+    """Histórico dos últimos 100 concursos"""
+    resultados = db.get_todos_resultados()
+    lista = []
+    for r in list(resultados)[-100:]:
+        lista.append({
+            "concurso": r["concurso"],
+            "data":     r["data"],
+            "dezenas":  [r["d{}".format(i)] for i in range(1, 16)],
+            "soma":     r["soma"],
+            "pares":    r["pares"],
+        })
+    lista.reverse()
+    return render_template("historico.html", resultados=lista)
+
+
+@app.route("/gerar", methods=["GET", "POST"])
+def gerar():
+    """
+    Geração de cartelas via Cérebro IA.
+    O Cérebro é o ÚNICO responsável pela geração.
+    """
+    cartelas = []
+    msg      = ""
+
+    if request.method == "POST":
+        n_cartelas = int(request.form.get("n_cartelas", 10))
+        modo       = request.form.get("modo", "hibrido")
+        t0         = time.time()
+
+        try:
+            proximo = (db.get_ultimo_concurso() or 0) + 1
+
+            # Cérebro IA gera as cartelas (pipeline completo dos 14 módulos)
+            if cerebro.treinado or cerebro.n > 50:
+                cartelas_geradas = cerebro.gerar_cartelas(
+                    quantidade=n_cartelas,
+                    modo=modo,
+                )
+            else:
+                print("[GERAR] Cérebro sem treino suficiente, usando fallback")
+                cartelas_geradas = _gerar_sem_cerebro(n_cartelas)
+
+            if not cartelas_geradas:
+                cartelas_geradas = _gerar_sem_cerebro(n_cartelas)
+
+            salvos   = _salvar_cartelas_banco(cartelas_geradas, proximo)
+            cartelas = cartelas_geradas
+            custo    = salvos * VALOR_APOSTA
+            tempo    = time.time() - t0
+
+            msg = "{} cartelas para concurso {} em {:.1f}s | R$ {:.2f}".format(
+                salvos, proximo, tempo, custo
+            )
+
+        except Exception as e:
+            msg = "Erro: {}".format(str(e))
+            traceback.print_exc()
+
+    return render_template("gerar.html", cartelas=cartelas, msg=msg)
+
 
 @app.route("/conferencia")
 def conferencia_page():
+    """Painel de conferência de jogos"""
     concursos  = conferencia.get_concursos_com_cartelas()
     resumo_raw = conferencia.resumo_conferencia()
-
     resumo = {}
     for pts, dados in resumo_raw.items():
-        if isinstance(dados, dict):
-            resumo[pts] = dados
-        else:
-            resumo[pts] = {"qtd": dados, "total_premio": 0}
-
+        resumo[pts] = dados if isinstance(dados, dict) \
+                      else {"qtd": dados, "total_premio": 0}
     return render_template(
         "conferencia.html",
         concursos = concursos,
@@ -289,174 +309,28 @@ def conferencia_page():
     )
 
 
-@app.route("/api/conferir_concurso", methods=["POST"])
-def api_conferir_concurso():
-    try:
-        dados    = request.get_json() or {}
-        concurso = int(dados.get("concurso", 0))
-
-        if concurso < 1:
-            return jsonify({
-                "status": "erro",
-                "msg":    "Número de concurso inválido."
-            })
-
-        resultado = conferencia.conferir_concurso(concurso)
-        return jsonify(resultado)
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
-
-
-@app.route("/api/cartelas_concurso/<int:concurso>")
-def api_cartelas_concurso(concurso):
-    try:
-        cartelas = conferencia.get_cartelas_do_concurso(concurso)
-        return jsonify({"status": "ok", "cartelas": cartelas})
-    except Exception as e:
-        return jsonify({"status": "erro", "msg": str(e)})
-
-@app.route("/api/apagar_cartelas_concurso", methods=["POST"])
-def api_apagar_cartelas_concurso():
-    try:
-        dados    = request.get_json() or {}
-        concurso = int(dados.get("concurso", 0))
-        if concurso < 1:
-            return jsonify({"status": "erro", "msg": "Concurso inválido"})
-
-        conn   = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM cartelas WHERE concurso_alvo = ?", (concurso,)
-        )
-        apagadas = cursor.rowcount
-        conn.commit()
-        conn.close()
-
-        return jsonify({"status": "ok", "apagadas": apagadas})
-    except Exception as e:
-        return jsonify({"status": "erro", "msg": str(e)})
-
-
-@app.route("/api/apagar_cartelas", methods=["POST"])
-def api_apagar_cartelas():
-    try:
-        dados = request.get_json() or {}
-        ids   = dados.get("ids", [])
-        if not ids:
-            return jsonify({"status": "erro", "msg": "Nenhum ID informado"})
-
-        conn   = db.get_conn()
-        cursor = conn.cursor()
-        apagadas = 0
-        for cid in ids:
-            cursor.execute(
-                "DELETE FROM cartelas WHERE id = ?", (int(cid),)
-            )
-            apagadas += cursor.rowcount
-        conn.commit()
-        conn.close()
-
-        return jsonify({"status": "ok", "apagadas": apagadas})
-    except Exception as e:
-        return jsonify({"status": "erro", "msg": str(e)})
-
-
-@app.route("/api/adicionar_cartelas_concurso", methods=["POST"])
-def api_adicionar_cartelas_concurso():
-    try:
-        dados    = request.get_json() or {}
-        concurso = int(dados.get("concurso", 0))
-        qtd      = int(dados.get("quantidade", 5))
-
-        if concurso < 1:
-            return jsonify({"status": "erro", "msg": "Concurso inválido"})
-        if qtd < 1 or qtd > 50:
-            return jsonify({"status": "erro", "msg": "Quantidade inválida"})
-
-        resultados = db.get_todos_resultados()
-        if not resultados:
-            return jsonify({"status": "erro", "msg": "Sem dados históricos"})
-
-        # Encontrar resultado mais próximo ao concurso alvo
-        ultimo = resultados[-1]
-        for r in reversed(resultados):
-            if r["concurso"] < concurso:
-                ultimo = r
-                break
-
-        # Gerar cartelas
-        if ia.treinado:
-            cartelas_novas = ia.gerar_cartelas(ultimo, qtd)
-        else:
-            cartelas_novas = _gerar_sem_ia(resultados, qtd)
-
-        adicionadas = 0
-        for c in cartelas_novas:
-            try:
-                dez = c.get("dezenas", [])
-                if len(dez) != 15:
-                    continue
-                dados_ins = (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    concurso,
-                    dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
-                    dez[5],  dez[6],  dez[7],  dez[8],  dez[9],
-                    dez[10], dez[11], dez[12], dez[13], dez[14],
-                    c.get("bitmask",        0),
-                    c.get("score_ia",       0),
-                    c.get("score_markov",   0),
-                    c.get("score_fisico",   0),
-                    c.get("score_entropia", 0),
-                    c.get("score_total",    0),
-                )
-                db.inserir_cartela(dados_ins)
-                adicionadas += 1
-            except Exception as e:
-                print("[ADD] erro: {}".format(e))
-
-        return jsonify({
-            "status":     "ok",
-            "adicionadas": adicionadas,
-            "concurso":   concurso,
-        })
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
-
 @app.route("/financeiro_page")
 def financeiro_page():
-    resumo = financeiro.get_resumo_geral()
-    return render_template("financeiro.html", resumo=resumo)
-
-
-@app.route("/ia_painel")
-def ia_painel():
-    ia_status   = ia.get_status()
-    aprendizado = db.get_historico_aprendizado()
+    """Painel financeiro"""
     return render_template(
-        "ia_painel.html",
-        status      = ia_status,
-        aprendizado = aprendizado,
+        "financeiro.html",
+        resumo = financeiro.get_resumo_geral()
     )
 
 
 @app.route("/analise")
 def analise():
+    """Heatmaps e análises estatísticas"""
     resultados  = db.get_todos_resultados()
     freq        = bitmatrix.heatmap_frequencia(resultados)
     freq_rec    = bitmatrix.heatmap_frequencia(resultados, janela=50)
-
-    heatmap = {
+    heatmap     = {
         i + 1: {
             "total":   round(float(freq[i]),     2),
             "recente": round(float(freq_rec[i]), 2),
         }
         for i in range(25)
     }
-
     return render_template(
         "analise.html",
         heatmap         = heatmap,
@@ -466,6 +340,7 @@ def analise():
 
 @app.route("/premios")
 def premios():
+    """Prêmios reais da Caixa"""
     ultimos    = db.get_ultimos_premios(20)
     medias     = db.get_media_premios()
     estimativa = data_loader.buscar_estimativa_premio()
@@ -486,13 +361,13 @@ def premios():
     medias_dict = {}
     if medias:
         medias_dict = {
-            "media_11": round(float(medias["media_11"] or 6),       2),
-            "media_12": round(float(medias["media_12"] or 12),      2),
-            "media_13": round(float(medias["media_13"] or 30),      2),
-            "media_14": round(float(medias["media_14"] or 1800),    2),
-            "media_15": round(float(medias["media_15"] or 0),       2),
-            "min_15":   round(float(medias["min_15"]   or 0),       2),
-            "max_15":   round(float(medias["max_15"]   or 0),       2),
+            "media_11": round(float(medias["media_11"] or 7),    2),
+            "media_12": round(float(medias["media_12"] or 14),   2),
+            "media_13": round(float(medias["media_13"] or 35),   2),
+            "media_14": round(float(medias["media_14"] or 1800), 2),
+            "media_15": round(float(medias["media_15"] or 0),    2),
+            "min_15":   round(float(medias["min_15"]   or 0),    2),
+            "max_15":   round(float(medias["max_15"]   or 0),    2),
         }
 
     return render_template(
@@ -502,118 +377,39 @@ def premios():
         estimativa = estimativa,
     )
 
-from core.ia_monitor import IAMonitor
-monitor = IAMonitor()
 
 @app.route("/ia_auditoria")
 def ia_auditoria():
-    stats          = monitor.get_dashboard_stats()
-    ranking_modulos = monitor.get_ranking_modulos()
-    sessoes        = monitor.get_ultimas_sessoes(10)
-    evolucao_pesos = monitor.get_evolucao_pesos(20)
-
+    """Auditoria completa da IA"""
     return render_template(
         "ia_auditoria.html",
-        stats           = stats,
-        ranking_modulos = ranking_modulos,
-        sessoes         = sessoes,
-        evolucao_pesos  = evolucao_pesos,
+        stats           = monitor.get_dashboard_stats(),
+        ranking_modulos = monitor.get_ranking_modulos(),
+        sessoes         = monitor.get_ultimas_sessoes(10),
+        evolucao_pesos  = monitor.get_evolucao_pesos(20),
     )
 
-@app.route("/api/ia_sessao/<int:sessao_id>")
-def api_ia_sessao(sessao_id):
-    relatorio = monitor.get_relatorio_sessao(sessao_id)
-    return jsonify(relatorio)
 
-@app.route("/api/ia_log_tempo_real")
-def api_ia_log_tempo_real():
-    """Retorna os últimos logs para atualização em tempo real"""
-    sessoes = monitor.get_ultimas_sessoes(1)
-    if not sessoes:
-        return jsonify({"logs": []})
-    sid  = sessoes[0]["id"]
-    rel  = monitor.get_relatorio_sessao(sid)
-    return jsonify({"logs": rel.get("modulos", [])})
+@app.route("/cerebro")
+def cerebro_page():
+    """Painel do Cérebro IA — Ciclo autônomo fechado"""
+    return render_template(
+        "cerebro.html",
+        status    = cerebro.get_status(),
+        historico = cerebro.get_historico_ciclos(20),
+        erros     = cerebro.get_memoria_erros(),
+        modulos   = cerebro.get_desempenho_modulos(),
+    )
+
 
 # ============================================================
-# API ENDPOINTS
+# API — DADOS E STATUS
 # ============================================================
-
-@app.route("/api/carregar_dados", methods=["POST"])
-def api_carregar_dados():
-    if status_sistema["carregando"]:
-        return jsonify({"status": "info", "msg": "Já está carregando..."})
-
-    def carregar():
-        status_sistema["carregando"] = True
-
-        def cb(concurso, carregados, total, msg):
-            status_sistema["progresso"] = msg
-
-        resultado = data_loader.carregar_historico_completo(cb)
-        status_sistema["carregando"]      = False
-        status_sistema["dados_carregados"] = True
-        status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
-        status_sistema["progresso"] = (
-            f"✅ Completo! "
-            f"{resultado.get('total_carregados', 0)} concursos carregados."
-        )
-
-    threading.Thread(target=carregar, daemon=True).start()
-    return jsonify({"status": "ok", "msg": "Carregamento iniciado..."})
-
-
-@app.route("/api/atualizar_dados", methods=["POST"])
-def api_atualizar():
-    resultado = data_loader.atualizar_diario()
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
-    return jsonify(resultado)
-
-
-@app.route("/api/atualizar_diario", methods=["POST"])
-def api_atualizar_diario():
-    resultado = data_loader.atualizar_diario()
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
-    return jsonify(resultado)
-
-
-@app.route("/api/treinar_ia", methods=["POST"])
-def api_treinar_ia():
-    if status_sistema["treinando"]:
-        return jsonify({"status": "info", "msg": "Já está treinando..."})
-
-    def treinar():
-        status_sistema["treinando"] = True
-
-        try:
-            resultados = db.get_todos_resultados()
-            if not resultados:
-                status_sistema["progresso"] = "❌ Sem dados!"
-                status_sistema["treinando"] = False
-                return
-
-            def cb(msg):
-                status_sistema["progresso"] = msg
-
-            ia.treinar(resultados, cb)
-            status_sistema["ia_treinada"] = True
-            status_sistema["progresso"] = (
-                f"✅ IA treinada com {len(resultados)} concursos!"
-            )
-
-        except Exception as e:
-            status_sistema["progresso"] = f"❌ Erro: {str(e)}"
-            traceback.print_exc()
-
-        status_sistema["treinando"] = False
-
-    threading.Thread(target=treinar, daemon=True).start()
-    return jsonify({"status": "ok", "msg": "Treinamento iniciado..."})
-
 
 @app.route("/api/status")
 def api_status():
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
+    status_sistema["ia_treinada"]     = cerebro.treinado
     return jsonify(status_sistema)
 
 
@@ -622,17 +418,313 @@ def api_status_base():
     return jsonify(data_loader.get_status_base())
 
 
-@app.route("/api/conferir", methods=["POST"])
-def api_conferir():
+@app.route("/api/carregar_dados", methods=["POST"])
+def api_carregar_dados():
+    """Baixa histórico completo da Caixa em background"""
+    if status_sistema["carregando"]:
+        return jsonify({"status": "info", "msg": "Já está carregando..."})
+
+    def _carregar():
+        status_sistema["carregando"] = True
+
+        def cb(concurso, carregados, total, msg):
+            status_sistema["progresso"] = msg
+
+        resultado = data_loader.carregar_historico_completo(cb)
+        status_sistema["carregando"]       = False
+        status_sistema["dados_carregados"] = True
+        status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso()
+        status_sistema["progresso"] = "✅ Completo! {} concursos carregados.".format(
+            resultado.get("total_carregados", 0)
+        )
+
+        # Recarregar dados no Cérebro
+        cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
+        cerebro.n = len(cerebro.matriz)
+
+    threading.Thread(target=_carregar, daemon=True).start()
+    return jsonify({"status": "ok", "msg": "Carregamento iniciado..."})
+
+
+@app.route("/api/atualizar_dados", methods=["POST"])
+def api_atualizar_dados():
+    """Atualiza apenas concursos novos"""
+    resultado = data_loader.atualizar_diario()
+    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
+
+    # Recarregar no Cérebro
+    cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
+    cerebro.n = len(cerebro.matriz)
+
+    return jsonify(resultado)
+
+
+# ============================================================
+# API — CÉREBRO IA (ÚNICO MOTOR DE GERAÇÃO)
+# ============================================================
+
+@app.route("/api/treinar_ia", methods=["POST"])
+def api_treinar_ia():
+    """
+    Treina o Cérebro IA com todos os 14 módulos.
+    Substitui o antigo /api/treinar_ia.
+    """
+    if status_sistema["treinando"]:
+        return jsonify({"status": "info", "msg": "Já está treinando..."})
+
+    def _treinar():
+        status_sistema["treinando"] = True
+        try:
+            def cb(msg):
+                status_sistema["progresso"] = msg
+
+            resultado = cerebro.treinar(callback=cb)
+            status_sistema["ia_treinada"] = True
+            status_sistema["progresso"]   = \
+                "✅ Cérebro treinado! 14 módulos ativos."
+
+        except Exception as e:
+            status_sistema["progresso"] = "❌ Erro: {}".format(str(e))
+            traceback.print_exc()
+
+        status_sistema["treinando"] = False
+
+    threading.Thread(target=_treinar, daemon=True).start()
+    return jsonify({"status": "ok", "msg": "Treinamento do Cérebro iniciado..."})
+
+
+@app.route("/api/cerebro/status")
+def api_cerebro_status():
+    return jsonify(cerebro.get_status())
+
+
+@app.route("/api/cerebro/treinar", methods=["POST"])
+def api_cerebro_treinar():
+    """Alias direto para treinar o Cérebro"""
+    return api_treinar_ia()
+
+
+@app.route("/api/cerebro/gerar", methods=["POST"])
+def api_cerebro_gerar():
+    """Gera cartelas via Cérebro IA e salva no banco"""
     try:
-        resultados = conferencia.conferir_todas_pendentes()
+        dados      = request.get_json() or {}
+        quantidade = int(dados.get("quantidade", cerebro.n_cartelas))
+        modo       = dados.get("modo", "hibrido")
+        concurso   = int(dados.get("concurso", 0))
+
+        if quantidade < 1 or quantidade > 50:
+            return jsonify({"status": "erro", "msg": "Quantidade inválida (1-50)"})
+
+        if concurso < 1:
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+
+        cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
+        salvos   = _salvar_cartelas_banco(cartelas, concurso)
+
         return jsonify({
-            "status":    "ok",
-            "conferidas": len(resultados),
+            "status":   "ok",
+            "cartelas": cartelas,
+            "salvas":   salvos,
+            "concurso": concurso,
+            "custo":    round(salvos * VALOR_APOSTA, 2),
+            "metricas": cerebro.metricas,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/cerebro/ciclo", methods=["POST"])
+def api_cerebro_ciclo():
+    """Executa um ciclo completo (Geração → Conferência → Aprendizado)"""
+    try:
+        dados    = request.get_json() or {}
+        concurso = int(dados.get("concurso", 0))
+        if concurso < 1:
+            return jsonify({"status": "erro", "msg": "Concurso inválido"})
+
+        def _rodar():
+            cerebro.executar_ciclo(concurso)
+
+        threading.Thread(target=_rodar, daemon=True).start()
+        return jsonify({
+            "status":   "iniciado",
+            "concurso": concurso,
+            "msg":      "Ciclo iniciado em background",
         })
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
 
+
+@app.route("/api/cerebro/loop/iniciar", methods=["POST"])
+def api_cerebro_loop_iniciar():
+    """Inicia o loop automático do Cérebro"""
+    dados      = request.get_json() or {}
+    intervalo  = int(dados.get("intervalo",  3600))
+    n_cartelas = int(dados.get("n_cartelas", cerebro.n_cartelas))
+    if 1 <= n_cartelas <= 50:
+        cerebro.n_cartelas = n_cartelas
+    return jsonify(cerebro.iniciar_loop(intervalo))
+
+
+@app.route("/api/cerebro/loop/parar", methods=["POST"])
+def api_cerebro_loop_parar():
+    return jsonify(cerebro.parar_loop())
+
+
+@app.route("/api/cerebro/loop/pausar", methods=["POST"])
+def api_cerebro_loop_pausar():
+    return jsonify(cerebro.pausar_loop())
+
+
+@app.route("/api/cerebro/loop/retomar", methods=["POST"])
+def api_cerebro_loop_retomar():
+    return jsonify(cerebro.retomar_loop())
+
+
+@app.route("/api/cerebro/fila/<int:concurso>")
+def api_cerebro_fila(concurso):
+    return jsonify({
+        "status": "ok",
+        "fila":   cerebro.get_fila_concurso(concurso),
+    })
+
+
+@app.route("/api/cerebro/historico")
+def api_cerebro_historico():
+    return jsonify({
+        "status":   "ok",
+        "historico": cerebro.get_historico_ciclos(30),
+    })
+
+
+@app.route("/api/cerebro/backtesting", methods=["POST"])
+def api_cerebro_backtesting():
+    try:
+        dados     = request.get_json() or {}
+        n_testes  = int(dados.get("n_testes",   20))
+        n_cart    = int(dados.get("n_cartelas",  5))
+        resultado = cerebro.backtesting(n_testes, n_cart)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/cerebro/log")
+def api_cerebro_log():
+    return jsonify({"log": cerebro.log[-50:]})
+
+
+# ============================================================
+# API — CONFERÊNCIA
+# ============================================================
+
+@app.route("/api/conferir", methods=["POST"])
+def api_conferir():
+    """Confere todas as cartelas pendentes"""
+    try:
+        resultados = conferencia.conferir_todas_pendentes()
+        return jsonify({"status": "ok", "conferidas": len(resultados)})
+    except Exception as e:
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/conferir_concurso", methods=["POST"])
+def api_conferir_concurso():
+    """Confere cartelas de um concurso específico"""
+    try:
+        dados    = request.get_json() or {}
+        concurso = int(dados.get("concurso", 0))
+        if concurso < 1:
+            return jsonify({"status": "erro", "msg": "Concurso inválido"})
+        return jsonify(conferencia.conferir_concurso(concurso))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/cartelas_concurso/<int:concurso>")
+def api_cartelas_concurso(concurso):
+    try:
+        return jsonify({
+            "status":   "ok",
+            "cartelas": conferencia.get_cartelas_do_concurso(concurso),
+        })
+    except Exception as e:
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/apagar_cartelas_concurso", methods=["POST"])
+def api_apagar_cartelas_concurso():
+    try:
+        dados    = request.get_json() or {}
+        concurso = int(dados.get("concurso", 0))
+        if concurso < 1:
+            return jsonify({"status": "erro", "msg": "Concurso inválido"})
+        conn   = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM cartelas WHERE concurso_alvo = ?", (concurso,)
+        )
+        apagadas = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "apagadas": apagadas})
+    except Exception as e:
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/apagar_cartelas", methods=["POST"])
+def api_apagar_cartelas():
+    try:
+        dados = request.get_json() or {}
+        ids   = dados.get("ids", [])
+        if not ids:
+            return jsonify({"status": "erro", "msg": "Nenhum ID informado"})
+        conn   = db.get_conn()
+        cursor = conn.cursor()
+        apagadas = 0
+        for cid in ids:
+            cursor.execute("DELETE FROM cartelas WHERE id = ?", (int(cid),))
+            apagadas += cursor.rowcount
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "apagadas": apagadas})
+    except Exception as e:
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/adicionar_cartelas_concurso", methods=["POST"])
+def api_adicionar_cartelas_concurso():
+    """Adiciona mais cartelas a um concurso existente via Cérebro"""
+    try:
+        dados    = request.get_json() or {}
+        concurso = int(dados.get("concurso",   0))
+        qtd      = int(dados.get("quantidade", 5))
+
+        if concurso < 1:
+            return jsonify({"status": "erro", "msg": "Concurso inválido"})
+        if not (1 <= qtd <= 50):
+            return jsonify({"status": "erro", "msg": "Quantidade inválida"})
+
+        cartelas_novas = cerebro.gerar_cartelas(quantidade=qtd)
+        adicionadas    = _salvar_cartelas_banco(cartelas_novas, concurso)
+
+        return jsonify({
+            "status":     "ok",
+            "adicionadas": adicionadas,
+            "concurso":   concurso,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+# ============================================================
+# API — PRÊMIOS E AUDITORIA
+# ============================================================
 
 @app.route("/api/premios/<int:concurso>")
 def api_premios_concurso(concurso):
@@ -651,43 +743,18 @@ def api_premios_concurso(concurso):
     })
 
 
-@app.route("/api/backtesting", methods=["POST"])
-def api_backtesting():
-    try:
-        resultados = db.get_todos_resultados()
-        if not resultados or len(resultados) < 200:
-            return jsonify({"status": "erro", "msg": "Dados insuficientes"})
-        resultado = ia.backtesting(resultados, n_cartelas=5, janela=150)
-        return jsonify(resultado)
-    except Exception as e:
-        return jsonify({"status": "erro", "msg": str(e)})
+@app.route("/api/ia_sessao/<int:sessao_id>")
+def api_ia_sessao(sessao_id):
+    return jsonify(monitor.get_relatorio_sessao(sessao_id))
 
 
-@app.route("/api/gerar_rapido", methods=["POST"])
-def api_gerar_rapido():
-    try:
-        data_req   = request.get_json() or {}
-        n          = int(data_req.get("n_cartelas", 10))
-        resultados = db.get_todos_resultados()
-
-        if not resultados:
-            return jsonify({"status": "erro", "msg": "Sem dados"})
-        if not ia.treinado:
-            return jsonify({"status": "erro", "msg": "IA não treinada"})
-
-        cartelas = ia.gerar_cartelas(resultados[-1], n)
-        return jsonify({
-            "status":   "ok",
-            "cartelas": [
-                {
-                    "dezenas":     c["dezenas"],
-                    "score_total": round(c["score_total"], 4),
-                }
-                for c in cartelas
-            ],
-        })
-    except Exception as e:
-        return jsonify({"status": "erro", "msg": str(e)})
+@app.route("/api/ia_log_tempo_real")
+def api_ia_log_tempo_real():
+    sessoes = monitor.get_ultimas_sessoes(1)
+    if not sessoes:
+        return jsonify({"logs": []})
+    rel = monitor.get_relatorio_sessao(sessoes[0]["id"])
+    return jsonify({"logs": rel.get("modulos", [])})
 
 
 # ============================================================
@@ -696,51 +763,33 @@ def api_gerar_rapido():
 
 if __name__ == "__main__":
     print("""
-╔══════════════════════════════════════════════════╗
-║   SISTEMA LOTOFÁCIL - IA AUTÔNOMA               ║
-║   Física Quântica + Machine Learning             ║
-║   Acesse: http://localhost:5000                  ║
-╚══════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════╗
+║   SISTEMA LOTOFÁCIL — CÉREBRO IA v6.0              ║
+║   14 Módulos Analíticos Unificados                  ║
+║   Ciclo Autônomo: Geração → Conferência → Aprend.  ║
+║   Acesse: http://localhost:5000                      ║
+╚══════════════════════════════════════════════════════╝
     """)
 
-    # Tentar carregar modelos salvos
-    if ia._carregar_modelos():
-        status_sistema["ia_treinada"] = True
-        print("[OK] Modelos da IA carregados")
-
+    # Status inicial do banco
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
     status_sistema["total_concursos"] = db.get_total_concursos() or 0
 
     if status_sistema["ultimo_concurso"] > 0:
         status_sistema["dados_carregados"] = True
-        print(f"[OK] {status_sistema['ultimo_concurso']} concursos no banco")
+        print("[OK] {} concursos no banco".format(
+            status_sistema["ultimo_concurso"]
+        ))
+
+    # Cérebro verifica se pode iniciar treinamento automático
+    if cerebro.n >= 50:
+        print("[CÉREBRO] {} concursos disponíveis para treino".format(
+            cerebro.n
+        ))
+        print("[CÉREBRO] Acesse /cerebro para treinar e gerar cartelas")
+    else:
+        print("[AVISO] Poucos dados. Carregue o histórico primeiro.")
+
+    status_sistema["ia_treinada"] = cerebro.treinado
 
     app.run(debug=True, port=5000)
-# ============================================================
-# MAPA DE TODAS AS ROTAS — verificar duplicatas
-# ============================================================
-#
-# GET  /                          → index
-# GET  /historico                 → historico
-# GET  /gerar          POST       → gerar
-# GET  /conferencia               → conferencia_page
-# GET  /financeiro_page           → financeiro_page
-# GET  /ia_painel                 → ia_painel
-# GET  /analise                   → analise
-# GET  /premios                   → premios
-# GET  /ia_auditoria              → ia_auditoria
-#
-# POST /api/carregar_dados        → api_carregar_dados
-# POST /api/atualizar_dados       → api_atualizar
-# POST /api/atualizar_diario      → api_atualizar_diario
-# POST /api/treinar_ia            → api_treinar_ia
-# GET  /api/status                → api_status
-# GET  /api/status_base           → api_status_base
-# POST /api/conferir              → api_conferir
-# POST /api/conferir_concurso     → api_conferir_concurso
-# GET  /api/cartelas_concurso/<n> → api_cartelas_concurso
-# GET  /api/premios/<n>           → api_premios_concurso
-# POST /api/backtesting           → api_backtesting
-# POST /api/gerar_rapido          → api_gerar_rapido
-# GET  /api/ia_sessao/<n>         → api_ia_sessao
-# GET  /api/ia_log_tempo_real     → api_ia_log_tempo_real
