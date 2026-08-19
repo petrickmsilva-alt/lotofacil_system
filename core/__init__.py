@@ -1,15 +1,22 @@
-from .data_loader        import DataLoader
+"""
+============================================================
+CORE — Módulos do Sistema Lotofácil
+Cérebro IA v6.0 é o protagonista único
+============================================================
+"""
+
+# ── Protagonista único ────────────────────────────────────────
+from .cerebro_ia         import CerebroIA
+
+# ── Módulos de suporte ────────────────────────────────────────
 from .bitmatrix          import BitMatrix
+from .data_loader        import DataLoader
+from .conferencia        import Conferencia
+from .financeiro         import Financeiro
+from .ia_monitor         import IAMonitor
+
+# ── Módulos auxiliares usados pelo CerebroIA ──────────────────
 from .filtros_gaussianos import FiltrosGaussianos
 from .markov_engine      import MarkovEngine
 from .fisica_quantica    import FisicaQuantica
 from .covering_designs   import CoveringDesigns
-from .verlet_3d          import VerletSimulator3D
-from .quantum_walk       import QuantumWalk
-from .estatistica_avancada import EstatisticaAvancada
-from .algoritmo_genetico import AlgoritmoGeneticoIlhas
-from .spsa_optimizer     import SPSAOptimizer
-from .meta_stacking      import MetaStacking
-from .ia_autonoma        import IAAutonoma
-from .conferencia        import Conferencia
-from .financeiro         import Financeiro

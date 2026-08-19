@@ -213,7 +213,34 @@ def index():
 
     resumo_fin  = financeiro.get_resumo_geral()
     resumo_conf = conferencia.resumo_conferencia()
-    ia_status   = cerebro.get_status()
+
+    # Status do Cérebro IA formatado para o template
+    cerebro_status = cerebro.get_status()
+    ia_status = {
+        "versao":           cerebro_status.get("versao",          "6.0"),
+        "treinado":         cerebro_status.get("treinado",         False),
+        "concursos_treino": cerebro_status.get("total_concursos",     0),
+        "modelos_dezena":   0,
+        "stacking_treinado": False,
+        "modulos_ativos":   14,
+        # Compatibilidade com o template antigo que usa ia_status.pesos
+        "pesos": cerebro_status.get("pesos_modulos", {
+            "markov":     0.11,
+            "fisico":     0.07,
+            "gaussiano":  0.05,
+            "ml":         0.07,
+            "verlet":     0.07,
+            "quantum":    0.08,
+            "chi2":       0.07,
+            "bayes":      0.08,
+            "kl":         0.05,
+            "stacking":   0.06,
+            "anti_logica":0.11,
+            "reversao":   0.09,
+            "cobertura":  0.04,
+            "genetico":   0.05,
+        }),
+    }
 
     conf_simples = {}
     for pts, dados in resumo_conf.items():
@@ -247,50 +274,102 @@ def historico():
     return render_template("historico.html", resultados=lista)
 
 
-@app.route("/gerar", methods=["GET", "POST"])
-def gerar():
+# ============================================================
+# ROTA UNIFICADA — CÉREBRO IA + GERAR CARTELAS
+# ============================================================
+
+@app.route("/cerebro", methods=["GET", "POST"])
+def cerebro_page():
     """
-    Geração de cartelas via Cérebro IA.
-    O Cérebro é o ÚNICO responsável pela geração.
+    Página única do Cérebro IA:
+    - Painel de controle e status
+    - Treinamento dos 14 módulos
+    - Geração de cartelas
+    - Ciclo autônomo fechado
+    - Histórico e aprendizado
     """
     cartelas = []
     msg      = ""
+    metricas = {}
 
     if request.method == "POST":
-        n_cartelas = int(request.form.get("n_cartelas", 10))
-        modo       = request.form.get("modo", "hibrido")
-        t0         = time.time()
+        acao = request.form.get("acao", "gerar")
 
-        try:
-            proximo = (db.get_ultimo_concurso() or 0) + 1
+        # ── AÇÃO: GERAR CARTELAS ──────────────────────────────
+        if acao == "gerar":
+            n_cartelas = int(request.form.get("n_cartelas", 10))
+            modo       = request.form.get("modo", "hibrido")
+            t0         = time.time()
 
-            # Cérebro IA gera as cartelas (pipeline completo dos 14 módulos)
-            if cerebro.treinado or cerebro.n > 50:
-                cartelas_geradas = cerebro.gerar_cartelas(
-                    quantidade=n_cartelas,
-                    modo=modo,
-                )
-            else:
-                print("[GERAR] Cérebro sem treino suficiente, usando fallback")
-                cartelas_geradas = _gerar_sem_cerebro(n_cartelas)
+            try:
+                if cerebro.n < 50:
+                    msg = "Poucos dados no banco ({}). Carregue o histórico primeiro.".format(
+                        cerebro.n
+                    )
+                else:
+                    proximo = (db.get_ultimo_concurso() or 0) + 1
+                    print("[CEREBRO] Gerando {} cartelas | modo={}".format(
+                        n_cartelas, modo
+                    ))
 
-            if not cartelas_geradas:
-                cartelas_geradas = _gerar_sem_cerebro(n_cartelas)
+                    cartelas_geradas = cerebro.gerar_cartelas(
+                        quantidade=n_cartelas,
+                        modo=modo,
+                    )
 
-            salvos   = _salvar_cartelas_banco(cartelas_geradas, proximo)
-            cartelas = cartelas_geradas
-            custo    = salvos * VALOR_APOSTA
-            tempo    = time.time() - t0
+                    if cartelas_geradas:
+                        salvos   = _salvar_cartelas_banco(cartelas_geradas, proximo)
+                        cartelas = cartelas_geradas
+                        custo    = salvos * VALOR_APOSTA
+                        tempo    = time.time() - t0
 
-            msg = "{} cartelas para concurso {} em {:.1f}s | R$ {:.2f}".format(
-                salvos, proximo, tempo, custo
-            )
+                        metricas = {
+                            "tempo":         round(tempo, 2),
+                            "modo":          modo,
+                            "grupo_elite":   cerebro.decisoes.get("grupo_elite", []),
+                            "cobertura_13":  cerebro.metricas.get("cobertura_13", 0),
+                            "concurso_alvo": proximo,
+                            "salvos":        salvos,
+                            "custo":         custo,
+                        }
 
-        except Exception as e:
-            msg = "Erro: {}".format(str(e))
-            traceback.print_exc()
+                        msg = "OK Cérebro IA gerou {} cartelas para concurso {} em {:.1f}s | Custo: R$ {:.2f}".format(
+                            salvos, proximo, tempo, custo
+                        )
+                    else:
+                        msg = "Cérebro não conseguiu gerar cartelas."
 
-    return render_template("gerar.html", cartelas=cartelas, msg=msg)
+            except Exception as e:
+                msg = "Erro no Cérebro: {}".format(str(e))
+                traceback.print_exc()
+
+    # Dados para renderização
+    status    = cerebro.get_status()
+    historico = cerebro.get_historico_ciclos(10)
+    modulos   = cerebro.get_desempenho_modulos()
+    erros     = cerebro.get_memoria_erros()
+
+    return render_template(
+        "cerebro.html",
+        status    = status,
+        historico = historico,
+        modulos   = modulos,
+        erros     = erros,
+        cartelas  = cartelas,
+        msg       = msg,
+        metricas  = metricas,
+    )
+
+
+# Redirecionar /gerar para /cerebro
+@app.route("/gerar", methods=["GET", "POST"])
+def gerar():
+    """Redireciona para o Cérebro IA (único módulo de geração)"""
+    from flask import redirect, url_for
+    if request.method == "POST":
+        # Reencaminhar POST para /cerebro
+        return cerebro_page()
+    return redirect(url_for("cerebro_page"))
 
 
 @app.route("/conferencia")
@@ -388,19 +467,6 @@ def ia_auditoria():
         sessoes         = monitor.get_ultimas_sessoes(10),
         evolucao_pesos  = monitor.get_evolucao_pesos(20),
     )
-
-
-@app.route("/cerebro")
-def cerebro_page():
-    """Painel do Cérebro IA — Ciclo autônomo fechado"""
-    return render_template(
-        "cerebro.html",
-        status    = cerebro.get_status(),
-        historico = cerebro.get_historico_ciclos(20),
-        erros     = cerebro.get_memoria_erros(),
-        modulos   = cerebro.get_desempenho_modulos(),
-    )
-
 
 # ============================================================
 # API — DADOS E STATUS

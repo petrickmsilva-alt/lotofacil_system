@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}Cérebro IA — Gerador de Cartelas{% endblock %}
+{% block page_title %}
+    <i class="fas fa-brain"></i> Cérebro IA v6.0
+{% endblock %}
+
+{% block content %}
+
+<!-- STATUS PRINCIPAL DO CÉREBRO -->
+<div class="section" style="border:2px solid rgba(108,92,231,0.5);">
+    <h2><i class="fas fa-robot"></i> Cabine de Comando</h2>
+    <div class="cards-grid">
+        <div class="card card-primary">
+            <div class="card-icon">
+                <i class="fas fa-circle" id="ico-estado"></i>
+            </div>
+            <div class="card-info">
+                <h3 id="txt-estado">{{ status.estado }}</h3>
+                <p>Estado do Cérebro</p>
+            </div>
+        </div>
+        <div class="card card-success">
+            <div class="card-icon"><i class="fas fa-database"></i></div>
+            <div class="card-info">
+                <h3>{{ status.total_concursos }}</h3>
+                <p>Concursos na Memória</p>
+            </div>
+        </div>
+        <div class="card {% if status.treinado %}card-success
+                          {% else %}card-warning{% endif %}">
+            <div class="card-icon"><i class="fas fa-graduation-cap"></i></div>
+            <div class="card-info">
+                <h3>
+                    {% if status.treinado %}Treinado
+                    {% else %}Não treinado{% endif %}
+                </h3>
+                <p>Status IA</p>
+            </div>
+        </div>
+        <div class="card card-info">
+            <div class="card-icon"><i class="fas fa-check-circle"></i></div>
+            <div class="card-info">
+                <h3>{{ status.ciclo.ciclos_ok }}</h3>
+                <p>Ciclos Completos</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações do Cérebro -->
+    <div class="ciclo-controles" style="margin-top:20px;">
+        <button id="btn-treinar" class="btn btn-success btn-lg">
+            <i class="fas fa-graduation-cap"></i> Treinar 14 Módulos
+        </button>
+        <button id="btn-iniciar-loop" class="btn btn-primary btn-lg">
+            <i class="fas fa-play"></i> Iniciar Loop Autônomo
+        </button>
+        <button id="btn-pausar" class="btn btn-warning">
+            <i class="fas fa-pause"></i> Pausar
+        </button>
+        <button id="btn-parar" class="btn btn-danger">
+            <i class="fas fa-stop"></i> Parar
+        </button>
+    </div>
+</div>
+
+
+<!-- COMO FUNCIONA -->
+<div class="section">
+    <h2><i class="fas fa-info-circle"></i> Como o Cérebro Trabalha</h2>
+    <div class="pipeline-info">
+        <div class="pipeline-step">
+            <span class="ps-num">1</span>
+            <span class="ps-txt">
+                Treina 14 módulos (Markov, Verlet, Quantum, Bayes, χ²...)
+            </span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">2</span>
+            <span class="ps-txt">
+                Aplica Anti-Lógica (Saturação + Atraso + FFT + Correlação)
+            </span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">3</span>
+            <span class="ps-txt">Calibra pesos automaticamente via SPSA</span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">4</span>
+            <span class="ps-txt">
+                Executa Algoritmo Genético de Ilhas (4 populações)
+            </span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">5</span>
+            <span class="ps-txt">Aplica 7 filtros gaussianos</span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">6</span>
+            <span class="ps-txt">Valida cobertura matemática 13+ pontos</span>
+        </div>
+        <div class="pipeline-step">
+            <span class="ps-num">7</span>
+            <span class="ps-txt">
+                Entrega as melhores cartelas rankeadas por score
+            </span>
+        </div>
+    </div>
+</div>
+
+
+<!-- GERAR CARTELAS -->
+<div class="section" style="border:2px solid rgba(0,184,148,0.4);">
+    <h2><i class="fas fa-magic"></i> Gerar Cartelas com Cérebro IA</h2>
+    <form method="POST" class="form-gerar">
+        <input type="hidden" name="acao" value="gerar">
+
+        <div class="form-group">
+            <label for="n_cartelas">Quantidade de Cartelas:</label>
+            <input type="number" name="n_cartelas" id="n_cartelas"
+                   value="10" min="1" max="50" class="form-control">
+        </div>
+
+        <div class="form-group">
+            <label for="modo">Modo de Análise:</label>
+            <select name="modo" id="modo" class="form-control"
+                    style="max-width:220px;">
+                <option value="hibrido">Híbrido (recomendado)</option>
+                <option value="combinatorio">Combinatório</option>
+                <option value="monte_carlo">Monte Carlo</option>
+                <option value="sistematico">Sistemático</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Custo estimado:</label>
+            <span id="custo-estimado" class="valor-destaque">R$ 35,00</span>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">
+            <i class="fas fa-brain"></i> Analisar e Gerar
+        </button>
+    </form>
+</div>
+
+
+<!-- MENSAGEM DE RESULTADO -->
+{% if msg %}
+<div class="alert {% if 'OK' in msg %}alert-success
+                   {% else %}alert-danger{% endif %}">
+    {{ msg }}
+</div>
+{% endif %}
+
+
+<!-- MÉTRICAS DA GERAÇÃO -->
+{% if metricas and metricas.grupo_elite %}
+<div class="section">
+    <h2><i class="fas fa-chart-line"></i> Análise da Geração</h2>
+
+    <div class="cards-grid">
+        <div class="card card-primary">
+            <div class="card-icon"><i class="fas fa-clock"></i></div>
+            <div class="card-info">
+                <h3>{{ metricas.tempo }}s</h3>
+                <p>Tempo Análise</p>
+            </div>
+        </div>
+        <div class="card card-success">
+            <div class="card-icon"><i class="fas fa-check"></i></div>
+            <div class="card-info">
+                <h3>{{ metricas.salvos }}</h3>
+                <p>Cartelas Geradas</p>
+            </div>
+        </div>
+        <div class="card card-warning">
+            <div class="card-icon"><i class="fas fa-percentage"></i></div>
+            <div class="card-info">
+                <h3>
+                    {{ "%.1f"|format(metricas.cobertura_13 * 100) }}%
+                </h3>
+                <p>Cobertura 13+ pts</p>
+            </div>
+        </div>
+        <div class="card card-info">
+            <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
+            <div class="card-info">
+                <h3>R$ {{ "%.2f"|format(metricas.custo) }}</h3>
+                <p>Custo Total</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top:20px;">
+        <strong>
+            Grupo Elite selecionado pelo Cérebro
+            (dezenas favorecidas):
+        </strong>
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+            {% for d in metricas.grupo_elite %}
+            <span class="bola-mini selecionada">
+                {{ "%02d"|format(d) }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- CARTELAS GERADAS -->
+{% if cartelas %}
+<div class="section">
+    <h2><i class="fas fa-ticket-alt"></i>
+        Cartelas Geradas ({{ cartelas|length }})
+    </h2>
+    <div class="cartelas-grid">
+        {% for c in cartelas %}
+        <div class="cartela-card">
+            <div class="cartela-header">
+                <span class="cartela-num">#{{ loop.index }}</span>
+                <span class="cartela-score">
+                    Score: {{ "%.4f"|format(c.score_total) }}
+                </span>
+            </div>
+            <div class="volante">
+                {% for num in range(1, 26) %}
+                <div class="bola
+                    {% if num in c.dezenas %}selecionada{% endif %}">
+                    {{ "%02d"|format(num) }}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="cartela-dezenas">
+                {% for d in c.dezenas %}
+                <span class="dezena">{{ "%02d"|format(d) }}</span>
+                {% endfor %}
+            </div>
+            <div class="cartela-scores">
+                <small>
+                    Soma: {{ c.soma }} |
+                    Pares: {{ c.pares }} |
+                    Primos: {{ c.primos }} |
+                    Fib: {{ c.fibonacci }}
+                </small>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+
+<!-- PESOS DOS 14 MÓDULOS -->
+<div class="section">
+    <h2><i class="fas fa-sliders-h"></i>
+        Pesos dos 14 Módulos (Calibrados pelo SPSA)
+    </h2>
+    <div class="pesos-grid">
+        {% for nome, peso in status.pesos_modulos.items() %}
+        <div class="peso-item">
+            <label>{{ nome }}</label>
+            <div class="peso-bar">
+                <div class="peso-fill"
+                     data-width="{{ (peso * 100)|round|int }}">
+                </div>
+            </div>
+            <span>{{ "%.1f"|format(peso * 100) }}%</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+
+<!-- FILTROS CALIBRADOS -->
+<div class="section">
+    <h2><i class="fas fa-filter"></i> Filtros Calibrados</h2>
+    <div class="filtros-grid">
+        {% for nome, vals in status.filtros.items() %}
+        <div class="filtro-item">
+            <span class="filtro-nome">{{ nome }}</span>
+            <span class="filtro-val">
+                {{ vals[0] }} — {{ vals[1] }}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+
+<!-- HISTÓRICO DE CICLOS -->
+{% if historico %}
+<div class="section">
+    <h2><i class="fas fa-history"></i> Últimos Ciclos Autônomos</h2>
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>Início</th>
+                    <th>Status</th>
+                    <th>Cartelas</th>
+                    <th>Melhor</th>
+                    <th>Ganho</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in historico %}
+                <tr>
+                    <td><strong>{{ h.concurso }}</strong></td>
+                    <td style="font-size:12px;">
+                        {{ h.timestamp_inicio }}
+                    </td>
+                    <td>
+                        <span class="badge
+                            {% if h.status == 'completo' %}badge-success
+                            {% elif h.status == 'em_andamento' %}badge-warning
+                            {% else %}badge-danger{% endif %}">
+                            {{ h.status }}
+                        </span>
+                    </td>
+                    <td>{{ h.n_cartelas }}</td>
+                    <td>
+                        <span class="badge
+                            {% if h.melhor_acertos >= 13 %}badge-success
+                            {% elif h.melhor_acertos >= 11 %}badge-warning
+                            {% else %}badge-sem_premio{% endif %}">
+                            {{ h.melhor_acertos }} pts
+                        </span>
+                    </td>
+                    <td>
+                        {% if h.total_ganho > 0 %}
+                        <span class="valor positivo">
+                            R$ {{ "%.2f"|format(h.total_ganho) }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- LOG EM TEMPO REAL -->
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-terminal"></i> Log em Tempo Real</h2>
+        <button id="btn-limpar-log" class="btn btn-sm btn-outline">
+            <i class="fas fa-trash"></i> Limpar
+        </button>
+    </div>
+    <div id="log-cerebro" class="log-terminal">
+        {% for l in status.log_recente %}
+        <div class="log-linha">
+            <span class="log-ts">{{ l.ts }}</span>
+            <span class="log-tipo tipo-{{ l.tipo }}">
+                [{{ l.tipo }}]
+            </span>
+            <span class="log-msg">{{ l.msg }}</span>
+        </div>
+        {% endfor %}
+        {% if not status.log_recente %}
+        <p style="color:var(--text-muted);">
+            Aguardando ações do Cérebro...
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/cerebro.js') }}"></script>
+<script>
+document.getElementById('n_cartelas').addEventListener('input', function () {
+    var custo = this.value * 3.50;
+    document.getElementById('custo-estimado').textContent =
+        'R$ ' + custo.toFixed(2);
+});
+</script>
+{% endblock %}

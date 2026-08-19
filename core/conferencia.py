@@ -156,83 +156,136 @@ class Conferencia:
         Confere TODAS as cartelas de um concurso específico.
         Busca resultado da Caixa se não tiver no banco.
         """
+        # 1. Tentar buscar resultado no banco
         resultado = self.db.get_resultado_concurso(concurso)
 
+        # 2. Se não tem no banco, buscar da Caixa
         if not resultado:
-            # Tentar buscar da Caixa
             dados_caixa = self.buscar_premios_caixa(concurso)
             if not dados_caixa:
                 return {
-                    "status":  "erro",
-                    "msg":     "Resultado do concurso {} não encontrado.".format(
-                        concurso
-                    ),
+                    "status":   "erro",
+                    "msg":      "Resultado do concurso {} não disponível na Caixa.".format(concurso),
                     "cartelas": [],
+                    "total_cartelas":  0,
+                    "total_premiadas": 0,
                 }
 
-        dez_resultado = [resultado["d{}".format(i)] for i in range(1, 16)]
+            # Buscar dezenas via API completa
+            try:
+                url  = self.URL_API.format(concurso)
+                resp = requests.get(url, timeout=15, headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer":    "https://loterias.caixa.gov.br/",
+                })
+                if resp.status_code != 200:
+                    return {
+                        "status": "erro",
+                        "msg":    "Concurso {} indisponível na Caixa.".format(concurso),
+                        "cartelas": [],
+                        "total_cartelas":  0,
+                        "total_premiadas": 0,
+                    }
 
-        # Buscar cartelas do concurso
+                data_json    = resp.json()
+                dezenas_json = data_json.get("listaDezenas", [])
+                dez_resultado = sorted([int(d) for d in dezenas_json])
+
+                if len(dez_resultado) != 15:
+                    return {
+                        "status": "erro",
+                        "msg":    "Resultado inválido do concurso {}.".format(concurso),
+                        "cartelas": [],
+                        "total_cartelas":  0,
+                        "total_premiadas": 0,
+                    }
+
+                # Salvar resultado no banco para próximas consultas
+                self._salvar_resultado_no_banco(
+                    concurso, data_json, dez_resultado, dados_caixa
+                )
+
+            except Exception as e:
+                print("[CONF] Erro buscar Caixa: {}".format(e))
+                return {
+                    "status": "erro",
+                    "msg":    "Erro ao consultar Caixa: {}".format(str(e)),
+                    "cartelas": [],
+                    "total_cartelas":  0,
+                    "total_premiadas": 0,
+                }
+        else:
+            # Já tem no banco
+            dez_resultado = [
+                resultado["d{}".format(i)] for i in range(1, 16)
+            ]
+
+        # 3. Buscar cartelas do concurso
         cartelas = self.db.get_cartelas_por_concurso(concurso)
 
         if not cartelas:
             return {
-                "status":   "vazio",
-                "msg":      "Nenhuma cartela encontrada para o concurso {}.".format(
-                    concurso
-                ),
-                "cartelas": [],
+                "status":         "vazio",
+                "msg":            "Nenhuma cartela encontrada para o concurso {}.".format(concurso),
+                "cartelas":       [],
+                "resultado":      dez_resultado,
+                "total_cartelas":  0,
+                "total_premiadas": 0,
             }
 
-        # Buscar prêmios reais da Caixa para este concurso
+        # 4. Buscar prêmios reais da Caixa
         premios_caixa = self.buscar_premios_caixa(concurso)
         premios_reais = {}
         if premios_caixa:
             premios_reais = premios_caixa.get("premios", {})
-            # Atualizar banco com valores reais
             self._atualizar_premios_banco(concurso, premios_caixa)
 
+        # 5. Conferir cada cartela
         resultados_conf = []
         for cartela in cartelas:
-            dez_cartela = [cartela["d{}".format(i)] for i in range(1, 16)]
-            conf        = self.conferir_cartela(dez_cartela, dez_resultado)
-            acertos     = conf["acertos"]
+            try:
+                dez_cartela = [
+                    cartela["d{}".format(i)] for i in range(1, 16)
+                ]
+                conf     = self.conferir_cartela(dez_cartela, dez_resultado)
+                acertos  = conf["acertos"]
 
-            # Valor do prêmio
-            premio = 0.0
-            if acertos >= 11:
-                if acertos in (11, 12, 13):
-                    # Fixo oficial
-                    premio = self.PREMIOS_FIXOS_OFICIAIS[acertos]
-                    # Verificar se a Caixa tem valor diferente
-                    if premios_reais.get(acertos, 0) > 0:
-                        premio = premios_reais[acertos]
-                else:
-                    # Rateado — usar valor real se disponível
-                    if premios_reais.get(acertos, 0) > 0:
-                        premio = premios_reais[acertos]
+                # Valor do prêmio
+                premio = 0.0
+                if acertos >= 11:
+                    if acertos in (11, 12, 13):
+                        premio = self.PREMIOS_FIXOS_OFICIAIS[acertos]
+                        if premios_reais.get(acertos, 0) > 0:
+                            premio = premios_reais[acertos]
                     else:
-                        premio = self.get_premio(acertos, concurso)
+                        if premios_reais.get(acertos, 0) > 0:
+                            premio = premios_reais[acertos]
+                        else:
+                            premio = self.get_premio(acertos, concurso)
 
-            # Status
-            status = self._definir_status(acertos)
+                status = self._definir_status(acertos)
 
-            # Atualizar banco
-            self.db.atualizar_conferencia(
-                cartela["id"], acertos, premio, status
-            )
+                # Atualizar no banco
+                self.db.atualizar_conferencia(
+                    cartela["id"], acertos, premio, status
+                )
 
-            resultados_conf.append({
-                "cartela_id":        cartela["id"],
-                "dezenas_cartela":   dez_cartela,
-                "dezenas_resultado": dez_resultado,
-                "acertos":           acertos,
-                "dezenas_acertadas": conf["dezenas_acertadas"],
-                "dezenas_erradas":   conf["dezenas_erradas"],
-                "premio":            premio,
-                "status":            status,
-                "premiado":          acertos >= 11,
-            })
+                resultados_conf.append({
+                    "cartela_id":       cartela["id"],
+                    "dezenas_cartela":   dez_cartela,
+                    "dezenas_resultado": dez_resultado,
+                    "acertos":           acertos,
+                    "dezenas_acertadas": conf["dezenas_acertadas"],
+                    "dezenas_erradas":   conf["dezenas_erradas"],
+                    "premio":            premio,
+                    "status":            status,
+                    "premiado":          acertos >= 11,
+                })
+            except Exception as e:
+                print("[CONF] Erro cartela {}: {}".format(
+                    cartela.get("id"), e
+                ))
+                continue
 
         return {
             "status":          "ok",
@@ -245,79 +298,62 @@ class Conferencia:
                                    if r["premiado"]),
         }
 
-    def conferir_todas_pendentes(self):
-        """Confere todas as cartelas pendentes automaticamente"""
-        cartelas    = self.db.get_cartelas_pendentes()
-        resultados  = []
-
-        concursos_processados = set()
-
-        for cartela in cartelas:
-            concurso = cartela["concurso_alvo"]
-
-            if concurso in concursos_processados:
-                continue
-
-            resultado = self.db.get_resultado_concurso(concurso)
-            if not resultado:
-                continue
-
-            concursos_processados.add(concurso)
-            conf = self.conferir_concurso(concurso)
-
-            if conf["status"] == "ok":
-                resultados.extend(conf["cartelas"])
-
-        return resultados
-
-    def _definir_status(self, acertos):
-        """Define o status textual do resultado"""
-        mapa = {
-            15: "premio_15",
-            14: "premio_14",
-            13: "premio_13",
-            12: "premio_12",
-            11: "premio_11",
-        }
-        return mapa.get(acertos, "sem_premio")
-
-    def _atualizar_premios_banco(self, concurso, dados_caixa):
-        """Atualiza os prêmios no banco com valores reais"""
+    def _salvar_resultado_no_banco(self, concurso, data_json,
+                                     dezenas, dados_caixa):
+        """Salva resultado buscado da Caixa no banco local"""
         try:
-            premios    = dados_caixa.get("premios", {})
+            from core.bitmatrix import BitMatrix
+            from config import PRIMOS, FIBONACCI, BORDA
+            bm = BitMatrix()
+
+            ds       = set(dezenas)
+            soma     = sum(dezenas)
+            pares    = sum(1 for d in dezenas if d % 2 == 0)
+            primos_c = len(ds & PRIMOS)
+            fib_c    = len(ds & FIBONACCI)
+            borda_c  = len(ds & BORDA)
+
+            sd = sorted(dezenas)
+            mc = cc = 1
+            for i in range(1, len(sd)):
+                if sd[i] == sd[i - 1] + 1:
+                    cc += 1; mc = max(mc, cc)
+                else:
+                    cc = 1
+
+            bitmask  = bm.dezenas_para_bitmask(dezenas)
+            data_str = data_json.get("dataApuracao", "")
+            try:
+                from datetime import datetime as DT
+                data_str = DT.strptime(
+                    data_str, "%d/%m/%Y"
+                ).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+            premios    = dados_caixa.get("premios",    {})
             ganhadores = dados_caixa.get("ganhadores", {})
-            conn       = self.db.get_conn()
-            cursor     = conn.cursor()
-            cursor.execute("""
-                UPDATE resultados SET
-                    premio_11 = ?,
-                    premio_12 = ?,
-                    premio_13 = ?,
-                    premio_14 = ?,
-                    premio_15 = ?,
-                    ganhadores_11 = ?,
-                    ganhadores_12 = ?,
-                    ganhadores_13 = ?,
-                    ganhadores_14 = ?,
-                    ganhadores_15 = ?
-                WHERE concurso = ?
-            """, (
-                premios.get(11, 6.0),
-                premios.get(12, 12.0),
-                premios.get(13, 30.0),
-                premios.get(14, 0.0),
-                premios.get(15, 0.0),
-                ganhadores.get(11, 0),
-                ganhadores.get(12, 0),
-                ganhadores.get(13, 0),
-                ganhadores.get(14, 0),
-                ganhadores.get(15, 0),
-                concurso,
-            ))
-            conn.commit()
-            conn.close()
+
+            dados = (
+                concurso, data_str, *dezenas,
+                bitmask, soma, pares, 15 - pares,
+                primos_c, fib_c, borda_c, mc,
+                float(premios.get(11, 7.0)),
+                float(premios.get(12, 14.0)),
+                float(premios.get(13, 35.0)),
+                float(premios.get(14, 0.0)),
+                float(premios.get(15, 0.0)),
+                int(ganhadores.get(11, 0)),
+                int(ganhadores.get(12, 0)),
+                int(ganhadores.get(13, 0)),
+                int(ganhadores.get(14, 0)),
+                int(ganhadores.get(15, 0)),
+                0.0,
+            )
+            self.db.inserir_resultado(dados)
+            print("[CONF] Resultado {} salvo no banco".format(concurso))
         except Exception as e:
-            print("[CONF] Erro atualizar banco: {}".format(e))
+            print("[CONF] Erro salvar resultado: {}".format(e))
 
     # =========================================================
     # RESUMOS

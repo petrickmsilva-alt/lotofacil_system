@@ -126,14 +126,14 @@
 
 <!-- Status da IA -->
 <div class="section">
-    <h2><i class="fas fa-robot"></i> Status da IA</h2>
+    <h2><i class="fas fa-robot"></i> Status do Cérebro IA</h2>
     <div class="ia-status-grid">
         <div class="ia-item">
             <label>Versão</label>
             <span>{{ ia_status.versao }}</span>
         </div>
         <div class="ia-item">
-            <label>Treinada</label>
+            <label>Treinado</label>
             {% if ia_status.treinado %}
                 <span class="badge badge-success">Sim</span>
             {% else %}
@@ -141,21 +141,47 @@
             {% endif %}
         </div>
         <div class="ia-item">
+            <label>Módulos Ativos</label>
+            <span>{{ ia_status.modulos_ativos }}</span>
+        </div>
+        <div class="ia-item">
+            <label>Concursos Treinados</label>
+            <span>{{ ia_status.concursos_treino }}</span>
+        </div>
+        {% if ia_status.pesos %}
+        <div class="ia-item">
+            <label>Peso Anti-Lógica</label>
+            <span>
+                {{ "%.2f"|format(
+                    ia_status.pesos.get('anti_logica', 0)
+                ) }}
+            </span>
+        </div>
+        <div class="ia-item">
             <label>Peso Markov</label>
-            <span>{{ "%.2f"|format(ia_status.pesos.markov) }}</span>
+            <span>
+                {{ "%.2f"|format(
+                    ia_status.pesos.get('markov', 0)
+                ) }}
+            </span>
         </div>
         <div class="ia-item">
-            <label>Peso ML</label>
-            <span>{{ "%.2f"|format(ia_status.pesos.ml) }}</span>
+            <label>Peso Quantum</label>
+            <span>
+                {{ "%.2f"|format(
+                    ia_status.pesos.get('quantum', 0)
+                ) }}
+            </span>
         </div>
         <div class="ia-item">
-            <label>Peso Físico</label>
-            <span>{{ "%.2f"|format(ia_status.pesos.fisico) }}</span>
+            <label>Peso Verlet</label>
+            <span>
+                {{ "%.2f"|format(
+                    ia_status.pesos.get('verlet', 0)
+                ) }}
+            </span>
         </div>
-        <div class="ia-item">
-            <label>Peso Gauss</label>
-            <span>{{ "%.2f"|format(ia_status.pesos.gaussiano) }}</span>
-        </div>
+        {% endif %}
     </div>
 </div>
 

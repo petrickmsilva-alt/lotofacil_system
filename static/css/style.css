@@ -1155,3 +1155,37 @@ body {
     font-weight: 700;
     color: var(--success);
 }
+/* ── Pipeline info ────────────────────────────────────────── */
+.pipeline-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pipeline-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--dark-3);
+    border-radius: 8px;
+    border-left: 3px solid var(--primary);
+}
+
+.ps-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.ps-txt {
+    font-size: 14px;
+    color: var(--text);
+}
