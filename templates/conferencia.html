@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Conferência - LotoFácil IA{% endblock %}
 {% block page_title %}
-    <i class="fas fa-check-double"></i> Conferência de Jogos
+    <i class="fas fa-check-double"></i> Conferência de Lotes
 {% endblock %}
 
 {% block content %}
@@ -38,113 +38,155 @@
     </div>
 </div>
 
-<!-- Conferir concurso específico -->
+<!-- Buscar concurso específico -->
 <div class="section">
-    <h2><i class="fas fa-search"></i> Conferir Concurso</h2>
+    <h2><i class="fas fa-search"></i> Buscar Concurso Específico</h2>
     <div class="form-inline">
         <div class="form-group">
-            <label>Número do Concurso:</label>
-            <input type="number"
-                   id="input-concurso"
-                   class="form-control"
-                   placeholder="Ex: 3200"
-                   min="1"
-                   style="max-width:180px;">
+            <label>Nº do Concurso:</label>
+            <input type="number" id="input-concurso"
+                   class="form-control input-concurso"
+                   placeholder="Ex: 3200" min="1">
         </div>
-        <button id="btn-conferir-numero" class="btn btn-primary">
-            <i class="fas fa-search"></i> Conferir
+        <button id="btn-conferir-num" class="btn btn-primary">
+            <i class="fas fa-search"></i> Conferir Concurso
         </button>
-        <button id="btn-conferir-todas" class="btn btn-outline">
-            <i class="fas fa-check-double"></i> Conferir Todas Pendentes
+        <button id="btn-conferir-todos" class="btn btn-outline">
+            <i class="fas fa-check-double"></i> Conferir Todos os Lotes
         </button>
     </div>
 </div>
 
-<!-- Concursos com cartelas -->
+<!-- Lista de Lotes -->
 <div class="section">
-    <h2><i class="fas fa-list"></i> Concursos com Cartelas Geradas</h2>
-    <div class="table-container">
-        <table class="table" id="tabela-concursos">
-            <thead>
-                <tr>
-                    <th>Concurso</th>
-                    <th>Cartelas</th>
-                    <th>Conferidas</th>
-                    <th>Premiadas</th>
-                    <th>Total Ganho</th>
-                    <th>Status</th>
-                    <th style="min-width:260px;">Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for c in concursos %}
-                <tr id="row-{{ c.concurso }}">
-                    <td><strong>{{ c.concurso }}</strong></td>
-                    <td>{{ c.total_cartelas }}</td>
-                    <td>{{ c.conferidas }}</td>
-                    <td>
-                        {% if c.premiadas > 0 %}
-                            <span class="badge badge-success">
-                                {{ c.premiadas }}
-                            </span>
-                        {% else %}
-                            <span class="badge badge-sem_premio">0</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if c.total_ganho > 0 %}
-                            <span class="valor positivo">
-                                R$ {{ "%.2f"|format(c.total_ganho) }}
-                            </span>
-                        {% else %}—{% endif %}
-                    </td>
-                    <td>
-                        {% if c.pendentes > 0 %}
-                            <span class="badge badge-warning">
-                                {{ c.pendentes }} pendentes
-                            </span>
-                        {% else %}
-                            <span class="badge badge-success">OK</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div class="acoes-grupo">
-                            <button class="btn btn-sm btn-primary btn-ver"
-                                    data-concurso="{{ c.concurso }}"
-                                    title="Ver cartelas">
-                                <i class="fas fa-eye"></i> Ver
-                            </button>
-                            <button class="btn btn-sm btn-outline btn-conf"
-                                    data-concurso="{{ c.concurso }}"
-                                    title="Conferir cartelas">
-                                <i class="fas fa-check"></i> Conferir
-                            </button>
-                            <button class="btn btn-sm btn-success btn-add"
-                                    data-concurso="{{ c.concurso }}"
-                                    title="Adicionar mais cartelas">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                            <button class="btn btn-sm btn-danger btn-del"
-                                    data-concurso="{{ c.concurso }}"
-                                    title="Apagar cartelas">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-                {% if not concursos %}
-                <tr>
-                    <td colspan="7"
-                        style="text-align:center;color:var(--text-muted);">
-                        Nenhuma cartela gerada ainda.
-                        Vá em <a href="/gerar">Gerar Cartelas</a>.
-                    </td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
+    <div class="section-header">
+        <h2><i class="fas fa-layer-group"></i>
+            Lotes de Cartelas ({{ lotes|length }})
+        </h2>
     </div>
+
+    {% if lotes %}
+    <div class="lotes-lista">
+        {% for lote in lotes %}
+        <div class="lote-card" data-lote="{{ lote.lote_id }}">
+
+            <!-- Header do lote -->
+            <div class="lote-header">
+                <div class="lote-info-esq">
+                    {% if lote.tipo_geracao == 'cartela_do_dia' %}
+                        <div class="lote-tipo tipo-cartela-dia">
+                            <i class="fas fa-eye"></i>
+                            <span>CARTELA DO DIA</span>
+                        </div>
+                    {% else %}
+                        <div class="lote-tipo tipo-multiplo">
+                            <i class="fas fa-magic"></i>
+                            <span>LOTE MÚLTIPLO</span>
+                        </div>
+                    {% endif %}
+                    <div class="lote-data">
+                        <i class="fas fa-calendar"></i>
+                        {{ lote.data_criacao }}
+                    </div>
+                </div>
+                <div class="lote-concurso-badge">
+                    Concurso <strong>{{ lote.concurso_alvo }}</strong>
+                </div>
+            </div>
+
+            <!-- Stats do lote -->
+            <div class="lote-stats">
+                <div class="lote-stat">
+                    <span class="ls-num">{{ lote.total_cartelas }}</span>
+                    <span class="ls-label">Cartelas</span>
+                </div>
+                <div class="lote-stat">
+                    <span class="ls-num">
+                        R$ {{ "%.2f"|format(lote.custo_total) }}
+                    </span>
+                    <span class="ls-label">Investido</span>
+                </div>
+                <div class="lote-stat">
+                    <span class="ls-num ls-verde">
+                        {{ lote.premiadas }}
+                    </span>
+                    <span class="ls-label">Premiadas</span>
+                </div>
+                <div class="lote-stat">
+                    {% if lote.total_ganho > 0 %}
+                        <span class="ls-num ls-verde">
+                            R$ {{ "%.2f"|format(lote.total_ganho) }}
+                        </span>
+                    {% else %}
+                        <span class="ls-num ls-cinza">
+                            R$ {{ "%.2f"|format(lote.total_ganho) }}
+                        </span>
+                    {% endif %}
+                    <span class="ls-label">Ganho</span>
+                </div>
+                <div class="lote-stat">
+                    {% if lote.pendentes > 0 %}
+                    <span class="badge badge-warning">
+                        {{ lote.pendentes }} pendentes
+                    </span>
+                    {% else %}
+                    <span class="badge badge-success">Conferido</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Resultado do sorteio (se houver) -->
+            {% if lote.resultado_sorteio %}
+            <div class="lote-resultado">
+                <strong>
+                    Resultado sorteado ({{ lote.data_sorteio }}):
+                </strong>
+                <div class="lote-resultado-bolas">
+                    {% for d in lote.resultado_sorteio %}
+                    <span class="bola-mini selecionada">
+                        {{ "%02d"|format(d) }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% if lote.ganhadores_15 and lote.ganhadores_15 > 0 %}
+                <div class="lote-status-premio ganhador">
+                    <i class="fas fa-check"></i>
+                    {{ lote.ganhadores_15 }} ganhador(es) de 15 pontos
+                </div>
+                {% else %}
+                <div class="lote-status-premio acumulou">
+                    <i class="fas fa-fire"></i> Prêmio ACUMULOU!
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Ações -->
+            <div class="lote-acoes">
+                <button class="btn btn-sm btn-primary btn-ver-lote"
+                        data-lote="{{ lote.lote_id }}">
+                    <i class="fas fa-eye"></i> Ver Cartelas
+                </button>
+                <button class="btn btn-sm btn-outline btn-conferir-lote"
+                        data-lote="{{ lote.lote_id }}"
+                        data-concurso="{{ lote.concurso_alvo }}">
+                    <i class="fas fa-check"></i> Conferir Lote
+                </button>
+                <button class="btn btn-sm btn-danger btn-apagar-lote"
+                        data-lote="{{ lote.lote_id }}">
+                    <i class="fas fa-trash"></i> Apagar Lote
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="msg-vazio">
+        Nenhum lote gerado ainda.
+        Vá em <a href="/cerebro">Cérebro IA</a> ou
+        <a href="/cartela_do_dia">Cartela do Dia</a> para começar.
+    </p>
+    {% endif %}
 </div>
 
 <!-- Resumo Geral -->
@@ -204,7 +246,21 @@
     </div>
 </div>
 
-<!-- Painel resultado conferência -->
+<!-- Modal Cartelas do Lote -->
+<div id="modal-lote" class="modal-overlay-container">
+    <div class="modal-overlay-bg" id="modal-lote-bg"></div>
+    <div class="modal-box modal-grande">
+        <div class="modal-header">
+            <h2 id="modal-lote-titulo">Cartelas do Lote</h2>
+            <button class="btn-close" id="btn-fechar-modal">X</button>
+        </div>
+        <div class="modal-body" id="modal-lote-corpo">
+            <p>Carregando...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Painel Resultado -->
 <div id="painel-resultado" class="section painel-escondido">
     <div class="section-header">
         <h2 id="titulo-resultado">
@@ -215,48 +271,6 @@
         </button>
     </div>
     <div id="conteudo-resultado"></div>
-</div>
-
-<!-- Modal principal -->
-<div id="modal-principal" class="modal-overlay-container">
-    <div class="modal-overlay-bg" id="modal-bg"></div>
-    <div class="modal-box modal-grande">
-        <div class="modal-header">
-            <h2 id="modal-titulo">Cartelas</h2>
-            <button class="btn-close" id="btn-fechar-modal">✕</button>
-        </div>
-        <!-- Abas do modal -->
-        <div class="modal-abas" id="modal-abas"></div>
-        <div class="modal-body" id="modal-corpo">
-            <p>Carregando...</p>
-        </div>
-        <!-- Rodapé com ações -->
-        <div class="modal-footer" id="modal-footer"></div>
-    </div>
-</div>
-
-<!-- Modal confirmação apagar -->
-<div id="modal-confirmar" class="modal-overlay-container">
-    <div class="modal-overlay-bg" id="confirmar-bg"></div>
-    <div class="modal-box modal-pequeno">
-        <div class="modal-header">
-            <h2>Confirmar Exclusão</h2>
-            <button class="btn-close" id="btn-fechar-confirmar">✕</button>
-        </div>
-        <div class="modal-body">
-            <p id="texto-confirmar"></p>
-            <div style="display:flex;gap:12px;margin-top:20px;">
-                <button id="btn-confirmar-sim"
-                        class="btn btn-danger btn-lg">
-                    <i class="fas fa-trash"></i> Apagar
-                </button>
-                <button id="btn-confirmar-nao"
-                        class="btn btn-outline btn-lg">
-                    Cancelar
-                </button>
-            </div>
-        </div>
-    </div>
 </div>
 
 {% endblock %}

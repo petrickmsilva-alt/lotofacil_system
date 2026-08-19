@@ -1,33 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Prêmios - LotoFácil IA{% endblock %}
-{% block page_title %}<i class="fas fa-trophy"></i> Prêmios Reais da Caixa{% endblock %}
+{% block page_title %}
+    <i class="fas fa-trophy"></i> Prêmios da Caixa
+{% endblock %}
 
 {% block content %}
 
-<!-- Estimativa próximo concurso -->
+<!-- Botão para forçar atualização -->
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-download"></i> Atualizar Prêmios da Caixa</h2>
+        <button id="btn-atualizar-premios" class="btn btn-primary btn-lg">
+            <i class="fas fa-sync"></i> Buscar Prêmios Reais (últimos 100)
+        </button>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;">
+        Os prêmios estão em R$ 0,00 porque o banco não foi atualizado ainda.
+        Clique no botão acima para buscar os valores reais da API da Caixa.
+        Vai demorar ~30-60 segundos.
+    </p>
+    <div id="status-atualizacao"></div>
+</div>
+
+<!-- Estimativa próximo -->
 {% if estimativa %}
-<div class="section" style="border:2px solid rgba(108,92,231,0.4);">
+<div class="section">
     <h2><i class="fas fa-star"></i> Próximo Concurso</h2>
     <div class="cards-grid">
         <div class="card card-primary">
             <div class="card-icon"><i class="fas fa-hashtag"></i></div>
             <div class="card-info">
                 <h3>{{ estimativa.proximo_concurso }}</h3>
-                <p>Número do Concurso</p>
+                <p>Concurso</p>
             </div>
         </div>
         <div class="card card-success">
             <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
             <div class="card-info">
                 <h3>R$ {{ "%.2f"|format(estimativa.estimativa_15) }}</h3>
-                <p>Estimativa 15 Pontos</p>
+                <p>Estimativa 15 pts</p>
             </div>
         </div>
         <div class="card card-info">
             <div class="card-icon"><i class="fas fa-calendar"></i></div>
             <div class="card-info">
                 <h3>{{ estimativa.data_proximo }}</h3>
-                <p>Data do Sorteio</p>
+                <p>Data</p>
             </div>
         </div>
     </div>
@@ -70,15 +88,9 @@
 </div>
 {% endif %}
 
-<!-- Tabela dos últimos concursos -->
+<!-- Tabela últimos concursos -->
 <div class="section">
-    <div class="section-header">
-        <h2><i class="fas fa-list"></i> Últimos 20 Concursos</h2>
-        <button onclick="atualizarDiario()" class="btn btn-primary btn-sm">
-            <i class="fas fa-sync"></i> Atualizar da Caixa
-        </button>
-    </div>
-
+    <h2><i class="fas fa-list"></i> Últimos 20 Concursos</h2>
     <div class="table-container">
         <table class="table">
             <thead>
@@ -98,28 +110,25 @@
                 <tr>
                     <td><strong>{{ p.concurso }}</strong></td>
                     <td>{{ p.data }}</td>
-                    <td class="premio-cell">
-                        R$ {{ "%.2f"|format(p.premio_11) }}
-                    </td>
-                    <td class="premio-cell">
-                        R$ {{ "%.2f"|format(p.premio_12) }}
-                    </td>
-                    <td class="premio-cell">
-                        R$ {{ "%.2f"|format(p.premio_13) }}
-                    </td>
-                    <td class="premio-cell destaque-14">
+                    <td>R$ {{ "%.2f"|format(p.premio_11) }}</td>
+                    <td>R$ {{ "%.2f"|format(p.premio_12) }}</td>
+                    <td>R$ {{ "%.2f"|format(p.premio_13) }}</td>
+                    <td class="destaque-14">
                         R$ {{ "%.2f"|format(p.premio_14) }}
                     </td>
-                    <td class="premio-cell destaque-15">
+                    <td class="destaque-15">
                         R$ {{ "%.2f"|format(p.premio_15) }}
                     </td>
-                    <td class="text-center">
+                    <td>
                         {% if p.ganhadores_15 > 0 %}
                             <span class="badge badge-success">
+                                <i class="fas fa-check"></i>
                                 {{ p.ganhadores_15 }}
                             </span>
                         {% else %}
-                            <span class="badge badge-sem_premio">Acumulou</span>
+                            <span class="badge badge-warning">
+                                <i class="fas fa-fire"></i> Acumulou
+                            </span>
                         {% endif %}
                     </td>
                 </tr>
@@ -128,23 +137,48 @@
         </table>
     </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-function atualizarDiario() {
-    mostrarProgresso('Buscando dados da Caixa...');
-    fetch('/api/atualizar_diario', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            esconderProgresso();
-            alert(data.msg || 'Atualizado!');
-            location.reload();
-        })
-        .catch(function (err) {
-            esconderProgresso();
-            alert('Erro: ' + err);
-        });
-}
+document.getElementById('btn-atualizar-premios').addEventListener('click', function () {
+    var btn    = this;
+    var status = document.getElementById('status-atualizacao');
+
+    if (!confirm('Buscar prêmios reais dos últimos 100 concursos?\n' +
+                 'Vai demorar cerca de 30-60 segundos.')) {
+        return;
+    }
+
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Atualizando...';
+    status.innerHTML = '<p style="color:var(--warning);">' +
+                       'Buscando prêmios da API da Caixa...</p>';
+
+    fetch('/api/atualizar_premios_todos', { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Buscar Prêmios Reais';
+
+        if (data.status === 'ok') {
+            status.innerHTML =
+                '<p class="alert alert-success">' +
+                'OK! ' + data.atualizados + ' concursos atualizados.' +
+                ' (' + data.erros + ' erros)</p>';
+            setTimeout(function () { location.reload(); }, 2000);
+        } else {
+            status.innerHTML =
+                '<p class="alert alert-danger">Erro: ' + data.msg + '</p>';
+        }
+    })
+    .catch(function (err) {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-sync"></i> Buscar Prêmios Reais';
+        status.innerHTML =
+            '<p class="alert alert-danger">Erro: ' + err + '</p>';
+    });
+});
 </script>
 {% endblock %}

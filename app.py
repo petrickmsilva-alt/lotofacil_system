@@ -1,8 +1,7 @@
 """
 ============================================================
 SISTEMA LOTOFÁCIL — CÉREBRO IA v7.0
-14 Motores + Oráculo Convergente (15 oráculos)
-Ciclo Autônomo: Geração → Conferência → Aprendizado
+14 Motores + Oráculo Convergente + Sistema de LOTES
 ============================================================
 """
 
@@ -12,6 +11,7 @@ import time
 import traceback
 import threading
 import json
+import uuid
 from datetime import datetime
 
 import numpy as np
@@ -60,17 +60,63 @@ status_sistema = {
 
 
 # ============================================================
-# HELPERS
+# HELPER: Salvar cartelas em LOTE
 # ============================================================
 
-def _salvar_cartelas_banco(cartelas, concurso_alvo):
+def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
+                             modo="hibrido", grupo_elite=None, cobertura=0):
+    if not cartelas:
+        return 0
+
+    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+    lote_id = "{}_{}_{}_{}".format(
+        tipo, concurso_alvo, ts, str(uuid.uuid4())[:8]
+    )
+    custo   = len(cartelas) * VALOR_APOSTA
+
+    try:
+        conn   = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO lotes_cartelas
+            (lote_id, data_criacao, concurso_alvo, tipo_geracao,
+             quantidade, custo_total, modo, grupo_elite, cobertura_13)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (
+            lote_id,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            concurso_alvo,
+            tipo,
+            len(cartelas),
+            custo,
+            modo,
+            json.dumps(grupo_elite or []),
+            float(cobertura),
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("[LOTE] {}".format(e))
+
     salvos = 0
     for c in cartelas:
         try:
             dez = c.get("dezenas", [])
             if len(dez) != 15:
                 continue
-            dados = (
+            conn   = db.get_conn()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO cartelas
+                (data_geracao, concurso_alvo,
+                 d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,
+                 d11,d12,d13,d14,d15,
+                 bitmask, score_ia, score_markov,
+                 score_fisico, score_entropia, score_total,
+                 lote_id, tipo_geracao)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?,?,?,?,?,?)
+            """, (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 concurso_alvo,
                 dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
@@ -82,11 +128,16 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo):
                 float(c.get("scores", {}).get("verlet",  0)),
                 float(c.get("scores", {}).get("ev_prob", 0)),
                 float(c.get("score_total", 0)),
-            )
-            db.inserir_cartela(dados)
+                lote_id,
+                tipo,
+            ))
+            conn.commit()
+            conn.close()
             salvos += 1
         except Exception as e:
             print("[SALVAR] {}".format(e))
+
+    print("[LOTE] {} cartelas salvas no lote {}".format(salvos, lote_id))
     return salvos
 
 
@@ -134,12 +185,21 @@ def historico():
     resultados = db.get_todos_resultados()
     lista = []
     for r in list(resultados)[-100:]:
+        try:
+            premio_15     = r["premio_15"]     if "premio_15"     in r.keys() else 0
+            ganhadores_15 = r["ganhadores_15"] if "ganhadores_15" in r.keys() else 0
+        except Exception:
+            premio_15     = 0
+            ganhadores_15 = 0
+
         lista.append({
-            "concurso": r["concurso"],
-            "data":     r["data"],
-            "dezenas":  [r["d{}".format(i)] for i in range(1, 16)],
-            "soma":     r["soma"],
-            "pares":    r["pares"],
+            "concurso":      r["concurso"],
+            "data":          r["data"],
+            "dezenas":       [r["d{}".format(i)] for i in range(1, 16)],
+            "soma":          r["soma"],
+            "pares":         r["pares"],
+            "premio_15":     float(premio_15 or 0),
+            "ganhadores_15": int(ganhadores_15 or 0),
         })
     lista.reverse()
     return render_template("historico.html", resultados=lista)
@@ -170,8 +230,13 @@ def cerebro_page():
                         quantidade=n_cartelas, modo=modo,
                     )
                     if cartelas_geradas:
-                        salvos   = _salvar_cartelas_banco(
-                            cartelas_geradas, proximo
+                        salvos = _salvar_cartelas_banco(
+                            cartelas_geradas,
+                            proximo,
+                            tipo="multiplas",
+                            modo=modo,
+                            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+                            cobertura=cerebro.metricas.get("cobertura_13", 0),
                         )
                         cartelas = cartelas_geradas
                         custo    = salvos * VALOR_APOSTA
@@ -179,12 +244,8 @@ def cerebro_page():
                         metricas = {
                             "tempo":         round(tempo, 2),
                             "modo":          modo,
-                            "grupo_elite":   cerebro.decisoes.get(
-                                "grupo_elite", []
-                            ),
-                            "cobertura_13":  cerebro.metricas.get(
-                                "cobertura_13", 0
-                            ),
+                            "grupo_elite":   cerebro.decisoes.get("grupo_elite", []),
+                            "cobertura_13":  cerebro.metricas.get("cobertura_13", 0),
                             "concurso_alvo": proximo,
                             "salvos":        salvos,
                             "custo":         custo,
@@ -198,10 +259,10 @@ def cerebro_page():
                 msg = "Erro: {}".format(str(e))
                 traceback.print_exc()
 
-    status     = cerebro.get_status()
-    hist       = cerebro.get_historico_ciclos(10)
-    modulos    = cerebro.get_desempenho_modulos()
-    erros      = cerebro.get_memoria_erros()
+    status  = cerebro.get_status()
+    hist    = cerebro.get_historico_ciclos(10)
+    modulos = cerebro.get_desempenho_modulos()
+    erros   = cerebro.get_memoria_erros()
 
     return render_template(
         "cerebro.html",
@@ -231,22 +292,28 @@ def cartela_do_dia():
             proximo = (db.get_ultimo_concurso() or 0) + 1
             dez     = resultado["cartela"]
             if len(dez) == 15:
-                dados = (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                cartela_fmt = {
+                    "dezenas":     dez,
+                    "bitmask":     int(resultado.get("bitmask", 0)),
+                    "score_total": float(resultado.get("consenso_forca", 0)),
+                    "scores": {
+                        "markov":  0,
+                        "verlet":  0,
+                        "ev_prob": float(resultado.get("score_cerebro", 0)),
+                    },
+                }
+                _salvar_cartelas_banco(
+                    [cartela_fmt],
                     proximo,
-                    dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
-                    dez[5],  dez[6],  dez[7],  dez[8],  dez[9],
-                    dez[10], dez[11], dez[12], dez[13], dez[14],
-                    int(resultado.get("bitmask", 0)),
-                    float(resultado.get("consenso_forca", 0)),
-                    float(resultado.get("score_cerebro",  0)),
-                    0, 0,
-                    float(resultado.get("consenso_forca", 0)),
+                    tipo="cartela_do_dia",
+                    modo="oraculo_convergente",
+                    grupo_elite=[],
+                    cobertura=float(resultado.get("consenso_forca", 0)),
                 )
-                db.inserir_cartela(dados)
                 resultado["salvo_concurso"] = proximo
         except Exception as e:
             resultado["erro_salvar"] = str(e)
+            traceback.print_exc()
 
     hist_cdd = cerebro.get_historico_cartelas_do_dia(10)
 
@@ -259,7 +326,7 @@ def cartela_do_dia():
 
 @app.route("/conferencia")
 def conferencia_page():
-    concursos  = conferencia.get_concursos_com_cartelas()
+    lotes      = conferencia.get_todos_lotes()
     resumo_raw = conferencia.resumo_conferencia()
     resumo = {}
     for pts, dados in resumo_raw.items():
@@ -267,8 +334,8 @@ def conferencia_page():
                       else {"qtd": dados, "total_premio": 0}
     return render_template(
         "conferencia.html",
-        concursos = concursos,
-        resumo    = resumo,
+        lotes  = lotes,
+        resumo = resumo,
     )
 
 
@@ -282,10 +349,10 @@ def financeiro_page():
 
 @app.route("/analise")
 def analise():
-    resultados  = db.get_todos_resultados()
-    freq        = bitmatrix.heatmap_frequencia(resultados)
-    freq_rec    = bitmatrix.heatmap_frequencia(resultados, janela=50)
-    heatmap     = {
+    resultados = db.get_todos_resultados()
+    freq       = bitmatrix.heatmap_frequencia(resultados)
+    freq_rec   = bitmatrix.heatmap_frequencia(resultados, janela=50)
+    heatmap    = {
         i + 1: {
             "total":   round(float(freq[i]),     2),
             "recente": round(float(freq_rec[i]), 2),
@@ -413,7 +480,7 @@ def api_treinar_ia():
                 status_sistema["progresso"] = msg
             cerebro.treinar(callback=cb)
             status_sistema["ia_treinada"] = True
-            status_sistema["progresso"]   = "Cérebro treinado! 14 módulos + 15 oráculos."
+            status_sistema["progresso"]   = "Cérebro treinado!"
         except Exception as e:
             status_sistema["progresso"] = "Erro: {}".format(str(e))
             traceback.print_exc()
@@ -445,7 +512,12 @@ def api_cerebro_gerar():
         if concurso < 1:
             concurso = (db.get_ultimo_concurso() or 0) + 1
         cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
-        salvos   = _salvar_cartelas_banco(cartelas, concurso)
+        salvos   = _salvar_cartelas_banco(
+            cartelas, concurso,
+            tipo="multiplas", modo=modo,
+            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+            cobertura=cerebro.metricas.get("cobertura_13", 0),
+        )
         return jsonify({
             "status": "ok", "cartelas": cartelas,
             "salvas": salvos, "concurso": concurso,
@@ -529,7 +601,7 @@ def api_cartela_do_dia():
 
 
 # ============================================================
-# API — CONFERÊNCIA
+# API — CONFERÊNCIA E LOTES
 # ============================================================
 
 @app.route("/api/conferir", methods=["POST"])
@@ -563,6 +635,40 @@ def api_cartelas_concurso(concurso):
         })
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/lotes")
+def api_lotes():
+    return jsonify({
+        "status": "ok",
+        "lotes":  conferencia.get_todos_lotes(),
+    })
+
+
+@app.route("/api/lote/<string:lote_id>")
+def api_lote(lote_id):
+    return jsonify({
+        "status":   "ok",
+        "cartelas": conferencia.get_cartelas_do_lote(lote_id),
+    })
+
+
+@app.route("/api/apagar_lote", methods=["POST"])
+def api_apagar_lote():
+    dados   = request.get_json() or {}
+    lote_id = dados.get("lote_id", "")
+    if not lote_id:
+        return jsonify({"status": "erro", "msg": "Lote ID inválido"})
+    return jsonify(conferencia.apagar_lote(lote_id))
+
+
+@app.route("/api/conferir_lote", methods=["POST"])
+def api_conferir_lote():
+    dados   = request.get_json() or {}
+    lote_id = dados.get("lote_id", "")
+    if not lote_id:
+        return jsonify({"status": "erro", "msg": "Lote ID inválido"})
+    return jsonify(conferencia.conferir_lote(lote_id))
 
 
 @app.route("/api/apagar_cartelas_concurso", methods=["POST"])
@@ -616,7 +722,12 @@ def api_adicionar_cartelas_concurso():
         if not (1 <= qtd <= 50):
             return jsonify({"status": "erro", "msg": "Qtd inválida"})
         novas       = cerebro.gerar_cartelas(quantidade=qtd)
-        adicionadas = _salvar_cartelas_banco(novas, concurso)
+        adicionadas = _salvar_cartelas_banco(
+            novas, concurso,
+            tipo="multiplas", modo="hibrido",
+            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+            cobertura=cerebro.metricas.get("cobertura_13", 0),
+        )
         return jsonify({"status": "ok", "adicionadas": adicionadas,
                         "concurso": concurso})
     except Exception as e:
@@ -625,7 +736,7 @@ def api_adicionar_cartelas_concurso():
 
 
 # ============================================================
-# API — PRÊMIOS E AUDITORIA
+# API — PRÊMIOS
 # ============================================================
 
 @app.route("/api/premios/<int:concurso>")
@@ -640,6 +751,52 @@ def api_premios_concurso(concurso):
         "premio_15": row["premio_15"], "ganhadores_15": row["ganhadores_15"],
     })
 
+
+@app.route("/api/atualizar_premios_todos", methods=["POST"])
+def api_atualizar_premios_todos():
+    """Busca prêmios reais dos últimos 100 concursos da Caixa"""
+    try:
+        conn   = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT concurso FROM resultados
+            ORDER BY concurso DESC LIMIT 100
+        """)
+        concursos = [r[0] for r in cursor.fetchall()]
+        conn.close()
+
+        atualizados = 0
+        erros       = 0
+
+        for c in concursos:
+            try:
+                dados_caixa = conferencia.buscar_premios_caixa(c)
+                if dados_caixa:
+                    conferencia._atualizar_premios_banco(c, dados_caixa)
+                    atualizados += 1
+                    print("[PREMIOS] {} atualizado".format(c))
+                else:
+                    erros += 1
+                time.sleep(0.3)
+            except Exception as e:
+                print("[PREMIOS] erro {}: {}".format(c, e))
+                erros += 1
+
+        return jsonify({
+            "status":      "ok",
+            "atualizados": atualizados,
+            "erros":       erros,
+            "total":       len(concursos),
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+# ============================================================
+# API — AUDITORIA
+# ============================================================
 
 @app.route("/api/ia_sessao/<int:sessao_id>")
 def api_ia_sessao(sessao_id):
@@ -656,7 +813,7 @@ def api_ia_log_tempo_real():
 
 
 # ============================================================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO DO SERVIDOR
 # ============================================================
 
 if __name__ == "__main__":
@@ -664,7 +821,7 @@ if __name__ == "__main__":
 ╔══════════════════════════════════════════════════════╗
 ║   SISTEMA LOTOFÁCIL — CÉREBRO IA v7.0              ║
 ║   14 Motores + 15 Oráculos Convergentes             ║
-║   Cartela do Dia por Consenso Emergente             ║
+║   Sistema de LOTES independentes                    ║
 ║   Acesse: http://localhost:5000                      ║
 ╚══════════════════════════════════════════════════════╝
     """)
@@ -685,4 +842,5 @@ if __name__ == "__main__":
         print("[AVISO] Carregue o histórico primeiro")
 
     status_sistema["ia_treinada"] = cerebro.treinado
-    app.run(debug=True, port=5000)
+
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

@@ -1,20 +1,19 @@
 """
 ============================================================
 MIGRAÇÃO DO BANCO DE DADOS
-Adiciona colunas que faltam sem perder dados
+Adiciona colunas e tabelas que faltam sem perder dados
 ============================================================
 """
 import sqlite3
 import os
 import sys
 
-# Adicionar pasta raiz ao path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import DATABASE_PATH
 
 
 def migrar():
-    print(f"[MIGRAÇÃO] Banco: {DATABASE_PATH}")
+    print("[MIGRAÇÃO] Banco: {}".format(DATABASE_PATH))
 
     if not os.path.exists(DATABASE_PATH):
         print("[MIGRAÇÃO] Banco não encontrado. Será criado automaticamente.")
@@ -23,98 +22,61 @@ def migrar():
     conn   = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
-    # ── Colunas que devem existir em cada tabela ──────────────
-
-    migracoes_cartelas = [
-        ("premio_ganho",   "REAL    DEFAULT 0"),
-        ("score_ia",       "REAL    DEFAULT 0"),
-        ("score_markov",   "REAL    DEFAULT 0"),
-        ("score_fisico",   "REAL    DEFAULT 0"),
-        ("score_entropia", "REAL    DEFAULT 0"),
-        ("score_total",    "REAL    DEFAULT 0"),
-        ("conferida",      "INTEGER DEFAULT 0"),
-        ("acertos",        "INTEGER DEFAULT 0"),
-        ("status",         "TEXT    DEFAULT 'pendente'"),
-    ]
-
-    migracoes_resultados = [
-        ("premio_11",       "REAL    DEFAULT 0"),
-        ("premio_12",       "REAL    DEFAULT 0"),
-        ("premio_13",       "REAL    DEFAULT 0"),
-        ("premio_14",       "REAL    DEFAULT 0"),
-        ("premio_15",       "REAL    DEFAULT 0"),
-        ("ganhadores_11",   "INTEGER DEFAULT 0"),
-        ("ganhadores_12",   "INTEGER DEFAULT 0"),
-        ("ganhadores_13",   "INTEGER DEFAULT 0"),
-        ("ganhadores_14",   "INTEGER DEFAULT 0"),
-        ("ganhadores_15",   "INTEGER DEFAULT 0"),
-        ("arrecadacao",     "REAL    DEFAULT 0"),
-        ("impares",         "INTEGER DEFAULT 0"),
-        ("primos_count",    "INTEGER DEFAULT 0"),
-        ("fibonacci_count", "INTEGER DEFAULT 0"),
-        ("borda_count",     "INTEGER DEFAULT 0"),
-        ("consecutivos_max","INTEGER DEFAULT 0"),
-    ]
-
-    migracoes_financeiro = [
-        ("premio_11",     "REAL    DEFAULT 0"),
-        ("premio_12",     "REAL    DEFAULT 0"),
-        ("premio_13",     "REAL    DEFAULT 0"),
-        ("premio_14",     "REAL    DEFAULT 0"),
-        ("premio_15",     "REAL    DEFAULT 0"),
-        ("premio_total",  "REAL    DEFAULT 0"),
-        ("lucro_liquido", "REAL    DEFAULT 0"),
-    ]
-
-    def adicionar_colunas(tabela, migracoes):
-        # Verificar colunas existentes
-        cursor.execute(f"PRAGMA table_info({tabela})")
-        existentes = {row[1] for row in cursor.fetchall()}
-
-        adicionadas = 0
-        for col_nome, col_tipo in migracoes:
-            if col_nome not in existentes:
-                try:
-                    cursor.execute(
-                        f"ALTER TABLE {tabela} ADD COLUMN {col_nome} {col_tipo}"
+    def add_col(tabela, coluna, tipo):
+        try:
+            cursor.execute("PRAGMA table_info({})".format(tabela))
+            cols = {r[1] for r in cursor.fetchall()}
+            if coluna not in cols:
+                cursor.execute(
+                    "ALTER TABLE {} ADD COLUMN {} {}".format(
+                        tabela, coluna, tipo
                     )
-                    print(f"  [+] {tabela}.{col_nome} adicionada")
-                    adicionadas += 1
-                except Exception as e:
-                    print(f"  [!] {tabela}.{col_nome}: {e}")
+                )
+                print("  [+] {}.{}".format(tabela, coluna))
+        except Exception:
+            pass
 
-        if adicionadas == 0:
-            print(f"  [OK] {tabela} já está atualizada")
+    # ── Colunas da tabela resultados ──────────────────────────
+    add_col("resultados", "impares",         "INTEGER DEFAULT 0")
+    add_col("resultados", "primos_count",    "INTEGER DEFAULT 0")
+    add_col("resultados", "fibonacci_count", "INTEGER DEFAULT 0")
+    add_col("resultados", "borda_count",     "INTEGER DEFAULT 0")
+    add_col("resultados", "consecutivos_max","INTEGER DEFAULT 0")
+    add_col("resultados", "premio_11",       "REAL DEFAULT 0")
+    add_col("resultados", "premio_12",       "REAL DEFAULT 0")
+    add_col("resultados", "premio_13",       "REAL DEFAULT 0")
+    add_col("resultados", "premio_14",       "REAL DEFAULT 0")
+    add_col("resultados", "premio_15",       "REAL DEFAULT 0")
+    add_col("resultados", "ganhadores_11",   "INTEGER DEFAULT 0")
+    add_col("resultados", "ganhadores_12",   "INTEGER DEFAULT 0")
+    add_col("resultados", "ganhadores_13",   "INTEGER DEFAULT 0")
+    add_col("resultados", "ganhadores_14",   "INTEGER DEFAULT 0")
+    add_col("resultados", "ganhadores_15",   "INTEGER DEFAULT 0")
+    add_col("resultados", "arrecadacao",     "REAL DEFAULT 0")
 
-        return adicionadas
+    # ── Colunas da tabela cartelas ────────────────────────────
+    add_col("cartelas", "score_ia",       "REAL DEFAULT 0")
+    add_col("cartelas", "score_markov",   "REAL DEFAULT 0")
+    add_col("cartelas", "score_fisico",   "REAL DEFAULT 0")
+    add_col("cartelas", "score_entropia", "REAL DEFAULT 0")
+    add_col("cartelas", "score_total",    "REAL DEFAULT 0")
+    add_col("cartelas", "conferida",      "INTEGER DEFAULT 0")
+    add_col("cartelas", "acertos",        "INTEGER DEFAULT 0")
+    add_col("cartelas", "premio_ganho",   "REAL DEFAULT 0")
+    add_col("cartelas", "status",         "TEXT DEFAULT 'pendente'")
+    add_col("cartelas", "lote_id",        "TEXT DEFAULT NULL")
+    add_col("cartelas", "tipo_geracao",   "TEXT DEFAULT 'multiplas'")
 
-    # ── Verificar se tabelas existem ─────────────────────────
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    )
-    tabelas_existentes = {row[0] for row in cursor.fetchall()}
+    # ── Colunas do financeiro ─────────────────────────────────
+    add_col("financeiro", "premio_11",     "REAL DEFAULT 0")
+    add_col("financeiro", "premio_12",     "REAL DEFAULT 0")
+    add_col("financeiro", "premio_13",     "REAL DEFAULT 0")
+    add_col("financeiro", "premio_14",     "REAL DEFAULT 0")
+    add_col("financeiro", "premio_15",     "REAL DEFAULT 0")
+    add_col("financeiro", "premio_total",  "REAL DEFAULT 0")
+    add_col("financeiro", "lucro_liquido", "REAL DEFAULT 0")
 
-    print("\n[MIGRAÇÃO] Verificando tabela: cartelas")
-    if "cartelas" in tabelas_existentes:
-        adicionar_colunas("cartelas", migracoes_cartelas)
-    else:
-        print("  [!] Tabela cartelas não existe ainda")
-
-    print("\n[MIGRAÇÃO] Verificando tabela: resultados")
-    if "resultados" in tabelas_existentes:
-        adicionar_colunas("resultados", migracoes_resultados)
-    else:
-        print("  [!] Tabela resultados não existe ainda")
-
-    print("\n[MIGRAÇÃO] Verificando tabela: financeiro")
-    if "financeiro" in tabelas_existentes:
-        adicionar_colunas("financeiro", migracoes_financeiro)
-    else:
-        print("  [!] Tabela financeiro não existe ainda")
-
-    # ── Criar tabelas faltantes ───────────────────────────────
-    print("\n[MIGRAÇÃO] Criando tabelas faltantes...")
-
+    # ── Tabelas que podem faltar ──────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS previsoes_ia (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,30 +110,220 @@ def migrar():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS padroes (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo             TEXT,
-            descricao        TEXT,
-            frequencia       REAL,
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo              TEXT,
+            descricao         TEXT,
+            frequencia        REAL,
             ultima_ocorrencia INTEGER,
-            peso             REAL,
-            ativo            INTEGER DEFAULT 1
+            peso              REAL,
+            ativo             INTEGER DEFAULT 1
+        )
+    """)
+
+    # ── Tabela de LOTES ───────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lotes_cartelas (
+            lote_id       TEXT PRIMARY KEY,
+            data_criacao  TEXT,
+            concurso_alvo INTEGER,
+            tipo_geracao  TEXT,
+            quantidade    INTEGER,
+            custo_total   REAL,
+            modo          TEXT,
+            grupo_elite   TEXT,
+            cobertura_13  REAL,
+            observacao    TEXT
+        )
+    """)
+
+    # ── Tabelas do Cérebro IA ─────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fila_conferencia (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso_alvo         INTEGER,
+            dezenas               TEXT,
+            timestamp_geracao     TEXT,
+            scores_modulos        TEXT,
+            score_total           REAL,
+            status                TEXT DEFAULT 'aguardando',
+            acertos               INTEGER DEFAULT 0,
+            premio_ganho          REAL DEFAULT 0,
+            dezenas_acertadas     TEXT,
+            timestamp_conferencia TEXT,
+            erro_previsao         REAL DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_ciclos (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso         INTEGER,
+            timestamp_inicio TEXT,
+            timestamp_fim    TEXT,
+            status           TEXT,
+            n_cartelas       INTEGER DEFAULT 0,
+            melhor_acertos   INTEGER DEFAULT 0,
+            media_acertos    REAL DEFAULT 0,
+            total_ganho      REAL DEFAULT 0,
+            pesos_antes      TEXT,
+            pesos_depois     TEXT,
+            log_ciclo        TEXT,
+            erro_medio       REAL DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memoria_erros (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso    INTEGER,
+            timestamp   TEXT,
+            modulo      TEXT,
+            erro        REAL,
+            impacto     REAL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS desempenho_modulos (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso    INTEGER,
+            timestamp   TEXT,
+            modulo      TEXT,
+            correlacao  REAL,
+            peso_antes  REAL,
+            peso_depois REAL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cartela_do_dia (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso_alvo      INTEGER,
+            timestamp          TEXT,
+            dezenas            TEXT,
+            quorum_usado       INTEGER,
+            confianca          TEXT,
+            consenso_forca     REAL,
+            score_cerebro      REAL,
+            aprovado_filtros   INTEGER,
+            votos_json         TEXT,
+            acertos            INTEGER DEFAULT 0,
+            premio             REAL DEFAULT 0,
+            conferida          INTEGER DEFAULT 0
+        )
+    """)
+
+    # ── Tabelas de auditoria da IA ────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_sessoes (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo         TEXT,
+            inicio       TEXT,
+            fim          TEXT,
+            duracao_seg  REAL,
+            status       TEXT,
+            resumo       TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_modulos_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            sessao_id    INTEGER,
+            modulo       TEXT,
+            acao         TEXT,
+            score_medio  REAL,
+            top3_dezenas TEXT,
+            detalhes     TEXT,
+            timestamp    TEXT,
+            duracao_ms   REAL,
+            status       TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_decisoes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            sessao_id       INTEGER,
+            cartela_id      INTEGER,
+            dezenas         TEXT,
+            score_total     REAL,
+            score_markov    REAL,
+            score_fisico    REAL,
+            score_gaussiano REAL,
+            score_ml        REAL,
+            score_verlet    REAL,
+            score_quantum   REAL,
+            score_chi2      REAL,
+            score_bayes     REAL,
+            score_kl        REAL,
+            score_stacking  REAL,
+            modulo_dominante TEXT,
+            justificativa   TEXT,
+            timestamp       TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_evolucao_pesos (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT,
+            concurso    INTEGER,
+            acertos_real INTEGER,
+            peso_markov    REAL,
+            peso_fisico    REAL,
+            peso_gaussiano REAL,
+            peso_ml        REAL,
+            peso_verlet    REAL,
+            peso_quantum   REAL,
+            peso_chi2      REAL,
+            peso_bayes     REAL,
+            peso_kl        REAL,
+            peso_stacking  REAL,
+            evento      TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_previsao_vs_real (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso        INTEGER,
+            timestamp       TEXT,
+            dezenas_previstas TEXT,
+            dezenas_reais     TEXT,
+            acertos           INTEGER,
+            percentual        REAL,
+            modulo_mais_certo TEXT,
+            modulo_mais_errou TEXT,
+            aprendizado       TEXT
         )
     """)
 
     # ── Índices ───────────────────────────────────────────────
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_res_concurso "
-        "ON resultados(concurso)"
-    )
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cart_concurso "
-        "ON cartelas(concurso_alvo)"
-    )
+    try:
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_res_concurso "
+            "ON resultados(concurso)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cart_concurso "
+            "ON cartelas(concurso_alvo)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cart_conferida "
+            "ON cartelas(conferida)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cart_lote "
+            "ON cartelas(lote_id)"
+        )
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
 
-    print("\n[MIGRAÇÃO] ✅ Concluída com sucesso!")
+    print("[MIGRAÇÃO] ✅ Concluída com sucesso!")
 
 
 if __name__ == "__main__":
