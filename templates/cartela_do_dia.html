@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Cartela do Dia — Oráculo Convergente{% endblock %}
+{% block page_title %}
+    <i class="fas fa-eye"></i> A Cartela do Dia
+{% endblock %}
+
+{% block content %}
+
+{% if resultado.status == 'erro' %}
+<div class="alert alert-danger">
+    <strong>Erro:</strong> {{ resultado.msg }}
+</div>
+{% else %}
+
+<!-- CARTELA PRINCIPAL -->
+<div class="section section-oraculo">
+    <div style="text-align:center;">
+        <h1 class="titulo-oraculo">
+            <i class="fas fa-eye"></i> Oráculo Convergente
+        </h1>
+        <p style="color:var(--text-muted);font-size:15px;
+                  max-width:600px;margin:0 auto;">
+            <strong>{{ resultado.n_oraculos }}</strong> teorias independentes
+            votaram. Estas são as dezenas com
+            <strong style="color:var(--primary);">
+                CONSENSO EMERGENTE.
+            </strong>
+        </p>
+
+        <!-- Selo -->
+        <div style="margin:28px 0;">
+            <span class="selo-confianca selo-{{ resultado.confianca }}">
+                {% if resultado.confianca == 'ALTA' %}
+                    <i class="fas fa-shield-alt"></i>
+                {% elif resultado.confianca == 'MÉDIA' %}
+                    <i class="fas fa-exclamation-triangle"></i>
+                {% else %}
+                    <i class="fas fa-times-circle"></i>
+                {% endif %}
+                CONFIANÇA {{ resultado.confianca }}
+            </span>
+            <div style="margin-top:8px;font-size:13px;
+                        color:var(--text-muted);">
+                Quorum: {{ resultado.quorum_usado }}/{{ resultado.n_oraculos }}
+            </div>
+        </div>
+
+        <!-- Volante -->
+        <div class="volante-grande" style="margin:20px auto;">
+            {% for num in range(1, 26) %}
+            <div class="bola-oraculo
+                {% if num in resultado.cartela %}sel{% endif %}">
+                <span class="bo-num">{{ "%02d"|format(num) }}</span>
+                <span class="bo-votos">
+                    {{ resultado.votos_por_dezena[num] }}/15
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Dezenas destaque -->
+        <div style="margin-top:32px;">
+            <div style="font-size:14px;color:var(--text-muted);
+                        margin-bottom:12px;">
+                SUA CARTELA DO DIA:
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;
+                        justify-content:center;">
+                {% for d in resultado.cartela %}
+                <span class="dezena-oraculo">
+                    {{ "%02d"|format(d) }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="oraculo-stats">
+            <div>
+                <div class="os-label">Soma</div>
+                <div class="os-valor">{{ resultado.soma }}</div>
+            </div>
+            <div>
+                <div class="os-label">Pares</div>
+                <div class="os-valor">{{ resultado.pares }}</div>
+            </div>
+            <div>
+                <div class="os-label">Ímpares</div>
+                <div class="os-valor">{{ resultado.impares }}</div>
+            </div>
+            <div>
+                <div class="os-label">Consecutivos</div>
+                <div class="os-valor">{{ resultado.consecutivos_max }}</div>
+            </div>
+            <div>
+                <div class="os-label">Consenso</div>
+                <div class="os-valor" style="color:var(--primary);">
+                    {{ resultado.consenso_forca }}/15
+                </div>
+            </div>
+            <div>
+                <div class="os-label">Score Cérebro</div>
+                <div class="os-valor" style="color:var(--success);">
+                    {{ resultado.score_cerebro }}
+                </div>
+            </div>
+        </div>
+
+        {% if resultado.salvo_concurso %}
+        <div class="oraculo-salvo">
+            <i class="fas fa-check"></i>
+            Salva para concurso {{ resultado.salvo_concurso }}
+        </div>
+        {% endif %}
+
+        <!-- Filtros -->
+        <div style="margin-top:16px;">
+            <span class="badge
+                {% if resultado.aprovado_filtros %}badge-success
+                {% else %}badge-warning{% endif %}"
+                style="font-size:13px;padding:6px 16px;">
+                {% if resultado.aprovado_filtros %}
+                    <i class="fas fa-check"></i> Aprovada nos filtros
+                {% else %}
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Fora dos padrões estatísticos (evasão de massa)
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- ORÁCULOS -->
+<div class="section">
+    <h2><i class="fas fa-users"></i> Como Cada Oráculo Votou</h2>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">
+        Top 5 dezenas favoritas de cada teoria.
+        Dezenas <strong style="color:var(--primary);">destacadas</strong>
+        entraram na cartela final.
+    </p>
+    <div class="oraculos-grid">
+        {% for nome, info in resultado.detalhes_oraculos.items() %}
+        <div class="oraculo-card">
+            <div class="oraculo-header">
+                <span class="oraculo-nome">{{ nome }}</span>
+                {% if info.top5 %}
+                <span class="oraculo-badge">Ativo</span>
+                {% else %}
+                <span class="oraculo-badge erro">Erro</span>
+                {% endif %}
+            </div>
+            {% if info.top5 %}
+            <div class="oraculo-dezenas">
+                {% for d in info.top5 %}
+                <span class="bo-mini
+                    {% if d in resultado.cartela %}sel{% endif %}">
+                    {{ "%02d"|format(d) }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- HISTÓRICO -->
+{% if historico_cdd %}
+<div class="section">
+    <h2><i class="fas fa-history"></i> Histórico de Cartelas do Dia</h2>
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>Data</th>
+                    <th>Confiança</th>
+                    <th>Dezenas</th>
+                    <th>Acertos</th>
+                    <th>Prêmio</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in historico_cdd %}
+                <tr>
+                    <td><strong>{{ h.concurso_alvo }}</strong></td>
+                    <td style="font-size:12px;">{{ h.timestamp }}</td>
+                    <td>
+                        <span class="badge
+                            {% if h.confianca == 'ALTA' %}badge-success
+                            {% elif h.confianca == 'MÉDIA' %}badge-warning
+                            {% else %}badge-danger{% endif %}">
+                            {{ h.confianca }}
+                        </span>
+                    </td>
+                    <td>
+                        {% for d in h.dezenas %}
+                        <span class="bola-mini">
+                            {{ "%02d"|format(d) }}
+                        </span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if h.conferida %}
+                        <span class="badge
+                            {% if h.acertos >= 13 %}badge-success
+                            {% elif h.acertos >= 11 %}badge-warning
+                            {% else %}badge-sem_premio{% endif %}">
+                            {{ h.acertos }} pts
+                        </span>
+                        {% else %}
+                        <span class="badge badge-warning">Pendente</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if h.premio > 0 %}
+                        <span class="valor positivo">
+                            R$ {{ "%.2f"|format(h.premio) }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- REGENERAR -->
+<div style="text-align:center;margin:30px 0;">
+    <a href="/cartela_do_dia" class="btn btn-primary btn-lg">
+        <i class="fas fa-sync"></i> Consultar Oráculos Novamente
+    </a>
+</div>
+
+{% endif %}
+
+{% endblock %}

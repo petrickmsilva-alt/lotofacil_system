@@ -1,12 +1,12 @@
 """
 ============================================================
-CÉREBRO IA v6.0 — MÓDULO ÚNICO E COMPLETO
-Unificação de: agente_autonomo.py + ciclo_autonomo.py + ia_autonoma.py
+CÉREBRO IA v7.0 — MÓDULO ÚNICO E COMPLETO
+Unificação total: 14 motores + Oráculo Convergente (15 oráculos)
 A IA é o protagonista absoluto:
   → Lê dados sozinha
-  → Treina 14 módulos internamente
+  → Treina 14 motores + 15 oráculos independentes
   → Opera em ciclo fechado (Geração → Conferência → Aprendizado)
-  → Gera as melhores cartelas de forma 100% autônoma
+  → Gera cartelas por CONSENSO EMERGENTE (Cartela do Dia)
 ============================================================
 """
 import os
@@ -27,20 +27,16 @@ from config import (
     VALOR_APOSTA, MODELS_PATH,
 )
 from database.db_manager import DBManager
+from .oraculo_convergente import OraculoConvergente
 
 
 # ============================================================
-# BLOCO 1 — INGESTÃO DE DADOS (Alimentador Quântico)
+# BLOCO 1 — INGESTÃO DE DADOS
 # ============================================================
 class IngestorDados:
-    """
-    A IA se alimenta sozinha.
-    Lê o banco, converte em matriz binária de 25 bits,
-    e busca novos resultados da Caixa automaticamente.
-    """
-    URL_BASE      = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-    URL_CONCURSO  = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{}"
-    HEADERS       = {
+    URL_BASE     = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+    URL_CONCURSO = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{}"
+    HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Referer":    "https://loterias.caixa.gov.br/",
         "Accept":     "application/json",
@@ -50,14 +46,8 @@ class IngestorDados:
         self.db_path = db_path
 
     def carregar_matriz(self) -> Tuple[np.ndarray, list]:
-        """
-        Lê o banco e retorna:
-        - matriz binária N×25 (1 = dezena sorteada)
-        - lista raw dos registros
-        """
         if not os.path.exists(self.db_path):
             return np.zeros((1, 25), dtype=np.float32), []
-
         try:
             conn   = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -66,23 +56,19 @@ class IngestorDados:
                        d11,d12,d13,d14,d15
                 FROM resultados ORDER BY concurso ASC
             """)
-            rows   = cursor.fetchall()
+            rows = cursor.fetchall()
             cursor.execute("SELECT * FROM resultados ORDER BY concurso ASC")
-            raw    = cursor.fetchall()
+            raw  = cursor.fetchall()
             conn.close()
-
             if not rows:
                 return np.zeros((1, 25), dtype=np.float32), []
-
             matriz = np.zeros((len(rows), 25), dtype=np.float32)
             for i, linha in enumerate(rows):
                 for d in linha:
                     v = int(d)
                     if 1 <= v <= 25:
                         matriz[i][v - 1] = 1.0
-
             return matriz, raw
-
         except Exception as e:
             print("[INGESTOR] Erro: {}".format(e))
             return np.zeros((1, 25), dtype=np.float32), []
@@ -133,15 +119,13 @@ class IngestorDados:
 # ============================================================
 
 class _Motor:
-    """Base dos motores analíticos"""
     def score_vetor(self) -> np.ndarray:
         return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
 
 
 class MotorFrequencia(_Motor):
-    """Módulos 1 e 2 — Frequência global e recente"""
     def __init__(self, matriz: np.ndarray):
-        n = len(matriz)
+        n             = len(matriz)
         freq_g        = np.sum(matriz, axis=0)
         self._global  = freq_g / (freq_g.sum() + 1e-9)
         jan           = min(30, n)
@@ -153,14 +137,13 @@ class MotorFrequencia(_Motor):
 
 
 class MotorReversao(_Motor):
-    """Módulo 3 — Reversão à média estocástica"""
     def __init__(self, matriz: np.ndarray):
-        n     = len(matriz)
-        jan   = min(30, n)
-        fg    = np.sum(matriz, axis=0) / max(n, 1)
-        fr    = np.sum(matriz[-jan:], axis=0)
-        esp   = jan * (DEZENAS_POR_JOGO / TOTAL_DEZENAS)
-        v     = np.zeros(TOTAL_DEZENAS)
+        n   = len(matriz)
+        jan = min(30, n)
+        fg  = np.sum(matriz, axis=0) / max(n, 1)
+        fr  = np.sum(matriz[-jan:], axis=0)
+        esp = jan * (DEZENAS_POR_JOGO / TOTAL_DEZENAS)
+        v   = np.zeros(TOTAL_DEZENAS)
         for i in range(TOTAL_DEZENAS):
             if   fr[i] > esp * 1.5: v[i] = fg[i] * 0.60
             elif fr[i] < esp * 0.6: v[i] = fg[i] * 1.50
@@ -172,10 +155,6 @@ class MotorReversao(_Motor):
 
 
 class MotorAntiLogica(_Motor):
-    """
-    Módulo 4 — Anti-Lógica
-    Saturação + Atraso + FFT + Correlação de pares
-    """
     def __init__(self, matriz: np.ndarray):
         self._matriz = matriz
         self._n      = len(matriz)
@@ -213,7 +192,7 @@ class MotorAntiLogica(_Motor):
         if self._n < 20:
             return np.zeros(TOTAL_DEZENAS)
         try:
-            c = np.nan_to_num(np.corrcoef(self._matriz.T), nan=0.0)
+            c   = np.nan_to_num(np.corrcoef(self._matriz.T), nan=0.0)
             con = np.abs(c).mean(axis=1)
             m   = con.max()
             return 1.0 - (con / m if m > 0 else con)
@@ -236,7 +215,6 @@ class MotorAntiLogica(_Motor):
 
 
 class MotorMarkov(_Motor):
-    """Módulo 5 — Cadeias de Markov modificadas"""
     def __init__(self, matriz: np.ndarray):
         N     = TOTAL_DEZENAS
         trans = np.ones((N, N))
@@ -266,7 +244,6 @@ class MotorMarkov(_Motor):
 
 
 class MotorQuantum(_Motor):
-    """Módulo 6 — Passeios Quânticos"""
     def __init__(self, matriz: np.ndarray):
         self._prob = self._treinar(matriz)
 
@@ -304,7 +281,6 @@ class MotorQuantum(_Motor):
 
 
 class MotorVerlet(_Motor):
-    """Módulo 7 — Simulador Verlet 3D das bolas físicas"""
     RAIO_G = 0.20; RAIO_B = 0.025; MASSA = 0.066
     COEF   = 0.82; GRAV   = 9.78;  DENS  = 1.20
 
@@ -366,9 +342,6 @@ class MotorVerlet(_Motor):
 
 
 class MotorEstatistica(_Motor):
-    """
-    Módulos 8, 9, 10 — Chi², Bayes+Bernoulli, KL Divergência
-    """
     def __init__(self, matriz: np.ndarray):
         self._matriz      = matriz
         self._n           = len(matriz)
@@ -428,17 +401,15 @@ class MotorEstatistica(_Motor):
 
 
 class MotorGaussiano(_Motor):
-    """Módulo 11 — Filtros Gaussianos calibrados pelo histórico"""
     def __init__(self, matriz: np.ndarray):
         self._calibrar(matriz)
 
     def _calibrar(self, matriz: np.ndarray):
-        somas = pares_l = primos_l = fib_l = borda_l = None
-        somas   = []
-        pares_l = []
+        somas    = []
+        pares_l  = []
         primos_l = []
-        fib_l   = []
-        borda_l = []
+        fib_l    = []
+        borda_l  = []
         for i in range(len(matriz)):
             dez = list(np.where(matriz[i] == 1)[0] + 1)
             if len(dez) != 15: continue
@@ -493,7 +464,6 @@ class MotorGaussiano(_Motor):
 
 
 class MotorGenetico(_Motor):
-    """Módulo 12 — Algoritmo Genético de Ilhas"""
     def __init__(self, n_ilhas=4, tam=50, geracoes=60):
         self.n_ilhas  = n_ilhas
         self.tam      = tam
@@ -579,7 +549,6 @@ class MotorGenetico(_Motor):
 
 
 class MotorCobertura(_Motor):
-    """Módulo 13 — Covering Designs matemáticos"""
     def calcular(
         self, cartelas: List[List[int]],
         universo: List[int], pontos: int = 13
@@ -597,7 +566,6 @@ class MotorCobertura(_Motor):
 
 
 class MotorStacking(_Motor):
-    """Módulo 14 — Meta-aprendizado (Stacking)"""
     def __init__(self):
         self._historico: List[Dict] = []
 
@@ -606,9 +574,7 @@ class MotorStacking(_Motor):
         if len(self._historico) > 200:
             self._historico = self._historico[-200:]
 
-    def score_vetor(
-        self, vetores: Dict[str, np.ndarray]
-    ) -> np.ndarray:
+    def score_vetor(self, vetores: Dict[str, np.ndarray]) -> np.ndarray:
         if not self._historico:
             return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
         v = np.zeros(TOTAL_DEZENAS)
@@ -626,21 +592,15 @@ class MotorStacking(_Motor):
 # BLOCO 3 — OTIMIZADOR SPSA
 # ============================================================
 class OtimizadorSPSA:
-    """Calibra automaticamente os pesos dos 14 módulos"""
     def __init__(self, n_iter: int = 25):
         self.n_iter = n_iter
 
-    def otimizar(
-        self,
-        fn_perda,
-        pesos_iniciais: Dict[str, float],
-    ) -> Dict[str, float]:
+    def otimizar(self, fn_perda, pesos_iniciais: Dict[str, float]) -> Dict[str, float]:
         nomes = list(pesos_iniciais.keys())
         theta = np.array([pesos_iniciais[k] for k in nomes], dtype=float)
         rng   = np.random.default_rng(42)
         melhor_theta = theta.copy()
         melhor_loss  = fn_perda(dict(zip(nomes, theta.tolist())))
-
         for k in range(self.n_iter):
             ak    = 0.15 / (k + 1 + 10) ** 0.602
             ck    = 0.05 / (k + 1) ** 0.101
@@ -656,28 +616,22 @@ class OtimizadorSPSA:
             if lc < melhor_loss:
                 melhor_loss  = lc
                 melhor_theta = theta.copy()
-
         melhor_theta = np.clip(melhor_theta, 0.01, None)
         melhor_theta /= melhor_theta.sum()
         return {nomes[i]: round(float(melhor_theta[i]), 4)
                 for i in range(len(nomes))}
-
-
-# ============================================================
-# BLOCO 4 — CÉREBRO IA (PROTAGONISTA ÚNICO)
+  # ============================================================
+# BLOCO 4 — CÉREBRO IA v7.0 (PROTAGONISTA ÚNICO)
 # ============================================================
 class CerebroIA:
     """
-    A IA que assume a cabine de comando.
-    Único módulo responsável por TUDO:
-    - Leitura de dados
-    - Treinamento dos 14 motores
-    - Geração das cartelas
-    - Ciclo fechado (Geração → Conferência → Aprendizado)
-    - Persistência e memória de erros
+    Cérebro IA v7.0 — Integração total:
+    - 14 motores analíticos
+    - Oráculo Convergente (15 oráculos independentes)
+    - Cartela do Dia por consenso emergente
+    - Ciclo fechado autônomo
     """
 
-    # Pesos iniciais dos 14 módulos
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
         "freq_recente": 0.07,
@@ -736,12 +690,16 @@ class CerebroIA:
             for k in self.pesos
         }
 
-        # Motor cobertura e stacking sempre presentes
+        # Módulos permanentes
         self._cobertura = MotorCobertura()
         self._stacking  = MotorStacking()
         self._genetico  = MotorGenetico(n_ilhas=4, tam=50, geracoes=60)
         self._spsa      = OtimizadorSPSA(n_iter=25)
         self._gaussiano = MotorGaussiano(self.matriz)
+
+        # 🔮 ORÁCULO CONVERGENTE — 15 oráculos independentes
+        self._oraculo = OraculoConvergente(self.matriz)
+        self._log("INIT", "Oráculo Convergente ativado (15 teorias)")
 
         # Criar tabelas extras do ciclo
         self._criar_tabelas_ciclo()
@@ -808,6 +766,24 @@ class CerebroIA:
                 peso_depois REAL
             )
         """)
+        # NOVA tabela — histórico das cartelas do dia (Oráculo)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cartela_do_dia (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                concurso_alvo      INTEGER,
+                timestamp          TEXT,
+                dezenas            TEXT,
+                quorum_usado       INTEGER,
+                confianca          TEXT,
+                consenso_forca     REAL,
+                score_cerebro      REAL,
+                aprovado_filtros   INTEGER,
+                votos_json         TEXT,
+                acertos            INTEGER DEFAULT 0,
+                premio             REAL DEFAULT 0,
+                conferida          INTEGER DEFAULT 0
+            )
+        """)
         conn.commit()
         conn.close()
 
@@ -829,11 +805,10 @@ class CerebroIA:
     # TREINO DOS 14 MÓDULOS
     # =========================================================
     def treinar(self, callback=None) -> Dict:
-        """Treina todos os 14 módulos internamente"""
         self.estado = "treinando"
         t0 = time.time()
 
-        # Recarregar dados atualizados
+        # Recarregar dados
         self.matriz, self.raw = self._ingestor.carregar_matriz()
         self.n = len(self.matriz)
 
@@ -843,53 +818,48 @@ class CerebroIA:
 
         cb("Treinando 14 módulos com {} concursos...".format(self.n))
 
-        freq_g = np.sum(self.matriz, axis=0)
+        freq_g      = np.sum(self.matriz, axis=0)
         freq_g_norm = freq_g / (freq_g.sum() + 1e-9)
 
-        # 1. Frequência Global
-        cb("1/14 Frequência Global")
+        # 1-2: Frequência
+        cb("1/14 Frequência Global e Recente")
         m1 = MotorFrequencia(self.matriz)
         self._vetores["freq_global"]  = m1.score_global()
         self._vetores["freq_recente"] = m1.score_recente()
         self._motores["frequencia"]   = m1
 
-        # 2. Frequência Recente (já feito acima)
-        cb("2/14 Frequência Recente")
-
-        # 3. Reversão à Média
-        cb("3/14 Reversão à Média Estocástica")
+        # 3: Reversão
+        cb("3/14 Reversão à Média")
         m3 = MotorReversao(self.matriz)
         self._vetores["reversao"] = m3.score_vetor()
         self._motores["reversao"] = m3
 
-        # 4. Anti-Lógica
-        cb("4/14 Anti-Lógica (Saturação + Atraso + FFT)")
+        # 4: Anti-Lógica
+        cb("4/14 Anti-Lógica")
         m4 = MotorAntiLogica(self.matriz)
-        self._vetores["anti_logica"] = m4.score_vetor(
-            self._vetores["reversao"]
-        )
+        self._vetores["anti_logica"] = m4.score_vetor(self._vetores["reversao"])
         self._motores["anti_logica"] = m4
 
-        # 5. Markov
+        # 5: Markov
         cb("5/14 Markov Engine")
         m5 = MotorMarkov(self.matriz)
         self._vetores["markov"] = m5.score_vetor()
         self._motores["markov"] = m5
 
-        # 6. Quantum Walk
+        # 6: Quantum
         cb("6/14 Quantum Walk")
         m6 = MotorQuantum(self.matriz)
         self._vetores["quantum"] = m6.score_vetor()
         self._motores["quantum"] = m6
 
-        # 7. Verlet 3D
+        # 7: Verlet
         cb("7/14 Simulador Verlet 3D")
         m7 = MotorVerlet(freq_g_norm, n_sims=2)
         self._vetores["verlet"] = m7.score_vetor()
         self._motores["verlet"] = m7
 
-        # 8, 9, 10. Estatística (Chi², Bayes, KL)
-        cb("8/14 Chi-Quadrado | 9/14 Bayes | 10/14 KL")
+        # 8-10: Estatística
+        cb("8-10/14 Chi², Bayes, KL")
         m8 = MotorEstatistica(self.matriz)
         self._vetores["chi2"]  = m8.score_vetor()
         ult_dez = list(np.where(self.matriz[-1] == 1)[0] + 1) \
@@ -902,26 +872,28 @@ class CerebroIA:
                                np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
         self._motores["estatistica"] = m8
 
-        # 11. Gaussiano
+        # 11: Gaussiano
         cb("11/14 Filtros Gaussianos")
         self._gaussiano = MotorGaussiano(self.matriz)
         self._vetores["gaussiano"] = self._gaussiano.score_vetor()
 
-        # 12. Genético (vetor = anti_logica como base)
-        cb("12/14 Algoritmo Genético de Ilhas")
+        # 12: Genético
+        cb("12/14 Algoritmo Genético")
         self._vetores["genetico"] = self._vetores["anti_logica"].copy()
 
-        # 13. Cobertura
+        # 13: Cobertura
         cb("13/14 Cobertura Matemática")
         self._vetores["cobertura"] = freq_g_norm.copy()
 
-        # 14. Stacking
-        cb("14/14 Meta-Aprendizado (Stacking)")
-        self._vetores["stacking"] = self._stacking.score_vetor(
-            self._vetores
-        )
+        # 14: Stacking
+        cb("14/14 Meta-Aprendizado")
+        self._vetores["stacking"] = self._stacking.score_vetor(self._vetores)
 
-        # SPSA — Calibrar pesos
+        # BÔNUS: Recarregar Oráculo Convergente
+        cb("BÔNUS: Sincronizando Oráculo Convergente (15 teorias)")
+        self._oraculo = OraculoConvergente(self.matriz)
+
+        # SPSA
         cb("SPSA: Calibrando pesos...")
         self._calibrar_spsa()
 
@@ -930,8 +902,9 @@ class CerebroIA:
         self.ultima_exec = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         tempo = time.time() - t0
         self.metricas["tempo_treino"] = round(tempo, 2)
-        cb("✅ 14 módulos treinados em {:.1f}s".format(tempo))
-        return {"status": "ok", "modulos": 14, "tempo": round(tempo, 2)}
+        cb("✅ 14 módulos + Oráculo treinados em {:.1f}s".format(tempo))
+        return {"status": "ok", "modulos": 14, "oraculos": 15,
+                "tempo": round(tempo, 2)}
 
     def _calibrar_spsa(self):
         def perda(pesos_dict):
@@ -943,9 +916,7 @@ class CerebroIA:
             ent = -np.sum(v * np.log(v + 1e-9))
             return float(-ent)
         self.pesos = self._spsa.otimizar(perda, self.pesos)
-        self._log("SPSA", "Pesos calibrados: {}".format(
-            {k: round(v, 3) for k, v in self.pesos.items()}
-        ))
+        self._log("SPSA", "Pesos calibrados")
 
     # =========================================================
     # VETOR FINAL COMBINADO
@@ -962,12 +933,7 @@ class CerebroIA:
     # =========================================================
     # SCORE COMPLETO DE UMA CARTELA
     # =========================================================
-    def _score_cartela(
-        self,
-        dez: List[int],
-        vf: np.ndarray,
-        outras: List[List[int]],
-    ) -> float:
+    def _score_cartela(self, dez, vf, outras):
         ev    = float(sum(vf[d - 1] for d in dez))
         div   = len(set(dez) - set(d2 for o in outras for d2 in o)) / 15.0 \
                 if outras else 1.0
@@ -986,18 +952,111 @@ class CerebroIA:
                 vl*0.10 + sg*0.06 + 0.12)
 
     # =========================================================
-    # GERADOR PRINCIPAL DE CARTELAS
+    # 🔮 CARTELA DO DIA — ORÁCULO CONVERGENTE
     # =========================================================
-    def gerar_cartelas(
-        self,
-        quantidade: int = None,
-        modo: str = "hibrido",
-        callback=None,
-    ) -> List[Dict[str, Any]]:
+    def gerar_cartela_do_dia(self) -> Dict:
         """
-        ÚNICO método de geração de cartelas do sistema.
-        Pipeline completo dos 14 módulos.
+        A CARTELA ÚNICA do dia baseada em CONSENSO de 15 oráculos.
+        Diferente do gerar_cartelas() — este método entrega
+        UMA cartela otimizada pela intersecção de teorias.
         """
+        self._log("ORACULO", "Consultando 15 oráculos independentes...")
+
+        if self.n < 30:
+            return {
+                "status": "erro",
+                "msg": "Dados insuficientes (mínimo 30 concursos)",
+            }
+
+        # Sincronizar oráculo com matriz atual
+        self._oraculo = OraculoConvergente(self.matriz)
+
+        # Consultar
+        resultado = self._oraculo.gerar_cartela_do_dia()
+        cartela   = resultado["cartela"]
+
+        # Validar pelos filtros gaussianos
+        aprovado, det = self._gaussiano.filtrar(cartela)
+        resultado["aprovado_filtros"] = aprovado
+        resultado["detalhes_filtros"] = det
+
+        # Score adicional do Cérebro
+        vf = self._vetor_combinado() if self.treinado else \
+             np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+        score_cerebro = self._score_cartela(cartela, vf, [])
+        resultado["score_cerebro"] = round(float(score_cerebro), 4)
+
+        # Bitmask
+        from .bitmatrix import BitMatrix
+        bm = BitMatrix()
+        resultado["bitmask"] = bm.dezenas_para_bitmask(cartela)
+
+        # Timestamp
+        resultado["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Salvar no banco (tabela cartela_do_dia)
+        try:
+            proximo = (self.db.get_ultimo_concurso() or 0) + 1
+            conn    = self.db.get_conn()
+            cursor  = conn.cursor()
+            cursor.execute("""
+                INSERT INTO cartela_do_dia
+                (concurso_alvo, timestamp, dezenas, quorum_usado,
+                 confianca, consenso_forca, score_cerebro,
+                 aprovado_filtros, votos_json)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (
+                proximo,
+                resultado["timestamp"],
+                json.dumps(cartela),
+                int(resultado.get("quorum_usado", 0)),
+                resultado.get("confianca", "N/A"),
+                float(resultado.get("consenso_forca", 0)),
+                float(resultado.get("score_cerebro", 0)),
+                1 if aprovado else 0,
+                json.dumps(resultado.get("votos_por_dezena", {})),
+            ))
+            conn.commit()
+            conn.close()
+            resultado["salvo_concurso"] = proximo
+        except Exception as e:
+            resultado["erro_salvar"] = str(e)
+
+        self._log("ORACULO",
+                  "Cartela do dia | Confiança: {} | Quorum: {}/{}".format(
+                      resultado["confianca"],
+                      resultado["quorum_usado"],
+                      resultado["n_oraculos"],
+                  ))
+
+        return resultado
+
+    def get_historico_cartelas_do_dia(self, limit: int = 30) -> List[Dict]:
+        """Retorna histórico das cartelas do dia"""
+        try:
+            conn   = self.db.get_conn()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM cartela_do_dia
+                ORDER BY id DESC LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            conn.close()
+            result = []
+            for r in rows:
+                d = dict(r)
+                try: d["dezenas"] = json.loads(d.get("dezenas", "[]"))
+                except: d["dezenas"] = []
+                result.append(d)
+            return result
+        except Exception:
+            return []
+
+    # =========================================================
+    # GERADOR PRINCIPAL DE CARTELAS (mantido)
+    # =========================================================
+    def gerar_cartelas(self, quantidade: int = None, modo: str = "hibrido",
+                        callback=None) -> List[Dict[str, Any]]:
         qtd = quantidade or self.n_cartelas
         self.estado = "gerando"
         t0 = time.time()
@@ -1008,23 +1067,20 @@ class CerebroIA:
 
         cb("Pipeline iniciado | qtd={} modo={}".format(qtd, modo))
 
-        # Treinar se necessário
         if not self.treinado:
-            cb("Treinando módulos antes de gerar...")
+            cb("Treinando antes de gerar...")
             self.treinar(callback=callback)
 
-        # Vetor final
         vf   = self._vetor_combinado()
         top5 = list(np.argsort(vf)[::-1][:5] + 1)
         self._log("VETOR", "Top 5: {}".format(top5))
 
-        # Grupo elite
         tam_elite   = min(19, 15 + qtd // 2)
         grupo_elite = self._selecionar_elite(vf, tam_elite)
         self.decisoes["grupo_elite"] = sorted(grupo_elite)
         cb("Grupo elite: {}".format(sorted(grupo_elite)))
 
-        # Algoritmo Genético
+        # AG de Ilhas
         cb("Algoritmo Genético de Ilhas...")
         cands_ag = []
         try:
@@ -1038,19 +1094,16 @@ class CerebroIA:
         except Exception as e:
             self._log("AVISO", "AG: {}".format(e))
 
-        # Monte Carlo
-        cb("Monte Carlo ponderado...")
+        cb("Monte Carlo...")
         cands_mc = self._monte_carlo(grupo_elite, vf, qtd * 4)
 
-        # Combinatório
         cb("Combinatório...")
         cands_cb = self._combinatorio(grupo_elite, vf, qtd * 2)
 
         todas = cands_ag + cands_mc + cands_cb
         cb("Total candidatas: {}".format(len(todas)))
 
-        # Filtrar e rankear
-        cb("Aplicando 14 filtros e calculando scores...")
+        cb("Aplicando filtros...")
         aprovadas = []; reprov = 0; vistas = set(); outras = []
         for cand in todas:
             key = tuple(sorted(cand))
@@ -1083,7 +1136,6 @@ class CerebroIA:
             else:
                 reprov += 1
 
-        # Fallback
         if len(aprovadas) < qtd:
             extras = self._fallback(vf, grupo_elite, qtd - len(aprovadas))
             for e in extras:
@@ -1103,7 +1155,7 @@ class CerebroIA:
         aprovadas.sort(key=lambda x: x["score_total"], reverse=True)
         resultado = aprovadas[:qtd]
 
-        # Cobertura matemática
+        # Cobertura
         if resultado:
             try:
                 listas = [c["dezenas"] for c in resultado]
@@ -1115,7 +1167,6 @@ class CerebroIA:
             except Exception as e:
                 self._log("AVISO", "Cobertura: {}".format(e))
 
-        # Metadados
         tempo = time.time() - t0
         ts    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for i, c in enumerate(resultado):
@@ -1137,13 +1188,11 @@ class CerebroIA:
 
         self.estado      = "pronto"
         self.ultima_exec = ts
-        cb("✅ {} cartelas em {:.1f}s | reprovadas: {}".format(
-            len(resultado), tempo, reprov
-        ))
+        cb("✅ {} cartelas em {:.1f}s".format(len(resultado), tempo))
         return resultado
 
     # =========================================================
-    # GERADORES AUXILIARES
+    # AUXILIARES DE GERAÇÃO
     # =========================================================
     def _selecionar_elite(self, v: np.ndarray, tam: int) -> List[int]:
         ranking = list(np.argsort(v)[::-1] + 1)
@@ -1200,15 +1249,13 @@ class CerebroIA:
         return res[:n]
 
     # =========================================================
-    # CICLO FECHADO — GERAÇÃO → CONFERÊNCIA → APRENDIZADO
+    # CICLO FECHADO COMPLETO
     # =========================================================
     def executar_ciclo(self, concurso: int) -> Dict:
-        """Ciclo completo autônomo para um concurso"""
         t0 = time.time()
         self._log("CICLO", "=== CICLO {} ===".format(concurso))
         pesos_antes = dict(self.pesos)
 
-        # Registrar início
         conn   = self.db.get_conn()
         cursor = conn.cursor()
         cursor.execute("""
@@ -1230,13 +1277,11 @@ class CerebroIA:
         }
 
         try:
-            # FASE 1: GERAÇÃO
             proximo    = concurso + 1
             cartelas   = self.gerar_cartelas(self.n_cartelas)
             self._salvar_fila(proximo, cartelas)
             resultado["geracao"] = {"n_cartelas": len(cartelas), "concurso_alvo": proximo}
 
-            # Buscar resultado
             data_json = self._ingestor.buscar_concurso_caixa(concurso)
             if not data_json:
                 raise Exception("Resultado {} não disponível".format(concurso))
@@ -1244,16 +1289,14 @@ class CerebroIA:
             dezenas_reais = self._ingestor.extrair_dezenas(data_json)
             premios_reais = self._ingestor.extrair_premios(data_json)
             if len(dezenas_reais) != 15:
-                raise Exception("Dezenas inválidas: {}".format(dezenas_reais))
+                raise Exception("Dezenas inválidas")
 
             self._salvar_resultado_banco(concurso, data_json,
                                           dezenas_reais, premios_reais)
 
-            # FASE 2: CONFERÊNCIA
             conf = self._conferir(proximo, dezenas_reais, premios_reais)
             resultado["conferencia"] = conf
 
-            # FASE 3: APRENDIZADO
             aprd = self._aprender(concurso, conf, dezenas_reais, cartelas)
             resultado["aprendizado"] = aprd
             resultado["status"]      = "completo"
@@ -1266,7 +1309,6 @@ class CerebroIA:
             resultado["status"]  = "erro"
             self._ciclos_err    += 1
 
-        # Finalizar
         tempo = time.time() - t0
         conn  = self.db.get_conn()
         cursor = conn.cursor()
@@ -1295,9 +1337,7 @@ class CerebroIA:
         conn.commit()
         conn.close()
 
-        self._log("CICLO", "=== FIM {} | {:.1f}s ===".format(
-            concurso, tempo
-        ))
+        self._log("CICLO", "=== FIM {} | {:.1f}s ===".format(concurso, tempo))
         return resultado
 
     def _salvar_fila(self, concurso: int, cartelas: List[Dict]):
@@ -1343,12 +1383,7 @@ class CerebroIA:
         conn.commit()
         conn.close()
 
-    def _conferir(
-        self,
-        concurso: int,
-        dezenas_reais: List[int],
-        premios: Dict[int, float],
-    ) -> Dict:
+    def _conferir(self, concurso, dezenas_reais, premios):
         set_real = set(dezenas_reais)
         conn     = self.db.get_conn()
         cursor   = conn.cursor()
@@ -1386,8 +1421,7 @@ class CerebroIA:
                     dezenas_acertadas=?, timestamp_conferencia=?,
                     erro_previsao=?
                 WHERE id=?
-            """, (st, acertos, premio,
-                  json.dumps(acertadas),
+            """, (st, acertos, premio, json.dumps(acertadas),
                   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                   round(err, 4), fid))
             cursor.execute("""
@@ -1407,7 +1441,6 @@ class CerebroIA:
                 "scores_modulos": sc_d,
             })
 
-            # Memória de erros
             for mod, sc in sc_d.items():
                 try:
                     cursor.execute("""
@@ -1421,6 +1454,24 @@ class CerebroIA:
                           float(self.pesos.get(mod, 0.1))))
                 except Exception: pass
 
+        # Conferir também Cartela do Dia
+        cursor.execute("""
+            SELECT id, dezenas FROM cartela_do_dia
+            WHERE concurso_alvo = ? AND conferida = 0
+        """, (concurso,))
+        cdd = cursor.fetchall()
+        for row in cdd:
+            try:
+                dez_cdd = json.loads(row["dezenas"])
+                ac      = len(set(dez_cdd) & set_real)
+                pr      = premios.get(ac, 0.0) if ac >= 11 else 0.0
+                cursor.execute("""
+                    UPDATE cartela_do_dia SET
+                        acertos = ?, premio = ?, conferida = 1
+                    WHERE id = ?
+                """, (ac, pr, row["id"]))
+            except Exception: pass
+
         conn.commit()
         conn.close()
 
@@ -1428,8 +1479,7 @@ class CerebroIA:
         media  = sum(r["acertos"] for r in resultados) / max(len(resultados), 1)
 
         self._log("CONF", "melhor={}pts | ganho=R${:.2f}".format(
-            melhor, total_g
-        ))
+            melhor, total_g))
         return {
             "status": "ok", "concurso": concurso,
             "dezenas_reais": dezenas_reais,
@@ -1441,18 +1491,11 @@ class CerebroIA:
             "resultados": resultados,
         }
 
-    def _aprender(
-        self,
-        concurso: int,
-        conf: Dict,
-        dezenas_reais: List[int],
-        cartelas: List[Dict],
-    ) -> Dict:
+    def _aprender(self, concurso, conf, dezenas_reais, cartelas):
         pesos_antes = dict(self.pesos)
         melhor = conf.get("melhor_acertos", 0)
         fator  = 0.03
 
-        # Ajustar pesos
         if   melhor >= 14:
             for k in self.pesos: self.pesos[k] *= (1 + fator)
         elif melhor >= 13:
@@ -1466,15 +1509,12 @@ class CerebroIA:
             for k in ["freq_global","freq_recente"]:
                 self.pesos[k] *= 0.97
 
-        # Normalizar
         total = sum(self.pesos.values())
         for k in self.pesos:
             self.pesos[k] = round(self.pesos[k] / total, 4)
 
-        # Registrar no stacking
         self._stacking.registrar(self.pesos, melhor)
 
-        # Salvar desempenho
         conn   = self.db.get_conn()
         cursor = conn.cursor()
         for mod in pesos_antes:
@@ -1487,9 +1527,7 @@ class CerebroIA:
                 """, (concurso,
                       datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                       mod,
-                      round(1 - abs(
-                          pesos_antes[mod] - self.pesos.get(mod, 0)
-                      ), 4),
+                      round(1 - abs(pesos_antes[mod] - self.pesos.get(mod, 0)), 4),
                       pesos_antes[mod], self.pesos.get(mod, 0)))
             except Exception: pass
         conn.commit()
@@ -1499,25 +1537,16 @@ class CerebroIA:
         for k in pesos_antes:
             d = self.pesos.get(k, 0) - pesos_antes[k]
             if abs(d) > 0.0005:
-                mudancas.append("{}: {:.4f}{:+.4f}".format(
-                    k, pesos_antes[k], d
-                ))
+                mudancas.append("{}: {:.4f}{:+.4f}".format(k, pesos_antes[k], d))
 
         self._log("APRENDER", "melhor={} | {}".format(
-            melhor, " | ".join(mudancas) or "sem mudanças"
-        ))
+            melhor, " | ".join(mudancas) or "sem mudanças"))
         return {
             "status": "ok", "melhor": melhor,
             "pesos_novos": dict(self.pesos), "mudancas": mudancas,
         }
 
-    def _salvar_resultado_banco(
-        self,
-        concurso: int,
-        data_json: Dict,
-        dezenas: List[int],
-        premios: Dict[int, float],
-    ):
+    def _salvar_resultado_banco(self, concurso, data_json, dezenas, premios):
         try:
             ds    = set(dezenas)
             soma  = sum(dezenas)
@@ -1531,10 +1560,9 @@ class CerebroIA:
                 else: cc = 1
             dt_str = data_json.get("dataApuracao", "")
             try:
-                from datetime import datetime as DT
-                dt_str = DT.strptime(dt_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                dt_str = datetime.strptime(dt_str, "%d/%m/%Y").strftime("%Y-%m-%d")
             except Exception: pass
-            from core.bitmatrix import BitMatrix
+            from .bitmatrix import BitMatrix
             bm = BitMatrix()
             dados = (concurso, dt_str, *dezenas,
                      bm.dezenas_para_bitmask(dezenas),
@@ -1568,7 +1596,6 @@ class CerebroIA:
                     atual = int(data.get("numero", 0))
                     self.proximo_sorteio = data.get("dataProximoConcurso")
                     if atual <= self._ultimo_processado:
-                        self._log("LOOP", "Sem novo. Último={}".format(atual))
                         time.sleep(intervalo); continue
                     self._log("LOOP", "Novo concurso: {}".format(atual))
                     self.executar_ciclo(atual)
@@ -1583,7 +1610,7 @@ class CerebroIA:
         return {"status": "iniciado", "intervalo": intervalo}
 
     def parar_loop(self)  -> Dict: self._rodando = False; return {"status": "parando"}
-    def pausar_loop(self) -> Dict: self._pausado = True;  self.estado = "pausado"; return {"status": "pausado"}
+    def pausar_loop(self) -> Dict: self._pausado = True; self.estado = "pausado"; return {"status": "pausado"}
     def retomar_loop(self)-> Dict: self._pausado = False; self.estado = "monitorando"; return {"status": "retomado"}
 
     # =========================================================
@@ -1621,6 +1648,7 @@ class CerebroIA:
                 cerebro_tmp._genetico  = MotorGenetico(2, 20, 20)
                 cerebro_tmp._spsa      = OtimizadorSPSA(10)
                 cerebro_tmp._gaussiano = MotorGaussiano(self.matriz[:i])
+                cerebro_tmp._oraculo   = OraculoConvergente(self.matriz[:i])
                 cerebro_tmp._rodando   = False
                 cerebro_tmp._pausado   = False
                 cerebro_tmp._thread    = None
@@ -1659,7 +1687,7 @@ class CerebroIA:
 
     def get_status(self) -> Dict:
         return {
-            "versao":           "6.0",
+            "versao":           "7.0",
             "estado":           self.estado,
             "treinado":         self.treinado,
             "total_concursos":  self.n,
@@ -1676,10 +1704,15 @@ class CerebroIA:
             "ciclo": {
                 "rodando":          self._rodando,
                 "pausado":          self._pausado,
+                "n_cartelas":       self.n_cartelas,
                 "ciclos_ok":        self._ciclos_ok,
                 "ciclos_erro":      self._ciclos_err,
                 "ultimo_processado": self._ultimo_processado,
                 "proximo_sorteio":  self.proximo_sorteio,
+            },
+            "oraculo": {
+                "ativo":     self._oraculo is not None,
+                "n_oraculos": 15,
             },
             "log_recente": self.log[-20:],
         }
@@ -1742,4 +1775,4 @@ class CerebroIA:
             rows = cursor.fetchall()
             conn.close()
             return [dict(r) for r in rows]
-        except Exception: return []
+        except Exception: return []  
