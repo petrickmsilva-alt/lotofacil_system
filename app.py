@@ -490,6 +490,87 @@ def ia_auditoria():
     )
 
 
+@app.route("/singularidade")
+def singularidade_page():
+    return render_template("singularidade.html", status=status_sistema)
+
+
+# ============================================================
+# API — NÚCLEO DE SINGULARIDADE (auditoria cética + evolução)
+# ============================================================
+
+@app.route("/api/singularidade/analise")
+def api_singularidade_analise():
+    """Análise não-convencional completa (banca, cobertura, espectro, filtros)."""
+    try:
+        from core.singularidade import (
+            GestaoDeBanca, CoberturaSteiner, EspectroTemporal,
+            TeoriaDaInformacao, FiltrosAvancados, distribuicao_exata,
+            probabilidade_13_mais,
+        )
+        matriz, _ = cerebro._ingestor.carregar_matriz()
+        n = len(matriz)
+
+        banca = GestaoDeBanca().relatorio()
+        cobertura = CoberturaSteiner().cota_total()
+
+        espectro = EspectroTemporal(matriz)
+        hurst = [round(float(espectro.expoente_hurst(matriz[:, d])), 3) for d in range(25)]
+        hurst_medio = round(float(np.mean(hurst)), 3)
+
+        info = TeoriaDaInformacao(matriz)
+        perm_ent = [round(float(info.entropia_permutacao(matriz[:, d])), 3) for d in range(25)]
+        perm_medio = round(float(np.mean(perm_ent)), 3)
+
+        filtros = FiltrosAvancados(matriz)
+        ult_dez = [int(x + 1) for x in np.where(matriz[-1] == 1)[0]] if n else []
+        rel_filtros = filtros.relatorio(ult_dez) if ult_dez else {}
+
+        return jsonify({
+            "status": "ok",
+            "concursos": n,
+            "probabilidades": {
+                "distribuicao": {str(k): round(v, 8) for k, v in distribuicao_exata().items()},
+                "p_13_mais": round(probabilidade_13_mais(), 6),
+                "cartelas_para_1_em_13": int(round(1 / probabilidade_13_mais())),
+            },
+            "banca": banca,
+            "cobertura_steiner": cobertura,
+            "espectro": {
+                "hurst_medio": hurst_medio,
+                "interpretacao": ("sem memória (sorteio justo)" if abs(hurst_medio - 0.5) < 0.1
+                                  else "tendência" if hurst_medio > 0.5 else "anti-persistente"),
+                "hurst_por_dezena": hurst,
+            },
+            "informacao": {
+                "entropia_permutacao_media": perm_medio,
+                "interpretacao": ("alta ordem temporal (aleatório)" if perm_medio > 0.7
+                                  else "alguma estrutura temporal" if perm_medio > 0.5 else "baixa entropia"),
+                "entropia_por_dezena": perm_ent,
+            },
+            "filtros_avancados_ultimo_sorteio": {
+                "dezenas": ult_dez,
+                "relatorio": rel_filtros,
+            },
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/singularidade/backtest", methods=["POST"])
+def api_singularidade_backtest():
+    """Backtesting walk-forward dos 15 oráculos vs baseline aleatória."""
+    try:
+        dados = request.get_json() or {}
+        n_testes = int(dados.get("n_testes", 15))
+        n_random = int(dados.get("n_random", 200))
+        return jsonify(cerebro.backtesting(n_testes=n_testes, n_cart=5))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
 # ============================================================
 # API — DADOS
 # ============================================================
