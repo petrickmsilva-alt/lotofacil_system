@@ -11,12 +11,13 @@ Se múltiplas realidades convergem no mesmo número,
 isso não é coincidência — é SINAL EMERGENTE.
 ============================================================
 """
+
+import time
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from scipy import stats
 from scipy.fft import rfft
 from config import TOTAL_DEZENAS, DEZENAS_POR_JOGO
-
 
 class OraculoConvergente:
     """
@@ -62,6 +63,7 @@ class OraculoConvergente:
                 entropia = -(p * np.log2(p) + (1 - p) * np.log2(1 - p))
                 scores[d] = 1.0 - entropia
         return scores
+
 
     # =========================================================
     # ORÁCULO 2: QUÂNTICO
@@ -352,89 +354,133 @@ class OraculoConvergente:
     # CONSULTA COMPLETA
     # =========================================================
     def consultar_todos(self) -> Dict:
-        """Todos os 15 oráculos votam"""
-        oraculos_map = {
-            "termodinamico":   self.oraculo_termodinamico,
-            "quantico":        self.oraculo_quantico,
-            "fisico":          self.oraculo_fisico,
-            "bayesiano":       self.oraculo_bayesiano,
-            "markov":          self.oraculo_markov,
-            "caotico":         self.oraculo_caotico,
-            "fractal":         self.oraculo_fractal,
-            "gravitacional":   self.oraculo_gravitacional,
-            "neural":          self.oraculo_neural,
-            "genetico":        self.oraculo_genetico,
-            "estatistico":     self.oraculo_estatistico,
-            "fourier":         self.oraculo_fourier,
-            "topologico":      self.oraculo_topologico,
-            "relativista":     self.oraculo_relativista,
-            "anti_comunidade": self.oraculo_anti_comunidade,
-        }
-
-        votos    = np.zeros(25, dtype=int)
-        pesos_ac = np.zeros(25)
-        detalhes = {}
-
-        for nome, func in oraculos_map.items():
-            try:
-                pesos = func()
-                if pesos.sum() > 0:
-                    pesos = pesos / pesos.sum()
-                pesos_ac += pesos
-
-                top_idx = np.argsort(pesos)[::-1][:self.TOP_DEZENAS_ORAC]
-                for idx in top_idx:
-                    votos[idx] += 1
-
-                detalhes[nome] = {
-                    "top5": [int(x + 1) for x in top_idx[:5]],
-                    "top15": [int(x + 1) for x in top_idx],
-                }
-            except Exception as e:
-                detalhes[nome] = {"erro": str(e)}
-
-        return {
-            "votos":       votos,
-            "pesos_acumulados": pesos_ac,
-            "detalhes":    detalhes,
-        }
+            """Todos os 15 oráculos votam com Injeção de Entropia Dinâmica"""
+            
+            # Semente com ruído de tempo real (microsecond level)
+            # Impede que duas chamadas no mesmo dia com a mesma base retornem resultados idênticos
+            seed_entropia = int(time.time_ns() % 1_000_000)
+            np.random.seed(seed_entropia)
+    
+            oraculos_map = {
+                "termodinamico":   self.oraculo_termodinamico,
+                "quantico":        self.oraculo_quantico,
+                "fisico":          self.oraculo_fisico,
+                "bayesiano":       self.oraculo_bayesiano,
+                "markov":          self.oraculo_markov,
+                "caotico":         self.oraculo_caotico,
+                "fractal":         self.oraculo_fractal,
+                "gravitacional":   self.oraculo_gravitacional,
+                "neural":          self.oraculo_neural,
+                "genetico":        self.oraculo_genetico,
+                "estatistico":     self.oraculo_estatistico,
+                "fourier":         self.oraculo_fourier,
+                "topologico":      self.oraculo_topologico,
+                "relativista":     self.oraculo_relativista,
+                "anti_comunidade": self.oraculo_anti_comunidade,
+            }
+    
+            votos = np.zeros(25, dtype=int)
+            pesos_ac = np.zeros(25)
+            detalhes = {}
+    
+            # Injeta ruidinho quântico suave nos pesos acumulados (flutuação de vácuo)
+            ruido_flutuacao = np.random.normal(0, 0.02, 25)
+    
+            for nome, func in oraculos_map.items():
+                try:
+                    pesos = func()
+                    if pesos.sum() > 0:
+                        pesos = (pesos + np.abs(ruido_flutuacao * 0.1))
+                        pesos /= pesos.sum()
+                    pesos_ac += pesos
+    
+                    top_idx = np.argsort(pesos)[::-1][:self.TOP_DEZENAS_ORAC]
+                    for idx in top_idx:
+                        votos[idx] += 1
+    
+                    detalhes[nome] = {
+                        "top5": [int(x + 1) for x in top_idx[:5]],
+                        "top15": [int(x + 1) for x in top_idx],
+                    }
+                except Exception as e:
+                    detalhes[nome] = {"erro": str(e)}
+    
+            return {
+                "votos": votos,
+                "pesos_acumulados": pesos_ac,
+                "detalhes": detalhes,
+            }
 
     # =========================================================
     # GERAR CARTELA CONVERGENTE
     # =========================================================
-    def gerar_cartela_do_dia(self) -> Dict:
+    def gerar_cartela_do_dia(self, cartelas_ja_geradas: List[List[int]] = None) -> Dict:
         """
-        Gera A CARTELA ÚNICA baseada em consenso emergente.
+        Gera a Cartela do Dia por consenso emergente.
+        Se a combinação de 1º lugar já foi entregue ao usuário anteriormente,
+        o Oráculo avança automaticamente para a próxima combinação de maior consenso
+        dentro do grupo das 19 dezenas Elite!
         """
+        import itertools
+
         consulta = self.consultar_todos()
         votos    = consulta["votos"]
         pesos    = consulta["pesos_acumulados"]
 
-        # Score final: votos + pesos ponderados
+        # Score final por dezena
         score_final = votos.astype(float) + pesos * 2.0
 
-        # Dezenas que atingiram o quorum mínimo
-        quorum_atual   = self.QUORUM_MINIMO
-        dezenas_quorum = [
-            int(i + 1) for i in range(25) if votos[i] >= quorum_atual
-        ]
+        # Seleciona as 19 dezenas de maior consenso
+        idx_top19 = np.argsort(score_final)[::-1][:19]
+        dezenas_top19 = sorted([int(i + 1) for i in idx_top19])
 
-        # Relaxar quorum se necessário
-        while len(dezenas_quorum) < 15 and quorum_atual > 5:
-            quorum_atual -= 1
-            dezenas_quorum = [
-                int(i + 1) for i in range(25)
-                if votos[i] >= quorum_atual
-            ]
+        # Gera todas as 3.876 combinações possíveis de 15 números dentro do Grupo 19
+        combos = list(itertools.combinations(dezenas_top19, 15))
 
-        # As 15 com maior score total
-        idx_ordenados = np.argsort(score_final)[::-1][:15]
-        cartela       = sorted([int(i + 1) for i in idx_ordenados])
+        # Avalia a força de consenso de cada uma das 3.876 combinações
+        combos_scored = []
+        for c in combos:
+            sc = sum(score_final[num - 1] for num in c)
+            combos_scored.append((sorted(list(c)), float(sc)))
 
-        # Análise da cartela
-        soma  = sum(cartela)
-        pares = sum(1 for d in cartela if d % 2 == 0)
-        sc    = sorted(cartela)
+        # Ordena do maior consenso para o menor
+        combos_scored.sort(key=lambda x: x[1], reverse=True)
+
+        # Mapeia historico de cartelas passadas para bloquear duplicações (14 ou 15 iguais)
+        vistas = set()
+        if cartelas_ja_geradas:
+            for g in cartelas_ja_geradas:
+                vistas.add(tuple(sorted(g)))
+
+        cartela_escolhida = None
+        
+        # Filtra a melhor combinação que AINDA NÃO FOI ENTREGUE
+        for comb, sc in combos_scored:
+            key = tuple(comb)
+            if key in vistas:
+                continue  # Já foi gerada antes, pula para a próxima!
+
+            # Verifica sobreposição de 14 ou 15 dezenas com jogos já entregues
+            muito_parecida = False
+            if cartelas_ja_geradas:
+                set_comb = set(comb)
+                for g in cartelas_ja_geradas:
+                    if len(set_comb & set(g)) >= 14:
+                        muito_parecida = True
+                        break
+
+            if not muito_parecida:
+                cartela_escolhida = comb
+                break
+
+        # Fallback de segurança se todas as combinações tiverem sido usadas
+        if not cartela_escolhida:
+            cartela_escolhida = combos_scored[0][0]
+
+        # Recalcula estatísticas para a combinação inédita selecionada
+        soma  = sum(cartela_escolhida)
+        pares = sum(1 for d in cartela_escolhida if d % 2 == 0)
+        sc    = sorted(cartela_escolhida)
         max_c = cc = 1
         for i in range(1, len(sc)):
             if sc[i] == sc[i - 1] + 1:
@@ -443,31 +489,27 @@ class OraculoConvergente:
             else:
                 cc = 1
 
-        confianca = "ALTA"   if quorum_atual >= 10 else \
-                    "MÉDIA"  if quorum_atual >=  7 else \
-                    "BAIXA"
+        # Quorum médio das dezenas na cartela escolhida
+        votos_na_cartela = [votos[d - 1] for d in cartela_escolhida]
+        quorum_medio = int(np.mean(votos_na_cartela))
+
+        confianca = "ALTA"   if quorum_medio >= 10 else \
+                    "MÉDIA"  if quorum_medio >= 7 else "BAIXA"
 
         resultado = {
-            "cartela":         cartela,
-            "quorum_usado":    int(quorum_atual),
-            "quorum_original": self.QUORUM_MINIMO,
-            "votos_por_dezena": {
-                int(i + 1): int(votos[i]) for i in range(25)
-            },
-            "score_por_dezena": {
-                int(i + 1): round(float(score_final[i]), 4)
-                for i in range(25)
-            },
-            "consenso_forca":  round(float(
-                np.mean([votos[d - 1] for d in cartela])
-            ), 2),
-            "soma":            soma,
-            "pares":           pares,
-            "impares":         15 - pares,
-            "consecutivos_max": max_c,
-            "confianca":       confianca,
+            "cartela":          cartela_escolhida,
+            "quorum_usado":     quorum_medio,
+            "quorum_original":  self.QUORUM_MINIMO,
+            "votos_por_dezena": {int(i + 1): int(votos[i]) for i in range(25)},
+            "score_por_dezena": {int(i + 1): round(float(score_final[i]), 4) for i in range(25)},
+            "consenso_forca":   round(float(np.mean(votos_na_cartela)), 2),
+            "soma":             soma,
+            "pares":            pares,
+            "impares":          15 - pares,
+            "consecutivos_max":  max_c,
+            "confianca":        confianca,
             "detalhes_oraculos": consulta["detalhes"],
-            "n_oraculos":      self.N_ORACULOS,
+            "n_oraculos":       self.N_ORACULOS,
         }
 
         self.ultima_analise = resultado

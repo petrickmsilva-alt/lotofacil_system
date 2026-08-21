@@ -1,7 +1,7 @@
 """
 ============================================================
 MÓDULO DE CONFERÊNCIA COMPLETO
-Com sistema de LOTES, prêmios reais, conferência por concurso
+Protegido contra conversões de tipo (bytes/numpy/null)
 ============================================================
 """
 import requests
@@ -10,6 +10,25 @@ from database.db_manager import DBManager
 from .bitmatrix import BitMatrix
 from config import VALOR_APOSTA
 from datetime import datetime
+
+
+def _safe_int(val):
+    if val is None:
+        return 0
+    if hasattr(val, 'item'):
+        val = val.item()
+    if isinstance(val, (bytes, bytearray)):
+        try:
+            return int(val)
+        except Exception:
+            try:
+                return int(val.decode('utf-8'))
+            except Exception:
+                return 0
+    try:
+        return int(val)
+    except Exception:
+        return 0
 
 
 class Conferencia:
@@ -31,31 +50,14 @@ class Conferencia:
     # =========================================================
 
     def buscar_premios_caixa(self, concurso):
-        """
-        Busca prêmios reais da Caixa.
-        A API retorna FAIXAS (1-5), não quantidade de acertos.
-        Faixa 1 = 15 acertos, Faixa 2 = 14, Faixa 3 = 13, etc.
-        """
-        # Mapeamento FAIXA → ACERTOS
-        MAPA_FAIXA_ACERTOS = {
-            1: 15,   # Faixa 1 = Jackpot (15 acertos)
-            2: 14,
-            3: 13,
-            4: 12,
-            5: 11,
-        }
-
+        MAPA_FAIXA_ACERTOS = {1: 15, 2: 14, 3: 13, 4: 12, 5: 11}
         try:
             url  = self.URL_API.format(concurso)
             resp = requests.get(url, timeout=15, headers={
                 "User-Agent": "Mozilla/5.0",
                 "Referer":    "https://loterias.caixa.gov.br/",
             })
-
             if resp.status_code != 200:
-                print("[CONF] HTTP {} para concurso {}".format(
-                    resp.status_code, concurso
-                ))
                 return None
 
             data         = resp.json()
@@ -71,20 +73,16 @@ class Conferencia:
             ganhadores = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
 
             for item in lista_rateio:
-                # A API retorna FAIXA, não acertos!
                 faixa = item.get("faixa") or item.get("numeroAcertos") or 0
-
                 try:
                     faixa = int(faixa)
                 except Exception:
                     continue
 
-                # Converter FAIXA → ACERTOS REAIS
                 acertos = MAPA_FAIXA_ACERTOS.get(faixa)
                 if acertos is None:
                     continue
 
-                # Valor do prêmio
                 valor = item.get("valorPremio", 0)
                 if isinstance(valor, str):
                     valor = valor.replace("R$", "").replace(".", "")
@@ -99,24 +97,16 @@ class Conferencia:
                 except Exception:
                     valor = 0.0
 
-                # Número de ganhadores
                 qtd = item.get("numeroDeGanhadores", 0)
                 try:
                     qtd = int(qtd)
                 except Exception:
                     qtd = 0
 
-                # Debug
-                print("[CONF]   Faixa {} = {} acertos: R$ {:.2f} - {} ganhadores".format(
-                    faixa, acertos, valor, qtd
-                ))
-
-                # Salvar nos dicionários
                 if acertos in (11, 12, 13):
                     if valor > 0:
                         premios[acertos] = valor
                 else:
-                    # 14 e 15 sempre atualiza (pode ser 0 se acumulou)
                     premios[acertos] = valor
 
                 ganhadores[acertos] = qtd
@@ -132,6 +122,7 @@ class Conferencia:
                 concurso, e
             ))
             return None
+
     def get_premio(self, acertos, concurso=None):
         if acertos in self.PREMIOS_FIXOS_OFICIAIS:
             return self.PREMIOS_FIXOS_OFICIAIS[acertos]
@@ -141,10 +132,10 @@ class Conferencia:
             if row:
                 if acertos == 14:
                     v = row["premio_14"]
-                    return float(v) if v and v > 0 else 1800.0
+                    return float(v) if v and float(v) > 0 else 1800.0
                 if acertos == 15:
                     v = row["premio_15"]
-                    return float(v) if v and v > 0 else 2500000.0
+                    return float(v) if v and float(v) > 0 else 2500000.0
 
         return 0.0
 
@@ -153,8 +144,8 @@ class Conferencia:
     # =========================================================
 
     def conferir_cartela(self, cartela_dezenas, resultado_dezenas):
-        set_cartela   = set(cartela_dezenas)
-        set_resultado = set(resultado_dezenas)
+        set_cartela   = set([_safe_int(d) for d in cartela_dezenas])
+        set_resultado = set([_safe_int(d) for d in resultado_dezenas])
         acertadas     = sorted(set_cartela & set_resultado)
         erradas       = sorted(set_cartela - set_resultado)
         acertos       = len(acertadas)
@@ -167,6 +158,7 @@ class Conferencia:
         }
 
     def conferir_concurso(self, concurso):
+        concurso  = _safe_int(concurso)
         resultado = self.db.get_resultado_concurso(concurso)
 
         if not resultado:
@@ -179,7 +171,7 @@ class Conferencia:
                 if resp.status_code != 200:
                     return {
                         "status":         "erro",
-                        "msg":            "Concurso {} não disponível.".format(concurso),
+                        "msg":            "Concurso {} não disponível na Caixa.".format(concurso),
                         "cartelas":       [],
                         "total_cartelas":  0,
                         "total_premiadas": 0,
@@ -187,7 +179,7 @@ class Conferencia:
 
                 data_json     = resp.json()
                 dezenas_json  = data_json.get("listaDezenas", [])
-                dez_resultado = sorted([int(d) for d in dezenas_json])
+                dez_resultado = sorted([_safe_int(d) for d in dezenas_json])
 
                 if len(dez_resultado) != 15:
                     return {
@@ -213,14 +205,14 @@ class Conferencia:
                 }
         else:
             dez_resultado = [
-                resultado["d{}".format(i)] for i in range(1, 16)
+                _safe_int(resultado["d{}".format(i)]) for i in range(1, 16)
             ]
 
         cartelas = self.db.get_cartelas_por_concurso(concurso)
         if not cartelas:
             return {
                 "status":         "vazio",
-                "msg":            "Nenhuma cartela para concurso {}.".format(concurso),
+                "msg":            "Nenhuma cartela para o concurso {}.".format(concurso),
                 "cartelas":       [],
                 "resultado":      dez_resultado,
                 "total_cartelas":  0,
@@ -237,7 +229,7 @@ class Conferencia:
         for cartela in cartelas:
             try:
                 dez_cartela = [
-                    cartela["d{}".format(i)] for i in range(1, 16)
+                    _safe_int(cartela["d{}".format(i)]) for i in range(1, 16)
                 ]
                 conf    = self.conferir_cartela(dez_cartela, dez_resultado)
                 acertos = conf["acertos"]
@@ -247,27 +239,27 @@ class Conferencia:
                     if acertos in (11, 12, 13):
                         premio = self.PREMIOS_FIXOS_OFICIAIS[acertos]
                         if premios_reais.get(acertos, 0) > 0:
-                            premio = premios_reais[acertos]
+                            premio = float(premios_reais[acertos])
                     else:
                         if premios_reais.get(acertos, 0) > 0:
-                            premio = premios_reais[acertos]
+                            premio = float(premios_reais[acertos])
                         else:
-                            premio = self.get_premio(acertos, concurso)
+                            premio = float(self.get_premio(acertos, concurso))
 
                 status = self._definir_status(acertos)
 
                 self.db.atualizar_conferencia(
-                    cartela["id"], acertos, premio, status
+                    _safe_int(cartela["id"]), acertos, premio, status
                 )
 
                 resultados_conf.append({
-                    "cartela_id":        cartela["id"],
-                    "dezenas_cartela":   dez_cartela,
-                    "dezenas_resultado": dez_resultado,
+                    "cartela_id":        _safe_int(cartela["id"]),
+                    "dezenas_cartela":   [_safe_int(x) for x in dez_cartela],
+                    "dezenas_resultado": [_safe_int(x) for x in dez_resultado],
                     "acertos":           acertos,
-                    "dezenas_acertadas": conf["dezenas_acertadas"],
-                    "dezenas_erradas":   conf["dezenas_erradas"],
-                    "premio":            premio,
+                    "dezenas_acertadas": [_safe_int(x) for x in conf["dezenas_acertadas"]],
+                    "dezenas_erradas":   [_safe_int(x) for x in conf["dezenas_erradas"]],
+                    "premio":            float(premio),
                     "status":            status,
                     "premiado":          acertos >= 11,
                 })
@@ -281,9 +273,11 @@ class Conferencia:
         return {
             "status":          "ok",
             "concurso":        concurso,
-            "resultado":       dez_resultado,
+            "resultado":       [_safe_int(x) for x in dez_resultado],
             "cartelas":        resultados_conf,
-            "premios_oficiais": premios_reais or self.PREMIOS_FIXOS_OFICIAIS,
+            "premios_oficiais": {
+                int(k): float(v) for k, v in (premios_reais or self.PREMIOS_FIXOS_OFICIAIS).items()
+            },
             "total_cartelas":  len(resultados_conf),
             "total_premiadas": sum(1 for r in resultados_conf if r["premiado"]),
         }
@@ -294,7 +288,7 @@ class Conferencia:
         processados = set()
 
         for cartela in cartelas:
-            concurso = cartela["concurso_alvo"]
+            concurso = _safe_int(cartela["concurso_alvo"])
             if concurso in processados:
                 continue
 
@@ -351,7 +345,7 @@ class Conferencia:
                 int(ganhadores.get(13, 0)),
                 int(ganhadores.get(14, 0)),
                 int(ganhadores.get(15, 0)),
-                concurso,
+                _safe_int(concurso),
             ))
             conn.commit()
             conn.close()
@@ -365,14 +359,15 @@ class Conferencia:
             from config import PRIMOS, FIBONACCI, BORDA
             bm = BitMatrix()
 
-            ds       = set(dezenas)
-            soma     = sum(dezenas)
-            pares    = sum(1 for d in dezenas if d % 2 == 0)
+            dezenas_clean = [_safe_int(d) for d in dezenas]
+            ds       = set(dezenas_clean)
+            soma     = sum(dezenas_clean)
+            pares    = sum(1 for d in dezenas_clean if d % 2 == 0)
             primos_c = len(ds & PRIMOS)
             fib_c    = len(ds & FIBONACCI)
             borda_c  = len(ds & BORDA)
 
-            sd = sorted(dezenas)
+            sd = sorted(dezenas_clean)
             mc = 1
             cc = 1
             for i in range(1, len(sd)):
@@ -382,7 +377,7 @@ class Conferencia:
                 else:
                     cc = 1
 
-            bitmask  = bm.dezenas_para_bitmask(dezenas)
+            bitmask  = bm.dezenas_para_bitmask(dezenas_clean)
             data_str = data_json.get("dataApuracao", "")
             try:
                 data_str = datetime.strptime(
@@ -398,7 +393,7 @@ class Conferencia:
                 ganhadores = dados_caixa.get("ganhadores", {})
 
             dados = (
-                concurso, data_str, *dezenas,
+                _safe_int(concurso), data_str, *dezenas_clean,
                 bitmask, soma, pares, 15 - pares,
                 primos_c, fib_c, borda_c, mc,
                 float(premios.get(11, 7.0)),
@@ -433,7 +428,7 @@ class Conferencia:
                 WHERE concurso_alvo = ? AND conferida = 1
                 GROUP BY acertos
                 ORDER BY acertos DESC
-            """, (concurso,))
+            """, (_safe_int(concurso),))
         else:
             cursor.execute("""
                 SELECT acertos, COUNT(*) as qtd,
@@ -449,21 +444,21 @@ class Conferencia:
 
         resumo = {}
         for row in rows:
-            resumo[row["acertos"]] = {
-                "qtd":          row["qtd"],
+            resumo[_safe_int(row["acertos"])] = {
+                "qtd":          _safe_int(row["qtd"]),
                 "total_premio": round(float(row["total_premio"] or 0), 2),
             }
         return resumo
 
     def get_cartelas_do_concurso(self, concurso):
-        cartelas  = self.db.get_cartelas_por_concurso(concurso)
+        cartelas  = self.db.get_cartelas_por_concurso(_safe_int(concurso))
         resultado = []
         for c in cartelas:
             resultado.append({
-                "id":          c["id"],
-                "dezenas":     [c["d{}".format(i)] for i in range(1, 16)],
+                "id":          _safe_int(c["id"]),
+                "dezenas":     [_safe_int(c["d{}".format(i)]) for i in range(1, 16)],
                 "conferida":   bool(c["conferida"]),
-                "acertos":     c["acertos"] or 0,
+                "acertos":     _safe_int(c["acertos"]),
                 "premio":      float(c["premio_ganho"] or 0),
                 "status":      c["status"] or "pendente",
                 "score_total": float(c["score_total"] or 0),
@@ -489,13 +484,15 @@ class Conferencia:
 
         lista = []
         for r in rows:
+            tot  = _safe_int(r["total_cartelas"])
+            conf = _safe_int(r["conferidas"])
             lista.append({
-                "concurso":       r["concurso_alvo"],
-                "total_cartelas": r["total_cartelas"],
-                "conferidas":     r["conferidas"] or 0,
-                "premiadas":      r["premiadas"]  or 0,
+                "concurso":       _safe_int(r["concurso_alvo"]),
+                "total_cartelas": tot,
+                "conferidas":     conf,
+                "premiadas":      _safe_int(r["premiadas"]),
                 "total_ganho":    round(float(r["total_ganho"] or 0), 2),
-                "pendentes":      r["total_cartelas"] - (r["conferidas"] or 0),
+                "pendentes":      tot - conf,
             })
         return lista
 
@@ -526,10 +523,15 @@ class Conferencia:
 
                 if d.get("d1") is not None:
                     d["resultado_sorteio"] = [
-                        d["d{}".format(i)] for i in range(1, 16)
+                        _safe_int(d["d{}".format(i)]) for i in range(1, 16)
                     ]
                 else:
                     d["resultado_sorteio"] = None
+
+                d["concurso_alvo"]  = _safe_int(d.get("concurso_alvo"))
+                d["ganhadores_15"]   = _safe_int(d.get("ganhadores_15"))
+                d["custo_total"]    = float(d.get("custo_total") or 0)
+                d["cobertura_13"]   = float(d.get("cobertura_13") or 0)
 
                 cursor.execute("""
                     SELECT
@@ -541,11 +543,14 @@ class Conferencia:
                 """, (d["lote_id"],))
                 cnt = cursor.fetchone()
 
-                d["total_cartelas"] = cnt["total"]      or 0
-                d["conferidas"]     = cnt["conferidas"] or 0
-                d["premiadas"]      = cnt["premiadas"]  or 0
+                tot  = _safe_int(cnt["total"])
+                conf = _safe_int(cnt["conferidas"])
+
+                d["total_cartelas"] = tot
+                d["conferidas"]     = conf
+                d["premiadas"]      = _safe_int(cnt["premiadas"])
                 d["total_ganho"]    = float(cnt["total_ganho"] or 0)
-                d["pendentes"]      = d["total_cartelas"] - d["conferidas"]
+                d["pendentes"]      = tot - conf
                 lotes.append(d)
 
             conn.close()
@@ -563,21 +568,21 @@ class Conferencia:
                 SELECT * FROM cartelas
                 WHERE lote_id = ?
                 ORDER BY id ASC
-            """, (lote_id,))
+            """, (str(lote_id),))
             rows = cursor.fetchall()
             conn.close()
 
             resultado = []
             for c in rows:
                 resultado.append({
-                    "id":          c["id"],
-                    "dezenas":     [c["d{}".format(i)] for i in range(1, 16)],
+                    "id":          _safe_int(c["id"]),
+                    "dezenas":     [_safe_int(c["d{}".format(i)]) for i in range(1, 16)],
                     "conferida":   bool(c["conferida"]),
-                    "acertos":     c["acertos"]     or 0,
+                    "acertos":     _safe_int(c["acertos"]),
                     "premio":      float(c["premio_ganho"] or 0),
-                    "status":      c["status"]      or "pendente",
+                    "status":      c["status"] or "pendente",
                     "score_total": float(c["score_total"] or 0),
-                    "lote_id":     c["lote_id"],
+                    "lote_id":     str(c["lote_id"]),
                 })
             return resultado
 
@@ -591,12 +596,12 @@ class Conferencia:
             cursor = conn.cursor()
 
             cursor.execute(
-                "DELETE FROM cartelas WHERE lote_id = ?", (lote_id,)
+                "DELETE FROM cartelas WHERE lote_id = ?", (str(lote_id),)
             )
             n_cart = cursor.rowcount
 
             cursor.execute(
-                "DELETE FROM lotes_cartelas WHERE lote_id = ?", (lote_id,)
+                "DELETE FROM lotes_cartelas WHERE lote_id = ?", (str(lote_id),)
             )
 
             conn.commit()
@@ -614,14 +619,14 @@ class Conferencia:
             cursor.execute("""
                 SELECT DISTINCT concurso_alvo FROM cartelas
                 WHERE lote_id = ?
-            """, (lote_id,))
+            """, (str(lote_id),))
             row = cursor.fetchone()
             conn.close()
 
             if not row:
                 return {"status": "erro", "msg": "Lote não encontrado"}
 
-            return self.conferir_concurso(row["concurso_alvo"])
+            return self.conferir_concurso(_safe_int(row["concurso_alvo"]))
 
         except Exception as e:
             return {"status": "erro", "msg": str(e)}

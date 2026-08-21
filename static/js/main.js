@@ -1,222 +1,105 @@
 /* ============================================================
-   LOTOFÁCIL IA - JAVASCRIPT PRINCIPAL
+   MAIN.JS — Gerenciador Global de Interface
    ============================================================ */
 
-// ── Controle inicial do painel de progresso ──────────────────
+var emProcessamento = false;
+
 document.addEventListener('DOMContentLoaded', function () {
+    // 1. Esconde a barra de progresso imediatamente ao carregar a página
+    var progressSection = document.getElementById('progress-section');
+    if (progressSection) {
+        progressSection.style.display = 'none';
+    }
 
-    // Mostrar progresso se sistema estiver carregando/treinando
-    verificarEstadoInicial();
-
-    // Highlight do menu ativo
+    // 2. Marca o menu ativo
     var path = window.location.pathname;
-    document.querySelectorAll('.nav-menu a').forEach(function (link) {
-        if (link.getAttribute('href') === path) {
-            link.classList.add('active');
+    var links = document.querySelectorAll('.nav-menu a');
+    for (var i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('href') === path) {
+            links[i].classList.add('active');
         }
-    });
+    }
 
-    console.log([
-        '╔══════════════════════════════════════╗',
-        '║  LotoFácil IA - Sistema Ativo        ║',
-        '║  Quantum Engine v1.0                 ║',
-        '╚══════════════════════════════════════╝'
-    ].join('\n'));
+    // 3. Puxa os status do servidor
+    atualizarStatus();
 });
 
-// ── Verifica estado inicial via API ─────────────────────────
-function verificarEstadoInicial() {
-    fetch('/api/status')
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (data.carregando || data.treinando) {
-                mostrarProgresso(data.progresso || 'Processando...');
-                iniciarPolling();
-            }
-        })
-        .catch(function () {});
-}
 
-// ── Mostra/esconde painel de progresso ──────────────────────
-function mostrarProgresso(texto) {
-    var section = document.getElementById('progress-section');
-    var textEl  = document.getElementById('progress-text');
-    var fill    = document.getElementById('progress-fill');
-
-    if (section) {
-        section.classList.remove('progress-hidden');
-        section.classList.add('progress-visible');
-    }
-    if (textEl && texto) {
-        textEl.textContent = texto;
-    }
-    if (fill) {
-        fill.style.width = '70%';
-    }
-}
-
-function esconderProgresso() {
-    var section = document.getElementById('progress-section');
-    if (section) {
-        section.classList.remove('progress-visible');
-        section.classList.add('progress-hidden');
-    }
-}
-
-// ── Atualizar status ─────────────────────────────────────────
+/* ── Atualizar Status Global ───────────────────────────────── */
 function atualizarStatus() {
     fetch('/api/status')
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            // Atualizar texto de progresso no topbar
-            var progresso = document.getElementById('progresso-status');
-            if (progresso) {
-                progresso.textContent = data.progresso || '';
+            
+            // Texto superior (topbar)
+            var progressoTexto = document.getElementById('progresso-status');
+            if (progressoTexto) { 
+                progressoTexto.textContent = data.progresso || ''; 
             }
 
-            // Atualizar texto interno
+            // Texto dentro da caixa de progresso
             var progressText = document.getElementById('progress-text');
-            if (progressText) {
-                progressText.textContent = data.progresso || '';
+            if (progressText) { 
+                progressText.textContent = data.progresso || ''; 
             }
 
-            // Mostrar ou esconder painel
-            if (data.carregando || data.treinando) {
-                mostrarProgresso(data.progresso);
-            } else {
-                esconderProgresso();
-            }
-        })
-        .catch(function (err) {
-            console.log('Erro ao buscar status:', err);
-        });
-}
+            // Controle da caixa de progresso
+            var progressSection = document.getElementById('progress-section');
+            var rodando = data.carregando || data.treinando;
 
-// ── Polling automático ───────────────────────────────────────
-var pollingInterval = null;
-
-function iniciarPolling() {
-    if (pollingInterval) { return; } // já está rodando
-    pollingInterval = setInterval(function () {
-        fetch('/api/status')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                var progresso = document.getElementById('progresso-status');
-                if (progresso) { progresso.textContent = data.progresso || ''; }
-
-                var progressText = document.getElementById('progress-text');
-                if (progressText) { progressText.textContent = data.progresso || ''; }
-
-                if (data.carregando || data.treinando) {
-                    mostrarProgresso(data.progresso);
+            if (progressSection) {
+                if (rodando) {
+                    progressSection.style.display = 'block';
+                    emProcessamento = true;
                 } else {
-                    // Concluído
-                    clearInterval(pollingInterval);
-                    pollingInterval = null;
-                    esconderProgresso();
-
-                    if (data.progresso && data.progresso.indexOf('✅') !== -1) {
-                        setTimeout(function () { location.reload(); }, 1500);
+                    progressSection.style.display = 'none';
+                    
+                    // Se a IA acabou de treinar, recarrega a página para atualizar os cards
+                    if (emProcessamento) {
+                        emProcessamento = false;
+                        location.reload();
                     }
                 }
-            });
-    }, 2500);
+            }
+
+            // Atualiza Rodapé (IA Online/Offline e Concursos)
+            var statusDivs = document.querySelectorAll('.sidebar-footer .status-indicator');
+            if (statusDivs && statusDivs.length >= 2) {
+                var isOnline = data.ia_treinada;
+                statusDivs[0].innerHTML = '<span class="dot ' + (isOnline ? 'green' : 'red') + '"></span> IA: ' + (isOnline ? 'Online' : 'Offline');
+                
+                var qtdDados = data.ultimo_concurso || 0;
+                statusDivs[1].innerHTML = '<span class="dot ' + (qtdDados > 0 ? 'green' : 'red') + '"></span> Dados: ' + qtdDados + ' concursos';
+            }
+        })
+        .catch(function (err) { console.log('Erro Status:', err); });
 }
 
-// ── Carregar dados da Caixa ──────────────────────────────────
+
+/* ── Ações de Botões (Dashboard) ───────────────────────────── */
 function carregarDados() {
-    if (!confirm(
-        'Carregar TODO o histórico da Lotofácil?\n' +
-        'Isso pode demorar alguns minutos na primeira vez.'
-    )) { return; }
+    if (!confirm('Carregar histórico da Caixa? Isso pode demorar.')) { return; }
+    
+    var progressSection = document.getElementById('progress-section');
+    if (progressSection) progressSection.style.display = 'block';
+    emProcessamento = true;
 
     fetch('/api/carregar_dados', { method: 'POST' })
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-            mostrarProgresso(data.msg || 'Carregando...');
-            iniciarPolling();
-        })
-        .catch(function (err) {
-            alert('Erro ao iniciar carregamento: ' + err);
-        });
+        .then(function () { atualizarStatus(); });
 }
 
-// ── Atualizar apenas dados novos ─────────────────────────────
-function atualizarDados() {
-    mostrarProgresso('Verificando novos concursos...');
-
-    fetch('/api/atualizar_dados', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            esconderProgresso();
-            if (data.status === 'ok') {
-                alert(data.msg || (data.novos_concursos + ' novos concursos carregados'));
-                location.reload();
-            } else {
-                alert('Erro: ' + data.msg);
-            }
-        })
-        .catch(function (err) {
-            esconderProgresso();
-            alert('Erro: ' + err);
-        });
-}
-
-// Atualização diária automática
-function atualizarDiario() {
-    mostrarProgresso('Buscando novos concursos da Caixa...');
-    fetch('/api/atualizar_diario', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            esconderProgresso();
-            var msg = data.msg || 'Atualizado!';
-            alert(msg);
-            if (data.novos > 0) { location.reload(); }
-        })
-        .catch(function (err) {
-            esconderProgresso();
-            alert('Erro na atualização: ' + err);
-        });
-}
-
-// ── Treinar IA ───────────────────────────────────────────────
 function treinarIA() {
-    if (!confirm(
-        'Iniciar treinamento da IA?\n' +
-        'Isso pode levar alguns minutos dependendo do histórico.'
-    )) { return; }
+    if (!confirm('Iniciar treinamento dos 14 Módulos do Cérebro IA?')) { return; }
+    
+    var progressSection = document.getElementById('progress-section');
+    if (progressSection) progressSection.style.display = 'block';
+    emProcessamento = true;
 
     fetch('/api/treinar_ia', { method: 'POST' })
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-            mostrarProgresso(data.msg || 'Treinando...');
-            iniciarPolling();
-        })
-        .catch(function (err) {
-            alert('Erro ao iniciar treinamento: ' + err);
-        });
+        .then(function () { atualizarStatus(); });
 }
 
-// ── Conferir jogos ───────────────────────────────────────────
-function conferirTodos() {
-    mostrarProgresso('Conferindo cartelas...');
-
-    fetch('/api/conferir', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            esconderProgresso();
-            if (data.status === 'ok') {
-                alert(data.conferidas + ' cartelas conferidas!');
-                location.reload();
-            } else {
-                alert('Erro: ' + data.msg);
-            }
-        })
-        .catch(function (err) {
-            esconderProgresso();
-            alert('Erro: ' + err);
-        });
-}
-
-// ── Auto-update a cada 30s ───────────────────────────────────
-setInterval(atualizarStatus, 30000);
+// Atualiza sozinho a cada 5 segundos
+setInterval(atualizarStatus, 5000);

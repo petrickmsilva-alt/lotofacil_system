@@ -28,6 +28,38 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for
 
 app = Flask(__name__)
 
+# ============================================================
+# CONVERSOR JSON UNIVERSAL — Trata NumPy, Bytes e Tipos Especiais
+# ============================================================
+import numpy as np
+from flask.json.provider import DefaultJSONProvider
+
+
+class NumpyJSONProvider(DefaultJSONProvider):
+    """JSON provider universal para Flask"""
+
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        if isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, (bytes, bytearray)):
+            try:
+                return int(obj)
+            except Exception:
+                try:
+                    return obj.decode('utf-8')
+                except Exception:
+                    return str(obj)
+        return super().default(obj)
+
+
+app.json = NumpyJSONProvider(app)
+
 # ── Módulos ───────────────────────────────────────────────────
 from config import VALOR_APOSTA
 from database.db_manager import DBManager
@@ -68,6 +100,21 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
     if not cartelas:
         return 0
 
+    def to_safe_int(val):
+        if hasattr(val, 'item'):
+            val = val.item()
+        if isinstance(val, (bytes, bytearray)):
+            try:
+                val = int(val)
+            except Exception:
+                val = int(val.decode('utf-8'))
+        return int(val)
+
+    grupo_elite_limpo = []
+    if grupo_elite:
+        for g in grupo_elite:
+            grupo_elite_limpo.append(to_safe_int(g))
+
     ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
     lote_id = "{}_{}_{}_{}".format(
         tipo, concurso_alvo, ts, str(uuid.uuid4())[:8]
@@ -85,12 +132,12 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
         """, (
             lote_id,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            concurso_alvo,
-            tipo,
+            to_safe_int(concurso_alvo),
+            str(tipo),
             len(cartelas),
-            custo,
-            modo,
-            json.dumps(grupo_elite or []),
+            float(custo),
+            str(modo),
+            json.dumps(grupo_elite_limpo),
             float(cobertura),
         ))
         conn.commit()
@@ -102,8 +149,11 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
     for c in cartelas:
         try:
             dez = c.get("dezenas", [])
-            if len(dez) != 15:
+            dez_int = [to_safe_int(d) for d in dez]
+
+            if len(dez_int) != 15:
                 continue
+
             conn   = db.get_conn()
             cursor = conn.cursor()
             cursor.execute("""
@@ -118,10 +168,10 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
                         ?,?,?,?,?,?,?,?)
             """, (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                concurso_alvo,
-                dez[0],  dez[1],  dez[2],  dez[3],  dez[4],
-                dez[5],  dez[6],  dez[7],  dez[8],  dez[9],
-                dez[10], dez[11], dez[12], dez[13], dez[14],
+                to_safe_int(concurso_alvo),
+                dez_int[0],  dez_int[1],  dez_int[2],  dez_int[3],  dez_int[4],
+                dez_int[5],  dez_int[6],  dez_int[7],  dez_int[8],  dez_int[9],
+                dez_int[10], dez_int[11], dez_int[12], dez_int[13], dez_int[14],
                 int(c.get("bitmask", 0)),
                 float(c.get("score_total", 0)),
                 float(c.get("scores", {}).get("markov",  0)),
@@ -129,13 +179,13 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
                 float(c.get("scores", {}).get("ev_prob", 0)),
                 float(c.get("score_total", 0)),
                 lote_id,
-                tipo,
+                str(tipo),
             ))
             conn.commit()
             conn.close()
             salvos += 1
         except Exception as e:
-            print("[SALVAR] {}".format(e))
+            print("[SALVAR] Erro: {}".format(e))
 
     print("[LOTE] {} cartelas salvas no lote {}".format(salvos, lote_id))
     return salvos
@@ -226,30 +276,54 @@ def cerebro_page():
                     )
                 else:
                     proximo = (db.get_ultimo_concurso() or 0) + 1
+
+                    print("[CEREBRO_PAGE] Gerando {} cartelas para {}...".format(
+                        n_cartelas, proximo
+                    ))
+
                     cartelas_geradas = cerebro.gerar_cartelas(
                         quantidade=n_cartelas, modo=modo,
                     )
+
+                    print("[CEREBRO_PAGE] Cartelas geradas: {}".format(
+                        len(cartelas_geradas) if cartelas_geradas else 0
+                    ))
+
                     if cartelas_geradas:
+                        # SALVAR EM LOTE (essa era a linha problemática)
+                        grupo_e = cerebro.decisoes.get("grupo_elite", [])
+                        # Converter numpy int64 para int puro
+                        grupo_e = [int(x) for x in grupo_e] if grupo_e else []
+
+                        cob = float(cerebro.metricas.get("cobertura_13", 0))
+
+                        print("[CEREBRO_PAGE] Salvando em lote...")
+
                         salvos = _salvar_cartelas_banco(
                             cartelas_geradas,
                             proximo,
                             tipo="multiplas",
                             modo=modo,
-                            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
-                            cobertura=cerebro.metricas.get("cobertura_13", 0),
+                            grupo_elite=grupo_e,
+                            cobertura=cob,
                         )
+
+                        print("[CEREBRO_PAGE] Salvos: {}".format(salvos))
+
                         cartelas = cartelas_geradas
                         custo    = salvos * VALOR_APOSTA
                         tempo    = time.time() - t0
+
                         metricas = {
                             "tempo":         round(tempo, 2),
                             "modo":          modo,
-                            "grupo_elite":   cerebro.decisoes.get("grupo_elite", []),
-                            "cobertura_13":  cerebro.metricas.get("cobertura_13", 0),
+                            "grupo_elite":   grupo_e,
+                            "cobertura_13":  cob,
                             "concurso_alvo": proximo,
                             "salvos":        salvos,
                             "custo":         custo,
                         }
+
                         msg = "OK {} cartelas para concurso {} em {:.1f}s | R$ {:.2f}".format(
                             salvos, proximo, tempo, custo
                         )
@@ -478,16 +552,20 @@ def api_treinar_ia():
         try:
             def cb(msg):
                 status_sistema["progresso"] = msg
+
             cerebro.treinar(callback=cb)
+            
+            # Atualiza flags de estado
             status_sistema["ia_treinada"] = True
-            status_sistema["progresso"]   = "Cérebro treinado!"
+            status_sistema["progresso"]   = "✅ Cérebro treinado com sucesso!"
         except Exception as e:
-            status_sistema["progresso"] = "Erro: {}".format(str(e))
+            status_sistema["progresso"] = "❌ Erro no treino: {}".format(str(e))
             traceback.print_exc()
+        
         status_sistema["treinando"] = False
 
     threading.Thread(target=_treinar, daemon=True).start()
-    return jsonify({"status": "ok", "msg": "Treinamento iniciado..."})
+    return jsonify({"status": "ok", "msg": "Treinamento iniciado em background..."})
 
 
 @app.route("/api/cerebro/status")

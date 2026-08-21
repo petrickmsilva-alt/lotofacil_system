@@ -27,7 +27,6 @@
             </strong>
         </p>
 
-        <!-- Selo -->
         <div style="margin:28px 0;">
             <span class="selo-confianca selo-{{ resultado.confianca }}">
                 {% if resultado.confianca == 'ALTA' %}
@@ -45,7 +44,6 @@
             </div>
         </div>
 
-        <!-- Volante -->
         <div class="volante-grande" style="margin:20px auto;">
             {% for num in range(1, 26) %}
             <div class="bola-oraculo
@@ -58,7 +56,6 @@
             {% endfor %}
         </div>
 
-        <!-- Dezenas destaque -->
         <div style="margin-top:32px;">
             <div style="font-size:14px;color:var(--text-muted);
                         margin-bottom:12px;">
@@ -74,7 +71,6 @@
             </div>
         </div>
 
-        <!-- Stats -->
         <div class="oraculo-stats">
             <div>
                 <div class="os-label">Soma</div>
@@ -109,11 +105,10 @@
         {% if resultado.salvo_concurso %}
         <div class="oraculo-salvo">
             <i class="fas fa-check"></i>
-            Salva para concurso {{ resultado.salvo_concurso }}
+            Cartela salva no lote — concurso {{ resultado.salvo_concurso }}
         </div>
         {% endif %}
 
-        <!-- Filtros -->
         <div style="margin-top:16px;">
             <span class="badge
                 {% if resultado.aprovado_filtros %}badge-success
@@ -123,7 +118,7 @@
                     <i class="fas fa-check"></i> Aprovada nos filtros
                 {% else %}
                     <i class="fas fa-exclamation-triangle"></i>
-                    Fora dos padrões estatísticos (evasão de massa)
+                    Fora dos padrões (evasão de massa)
                 {% endif %}
             </span>
         </div>
@@ -135,8 +130,7 @@
     <h2><i class="fas fa-users"></i> Como Cada Oráculo Votou</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">
         Top 5 dezenas favoritas de cada teoria.
-        Dezenas <strong style="color:var(--primary);">destacadas</strong>
-        entraram na cartela final.
+        Destacadas entraram na cartela final.
     </p>
     <div class="oraculos-grid">
         {% for nome, info in resultado.detalhes_oraculos.items() %}
@@ -227,11 +221,21 @@
 </div>
 {% endif %}
 
-<!-- REGENERAR -->
 <div style="text-align:center;margin:30px 0;">
-    <a href="/cartela_do_dia" class="btn btn-primary btn-lg">
-        <i class="fas fa-sync"></i> Consultar Oráculos Novamente
+    <a href="/cartela_do_dia"
+       class="btn btn-primary btn-lg"
+       onclick="mostrarCarregando(this)">
+       <i class="fas fa-sync"></i> Consultar Oráculos Novamente
     </a>
+
+<script>
+function mostrarCarregando(btn) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' +
+                    'Consultando 15 oráculos... aguarde (~10s)';
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.7';
+}
+</script>
 </div>
 
 {% endif %}
