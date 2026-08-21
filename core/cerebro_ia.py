@@ -1348,22 +1348,75 @@ class CerebroIA:
         }
 
     def _aprender(self, concurso: int, conf: Dict, dezenas_reais: List[int], cartelas: List[Dict]) -> Dict:
+        """
+        Aprendizado honesto por desempenho FORA-DA-AMOSTRA de cada módulo:
+        cada módulo 'vota' num top-15; o módulo que mais acertou no sorteio
+        real ganha peso; quem errou mais perde. Não há reforço cego de um
+        único módulo em caso de fracasso (o viés anti_lógica de antes).
+        """
         pesos_antes = dict(self.pesos)
         melhor = conf.get("melhor_acertos", 0)
-        fator = 0.03
+        real = set(dezenas_reais)
 
-        if melhor >= 14:
-            for k in self.pesos: self.pesos[k] *= (1 + fator)
-        elif melhor >= 13:
-            self.pesos["anti_logica"] *= (1 + fator * 2)
-        else:
-            self.pesos["anti_logica"] *= (1 + fator * 3)
+        # Acertos de cada módulo no top-15 (proxy de qualidade)
+        acertos_por_modulo = {}
+        for nome, vetor in self._vetores.items():
+            try:
+                v = np.asarray(vetor, dtype=float)
+                if v.sum() <= 0:
+                    acertos_por_modulo[nome] = 0.0
+                    continue
+                top15 = set(np.argsort(v)[::-1][:15].tolist())
+                acertos_por_modulo[nome] = float(len(top15 & real))
+            except Exception:
+                acertos_por_modulo[nome] = 0.0
 
+        valores = list(acertos_por_modulo.values())
+        if valores:
+            mediana = float(np.median(valores))
+            fator = 0.05
+            for nome in self.pesos:
+                ac = acertos_por_modulo.get(nome, 0.0)
+                if ac > mediana:
+                    self.pesos[nome] *= (1 + fator)
+                elif ac < mediana:
+                    self.pesos[nome] *= (1 - fator * 0.5)
+
+        # Normalização
         total = sum(self.pesos.values())
-        for k in self.pesos: self.pesos[k] = round(self.pesos[k] / total, 4)
+        for k in self.pesos:
+            self.pesos[k] = round(self.pesos[k] / total, 4)
 
+        # Persistência de desempenho e memória de erros (antes nunca gravadas)
+        self._registrar_desempenho(concurso, acertos_por_modulo, pesos_antes)
         self._stacking.registrar(self.pesos, melhor)
-        return {"status": "ok", "pesos_novos": dict(self.pesos)}
+        return {"status": "ok", "pesos_novos": dict(self.pesos),
+                "acertos_por_modulo": acertos_por_modulo}
+
+    def _registrar_desempenho(self, concurso: int, acertos_por_modulo: Dict,
+                              pesos_antes: Dict):
+        """Grava correlação (acertos) de cada módulo e o erro cometido."""
+        try:
+            conn = self.db.get_conn()
+            cursor = conn.cursor()
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for nome, ac in acertos_por_modulo.items():
+                cursor.execute("""
+                    INSERT INTO desempenho_modulos
+                    (concurso, timestamp, modulo, correlacao, peso_antes, peso_depois)
+                    VALUES (?,?,?,?,?,?)
+                """, (concurso, ts, nome, float(ac / 15.0),
+                      float(pesos_antes.get(nome, 0)),
+                      float(self.pesos.get(nome, 0))))
+                # erro do módulo = quão longe ficou de 15
+                cursor.execute("""
+                    INSERT INTO memoria_erros (concurso, timestamp, modulo, erro, impacto)
+                    VALUES (?,?,?,?,?)
+                """, (concurso, ts, nome, float(15 - ac), float((15 - ac) / 15.0)))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print("[APRENDER] persistir desempenho: {}".format(e))
 
     def iniciar_loop(self, intervalo: int = 3600) -> Dict:
         if self._rodando: return {"status": "ja_rodando"}
@@ -1390,7 +1443,23 @@ class CerebroIA:
     def retomar_loop(self) -> Dict: self._pausado = False; return {"status": "retomado"}
 
     def backtesting(self, n_testes: int = 20, n_cart: int = 5) -> Dict:
-        return {"status": "ok", "msg": "Backtesting integrado"}
+        """
+        Backtesting FORA-DA-AMOSTRA real (walk-forward) com baseline aleatória.
+        Substitui o stub anterior. Avalia os 15 oráculos e o consenso,
+        sem vazamento de dados, e compara contra o acaso.
+        """
+        try:
+            from .singularidade import ValidadorForaDaAmostra
+            matriz, _ = self._ingestor.carregar_matriz()
+            validador = ValidadorForaDaAmostra(matriz)
+            relatorio = validador.backtest(n_testes=n_testes, n_random=200)
+            relatorio["status"] = "ok"
+            relatorio["concursos_testados"] = n_testes
+            return relatorio
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {"status": "erro", "msg": str(e)}
 
     def _log(self, tipo: str, msg: str):
         e = {"ts": datetime.now().strftime("%H:%M:%S"), "tipo": tipo, "msg": msg}

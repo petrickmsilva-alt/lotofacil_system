@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Singularidade — Auditoria Cética{% endblock %}
+{% block page_title %}Núcleo de Singularidade{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="panel-header">
+        <h2><i class="fas fa-atom"></i> Auditoria Cética &amp; Motores Não-Convencionais</h2>
+        <p class="muted">
+            Métodos de alta complexidade (teoria da informação, análise espectral,
+            cobertura combinatória, gestão de banca) medidos <strong>contra o acaso</strong>.
+        </p>
+    </div>
+
+    <div class="grid-2">
+        <div class="card" id="card-probabilidades">
+            <h3>Probabilidades exatas (hipergeométrica)</h3>
+            <div id="probabilidades"></div>
+        </div>
+        <div class="card" id="card-banca">
+            <h3>Gestão de Banca &amp; Kelly</h3>
+            <div id="banca"></div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card" id="card-cobertura">
+            <h3>Cobertura Combinatória C(25,15,t)</h3>
+            <div id="cobertura"></div>
+        </div>
+        <div class="card" id="card-espectro">
+            <h3>Espectro &amp; Entropia Temporal</h3>
+            <div id="espectro"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Backtesting Fora-da-Amostra (walk-forward) vs Acaso</h3>
+        <p class="muted">
+            Cada oráculo é treinado apenas com sorteios passados e avaliado nos futuros.
+            Um método só tem valor se superar a baseline aleatória com significância.
+        </p>
+        <div class="inline-form">
+            <label>Concursos de teste</label>
+            <input type="number" id="n-testes" value="15" min="5" max="60">
+            <button class="btn" id="btn-backtest" onclick="rodarBacktest()">
+                <i class="fas fa-play"></i> Executar backtest
+            </button>
+        </div>
+        <div id="backtest-resultado" class="mt"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmtBRL(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', {maximumFractionDigits: 2}); }
+
+async function carregarAnalise() {
+    try {
+        const r = await fetch('/api/singularidade/analise');
+        const d = await r.json();
+        if (d.status !== 'ok') { document.getElementById('probabilidades').textContent = d.msg; return; }
+
+        // Probabilidades
+        let pHtml = '<table><tr><th>acertos</th><th>P(exata)</th></tr>';
+        const dist = d.probabilidades.distribuicao;
+        for (let k = 15; k >= 11; k--) {
+            pHtml += `<tr><td>${k}</td><td>${(Number(dist[k])*100).toFixed(4)}%</td></tr>`;
+        }
+        pHtml += '</table>';
+        pHtml += `<p><strong>P(13 ou mais)</strong> = ${(d.probabilidades.p_13_mais*100).toFixed(4)}%<br>
+                   ≈ 1 em <strong>${d.probabilidades.cartelas_para_1_em_13}</strong> cartelas</p>`;
+        document.getElementById('probabilidades').innerHTML = pHtml;
+
+        // Banca
+        const b = d.banca;
+        document.getElementById('banca').innerHTML = `
+            <p>Valor esperado por cartela: <strong class="neg">${fmtBRL(b.valor_esperado_por_cartela_R$)}</strong></p>
+            <p>Retorno esperado: <strong class="neg">${b.retorno_esperado_pct}%</strong></p>
+            <p>Fração de Kelly: <strong>${b.fracao_kelly}</strong> → ${b.conclusao_kelly}</p>
+            <p>P(pelo menos 11) = ${(b.p_pelo_menos_11*100).toFixed(2)}%</p>
+            <p>P(13+) = ${(b.p_13_mais*100).toFixed(4)}%</p>`;
+
+        // Cobertura
+        const c = d.cobertura_steiner;
+        let cHtml = '<table><tr><th>garantir</th><th>cartelas (≈)</th><th>custo</th></tr>';
+        for (const t of [13,14,15]) {
+            cHtml += `<tr><td>${t} pts</td><td>${c[t].limite_inferior_schonheim.toLocaleString('pt-BR')}</td>
+                      <td>${fmtBRL(c[t].custo_estimado_R$)}</td></tr>`;
+        }
+        cHtml += '</table><p class="muted">Cota inferior de Schönheim — cobertura exata do espaço inteiro.</p>';
+        document.getElementById('cobertura').innerHTML = cHtml;
+
+        // Espectro
+        const e = d.espectro;
+        const inf = d.informacao;
+        document.getElementById('espectro').innerHTML = `
+            <p>Expoente de Hurst médio: <strong>${e.hurst_medio}</strong><br>
+               <span class="muted">${e.interpretacao}</span></p>
+            <p>Entropia de permutação média: <strong>${inf.entropia_permutacao_media}</strong><br>
+               <span class="muted">${inf.interpretacao}</span></p>
+            <p class="muted">H≈0.5 e alta entropia indicam série sem memória — o esperado de um sorteio justo.</p>`;
+    } catch (err) {
+        document.getElementById('probabilidades').textContent = 'Erro: ' + err;
+    }
+}
+
+async function rodarBacktest() {
+    const btn = document.getElementById('btn-backtest');
+    const out = document.getElementById('backtest-resultado');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executando...';
+    out.innerHTML = '';
+    try {
+        const n = document.getElementById('n-testes').value;
+        const r = await fetch('/api/singularidade/backtest', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({n_testes: parseInt(n), n_random: 200})
+        });
+        const d = await r.json();
+        if (d.status !== 'ok') { out.innerHTML = '<p class="erro">' + d.msg + '</p>'; return; }
+
+        let html = '<table><tr><th>método</th><th>média</th><th>melhor</th><th>13+</th><th>p-valor</th></tr>';
+        for (const nome of ['consenso','termodinamico','quantico','fisico','bayesiano','markov','caotico','fractal','gravitacional','neural','genetico','estatistico','fourier','topologico','relativista','anti_comunidade']) {
+            const m = d[nome];
+            if (!m) continue;
+            const sig = m.p_valor < 0.05 ? ' style="color:#2ecc71;font-weight:700"' : '';
+            html += `<tr><td>${nome}</td><td>${m.media_acertos}</td><td>${m.melhor}</td><td>${m.n_13_ou_mais}</td><td${sig}>${m.p_valor}</td></tr>`;
+        }
+        html += '</table>';
+        html += `<p>Baseline aleatória (${d.baseline_aleatoria.total_amostras} amostras): média ${d.baseline_aleatoria.media_acertos}, 13+ = ${d.baseline_aleatoria.n_13_ou_mais}</p>`;
+        html += `<p class="conclusao">${d._conclusao.resumo}</p>`;
+        out.innerHTML = html;
+    } catch (err) {
+        out.innerHTML = '<p class="erro">' + err + '</p>';
+    } finally {
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Executar backtest';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', carregarAnalise);
+</script>
+{% endblock %}
