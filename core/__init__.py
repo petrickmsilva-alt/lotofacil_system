@@ -14,9 +14,10 @@ from .data_loader        import DataLoader
 from .conferencia        import Conferencia
 from .financeiro         import Financeiro
 from .ia_monitor         import IAMonitor
+from .wheeling           import MotorWheeling
+from .heavyweight_engine import MotorExaustaoUniverso
 
-# ── Módulos auxiliares usados pelo CerebroIA ──────────────────
-from .filtros_gaussianos import FiltrosGaussianos
-from .markov_engine      import MarkovEngine
-from .fisica_quantica    import FisicaQuantica
-from .covering_designs   import CoveringDesigns
+# Fase 3 (2026-08-24): filtros_gaussianos, markov_engine,
+# fisica_quantica e covering_designs foram REMOVIDOS — eram órfãos
+# nunca instanciados, duplicados pelos motores internos do CerebroIA
+# (MotorGaussiano/MotorMarkov/MotorQuantum) e pelo core/wheeling.py.

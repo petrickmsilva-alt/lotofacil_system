@@ -352,9 +352,38 @@ def cerebro_page():
 
 @app.route("/gerar", methods=["GET", "POST"])
 def gerar():
+    """Geração rápida de cartelas (página server-rendered, auditada Fase 3:
+    antes era rota-fantasma que só redirecionava para /cerebro)."""
     if request.method == "POST":
-        return cerebro_page()
-    return redirect(url_for("cerebro_page"))
+        try:
+            quantidade = int(request.form.get("quantidade", 10))
+            modo = request.form.get("modo", "hibrido")
+            quantidade = max(1, min(50, quantidade))
+            t0 = time.time()
+            cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+            salvos = _salvar_cartelas_banco(
+                cartelas, concurso, tipo="multiplas", modo=modo,
+                grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+                cobertura=cerebro.metricas.get("cobertura_13", 0),
+            )
+            metricas = {
+                "tempo": round(time.time() - t0, 1),
+                "salvos": salvos,
+                "cobertura_13": cerebro.metricas.get("cobertura_13", 0),
+                "custo": round(salvos * VALOR_APOSTA, 2),
+                "grupo_elite": cerebro.decisoes.get("grupo_elite", []),
+            }
+            return render_template(
+                "gerar.html", metricas=metricas, cartelas=cartelas,
+                msg="✅ {} cartela(s) gerada(s) e salva(s) para o concurso {}"
+                    .format(salvos, concurso),
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return render_template("gerar.html",
+                                   msg="Erro ao gerar: {}".format(e))
+    return render_template("gerar.html")
 
 
 @app.route("/cartela_do_dia")
@@ -419,6 +448,32 @@ def financeiro_page():
         "financeiro.html",
         resumo = financeiro.get_resumo_geral(),
     )
+
+
+@app.route("/api/analise/exaustao", methods=["POST"])
+def api_analise_exaustao():
+    """Exaustão do universo: pontua TODAS as 3.268.760 combinações contra
+    o vetor combinado dos motores (Motor Heavyweight revivido na Fase 3)."""
+    try:
+        from core.heavyweight_engine import MotorExaustaoUniverso
+        dados = request.get_json() or {}
+        top_n = max(1, min(int(dados.get("top_n", 10)), 100))
+        if not cerebro.treinado:
+            cerebro.treinar()
+        vetor = cerebro._vetor_combinado()
+        motor = MotorExaustaoUniverso()
+        t0 = time.time()
+        top = motor.top_n(vetor, top_n)
+        return jsonify({
+            "status": "ok",
+            "total": len(motor.universo),
+            "tempo": round(time.time() - t0, 2),
+            "concursos": cerebro.n,
+            "top": top,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
 
 
 @app.route("/analise")
@@ -836,10 +891,54 @@ def api_cartela_do_dia():
 # API — CONFERÊNCIA E LOTES
 # ============================================================
 
+# ============================================================
+# HELPER: Hook financeiro pós-conferência (auditoria Fase 3)
+# ============================================================
+
+def _registrar_financeiro(resultado_conf):
+    """Alimenta o módulo financeiro após uma conferência bem-sucedida.
+    Antes da Fase 3 a tabela `financeiro` ficava eternamente vazia
+    porque `registrar_resultado_financeiro` nunca era chamado."""
+    try:
+        if not isinstance(resultado_conf, dict):
+            return None
+        if resultado_conf.get("status") != "ok":
+            return None
+        cartelas = resultado_conf.get("cartelas", [])
+        concurso = int(resultado_conf.get("concurso", 0))
+        if not cartelas or concurso < 1:
+            return None
+
+        # evita duplicar registro no re-conferir do mesmo concurso
+        conn = db.get_conn()
+        ja_tem = conn.execute(
+            "SELECT COUNT(*) FROM financeiro WHERE concurso = ?",
+            (concurso,)
+        ).fetchone()[0]
+        conn.close()
+        if ja_tem:
+            return None
+
+        premios = resultado_conf.get("premios_oficiais") or {}
+        fin = financeiro.registrar_resultado_financeiro(
+            concurso, cartelas,
+            valor_14=float(premios.get(14) or 0) or None,
+            valor_15=float(premios.get(15) or 0) or None,
+        )
+        print("[FINANCEIRO] concurso {} registrado: lucro R$ {:.2f}"
+              .format(concurso, fin.get("lucro", 0)))
+        return fin
+    except Exception as e:
+        print("[FINANCEIRO] erro: {}".format(e))
+        return None
+
+
 @app.route("/api/conferir", methods=["POST"])
 def api_conferir():
     try:
         resultados = conferencia.conferir_todas_pendentes()
+        for r in resultados:
+            _registrar_financeiro(r)
         return jsonify({"status": "ok", "conferidas": len(resultados)})
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
@@ -852,7 +951,11 @@ def api_conferir_concurso():
         concurso = int(dados.get("concurso", 0))
         if concurso < 1:
             return jsonify({"status": "erro", "msg": "Concurso inválido"})
-        return jsonify(conferencia.conferir_concurso(concurso))
+        res = conferencia.conferir_concurso(concurso)
+        fin = _registrar_financeiro(res)
+        if fin:
+            res["financeiro"] = fin
+        return jsonify(res)
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(e)})
@@ -900,7 +1003,11 @@ def api_conferir_lote():
     lote_id = dados.get("lote_id", "")
     if not lote_id:
         return jsonify({"status": "erro", "msg": "Lote ID inválido"})
-    return jsonify(conferencia.conferir_lote(lote_id))
+    res = conferencia.conferir_lote(lote_id)
+    fin = _registrar_financeiro(res)
+    if fin:
+        res["financeiro"] = fin
+    return jsonify(res)
 
 
 @app.route("/api/apagar_cartelas_concurso", methods=["POST"])

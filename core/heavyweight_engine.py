@@ -1,98 +1,78 @@
 """
 ============================================================
-MOTOR HEAVYWEIGHT v10.0 — EXAUSTÃO TOTAL DO ESPAÇO AMOLSTRAGEM
-Sem Atalhos. Sem Heurísticas.
-Calcula o Valor Esperado (EV) de TODAS as 3.268.760 combinações
-possíveis da Lotofácil em milissegundos via Tensores Vetorizados.
+MOTOR HEAVYWEIGHT v11.0 — EXAUSÇÃO TOTAL DO ESPAÇO AMOSTRAL
 ============================================================
+Avalia TODAS as 3.268.760 combinações da Lotofácil contra um
+vetor de scores das 25 dezenas — sem amostragem, sem heurística.
+
+v11 (auditoria Fase 3):
+- Corrige bug de import (Tuple/List indefinidos) — módulo nem importava
+- Não constrói mais uma matriz própria de 82 MB: reaproveita o cache
+  de máscaras uint32 do core.wheeling (13 MB) e pontua via bits
+- Sem dependência de torch: o caminho numpy com máscaras é rápido o
+  suficiente (~1-2 s para ordenar o universo inteiro)
+
+HONESTIDADE: ordenar o universo pelo vetor dos motores apenas ranqueia
+uma opinião subjetiva sobre dezenas — as 3.268.760 combinações seguem
+todas exatamente a mesma distribuição hipergeométrica de acertos.
 """
-import os
 import time
-import itertools
+from typing import List, Tuple
+
 import numpy as np
-try:
-    import torch
-    TORCH_DISPONIVEL = True
-except ImportError:
-    TORCH_DISPONIVEL = False
 
 from config import TOTAL_DEZENAS, DEZENAS_POR_JOGO
+from .wheeling import MotorWheeling
 
 
 class MotorExaustaoUniverso:
-    """
-    Carrega a Matriz de 3.268.760 x 25 na memória RAM/VRAM.
-    Aplica álgebra linear tensorial para avaliar 100% da Lotofácil simultaneamente.
-    """
-    _MATRIZ_UNIVERSO = None  # Cache em RAM (81 MB)
+    """Avaliação exaustiva do universo C(25,15) via máscaras de bits."""
 
     def __init__(self):
-        self.device = 'cuda' if (TORCH_DISPONIVEL and torch.cuda.is_available()) else 'cpu'
-        self._garantir_universo_carregado()
-
-    @classmethod
-    def _garantir_universo_carregado(cls):
-        """Gera e armazena em RAM os 3.268.760 jogos da Lotofácil em formato binário uint8"""
-        if cls._MATRIZ_UNIVERSO is None:
-            t0 = time.time()
-            print("[🚀 HEAVYWEIGHT] Gerando Matriz do Universo Completo (3.268.760 x 25)...")
-            
-            # Gera todos os índices C(25, 15)
-            combos = list(itertools.combinations(range(25), DEZENAS_POR_JOGO))
-            n_combos = len(combos)  # Exact: 3.268.760
-            
-            matriz = np.zeros((n_combos, TOTAL_DEZENAS), dtype=np.uint8)
-            for i, c in enumerate(combos):
-                matriz[i, list(c)] = 1
-
-            cls._MATRIZ_UNIVERSO = matriz
-            print(f"[🚀 HEAVYWEIGHT] Universo carregado em {time.time() - t0:.2f}s! ({matriz.nbytes / (1024**2):.1f} MB em RAM)")
+        self.universo = MotorWheeling.universo()  # 3.268.760 máscaras uint32
 
     def avaliar_universo_completo(
-        self, 
-        vetor_probabilidades_25: np.ndarray, 
-        pesos_penalidade_duplicatas: np.ndarray = None
+        self,
+        vetor_probabilidades_25: np.ndarray,
+        pesos_penalidade_duplicatas: np.ndarray = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Executa a multiplicação tensorial das 3.268.760 combinações contra o vetor de 25 probabilidades.
+        Pontua cada uma das 3.268.760 combinações como a soma dos scores
+        das 15 dezenas que a compõem.
+
         Retorna:
-        - indices_ordenados: Os índices dos jogos do melhor para o pior.
-        - scores_ordenados: O EV exato de cada um dos 3.268.760 jogos.
+        - indices_ordenados: índices dos jogos, do melhor para o pior
+        - scores_ordenados: os scores correspondentes, em ordem decrescente
         """
         t0 = time.time()
-        v_prob = vetor_probabilidades_25.astype(np.float32)
+        v = np.asarray(vetor_probabilidades_25, dtype=np.float32)
+        if v.shape[0] != TOTAL_DEZENAS:
+            raise ValueError("vetor deve ter 25 posições")
 
-        if TORCH_DISPONIVEL and self.device == 'cuda':
-            # 🚀 EXECUÇÃO VIA GPU (NVIDIA CUDA) — Ultrarrápido
-            tensor_universo = torch.from_numpy(self._MATRIZ_UNIVERSO).float().to(self.device)
-            tensor_prob = torch.from_numpy(v_prob).float().to(self.device)
+        scores = np.zeros(len(self.universo), dtype=np.float32)
+        for d in range(TOTAL_DEZENAS):
+            bits = ((self.universo >> np.uint32(d)) & np.uint32(1)).astype(np.float32)
+            scores += bits * v[d]
 
-            # Multiplicação Matricial Paralela na GPU (3.268.760 x 25 @ 25 x 1)
-            scores = torch.matmul(tensor_universo, tensor_prob)
+        if pesos_penalidade_duplicatas is not None:
+            scores *= np.asarray(pesos_penalidade_duplicatas, dtype=np.float32)
 
-            if pesos_penalidade_duplicatas is not None:
-                tensor_pen = torch.from_numpy(pesos_penalidade_duplicatas).float().to(self.device)
-                scores *= tensor_pen
-
-            scores_top, indices_top = torch.sort(scores, descending=True)
-            
-            indices_res = indices_top.cpu().numpy()
-            scores_res = scores_top.cpu().numpy()
-        else:
-            # ⚡ EXECUÇÃO VIA CPU VETORIZADA (BLAS / C-Speed)
-            scores = np.dot(self._MATRIZ_UNIVERSO.astype(np.float32), v_prob)
-
-            if pesos_penalidade_duplicatas is not None:
-                scores *= pesos_penalidade_duplicatas
-
-            # Ordenação exaustiva de 3.26M elementos
-            indices_res = np.argsort(scores)[::-1]
-            scores_res = scores[indices_res]
-
-        print(f"[🚀 HEAVYWEIGHT] 3.268.760 jogos avaliados exaustivamente em {time.time() - t0:.3f}s!")
+        indices_res = np.argsort(scores)[::-1]
+        scores_res = scores[indices_res]
+        print("[HEAVYWEIGHT] 3.268.760 jogos avaliados exaustivamente em {:.3f}s"
+              .format(time.time() - t0))
         return indices_res, scores_res
 
-    def obter_dezenas_por_indice(self, idx: int) -> List[int]:
-        """Converte o índice da matriz de volta para dezenas (1 a 25)"""
-        linha_binaria = self._MATRIZ_UNIVERSO[idx]
-        return [int(i + 1) for i in range(TOTAL_DEZENAS) if linha_binaria[i] == 1]
+    def obter_dezenas_por_indice(self, idx) -> List[int]:
+        """Converte o índice do universo de volta para as 15 dezenas."""
+        mask = int(self.universo[int(idx)])
+        return [d + 1 for d in range(TOTAL_DEZENAS) if (mask >> d) & 1]
+
+    def top_n(self, vetor_probabilidades_25: np.ndarray, n: int = 10):
+        """Atalho: top-N combinações pelo vetor de scores."""
+        idx, sc = self.avaliar_universo_completo(vetor_probabilidades_25)
+        n = min(n, len(idx))
+        return [
+            {"dezenas": self.obter_dezenas_por_indice(i), "score": float(s)}
+            for i, s in zip(idx[:n], sc[:n])
+        ]

@@ -32,8 +32,14 @@
             </li>
             <li>
                 <a href="/cerebro"
-                   class="{% if request.path == '/cerebro' or request.path == '/gerar' %}active{% endif %}">
+                   class="{% if request.path == '/cerebro' %}active{% endif %}">
                     <i class="fas fa-brain"></i> Cérebro IA
+                </a>
+            </li>
+            <li>
+                <a href="/gerar"
+                   class="{% if request.path == '/gerar' %}active{% endif %}">
+                    <i class="fas fa-dice"></i> Gerar Cartelas
                 </a>
             </li>
             <li>

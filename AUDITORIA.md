@@ -237,3 +237,32 @@ Exemplo real (pool de 17 escolhido pelos motores, 8 cartelas, R$ 28,00): se o po
 `core/covering_designs.py` (órfão, greedy O(C(N,15)²) sem verificação) fica **obsoleto**: `core/wheeling.py` o substitui com garantias verificadas e análise exata. Recomenda-se remoção futura.
 
 **A mesma conclusão da §3 permanece de pé** — agora com números exatos por lote: o wheeling converte *acertar o pool* em *pontos garantidos*, mas não muda a probabilidade de capturar (hipergeométrica pura) nem torna o EV positivo. É a ferramenta certa para quem joga por diversão com orçamento definido: maximiza o que se extrai de cada real **se** o pool acertar, e diz com honestidade matemática o preço disso.
+
+---
+
+# 🔍 FASE 3 (2026-08-24) — Auditoria de módulos, filtros e navegação
+
+Varredura de todos os módulos `core/`, dos filtros combinatórios e do menu/páginas, com correções aplicadas e validadas ao vivo.
+
+## 13. Falhas encontradas e corrigidas
+
+| # | Falha | Evidência | Correção |
+|---|---|---|---|
+| 1 | `core/heavyweight_engine.py` **nem importava** | `NameError: Tuple` — módulo morto desde a criação | Reescrito (v11): import corrigido, reaproveita o cache de máscaras do `wheeling` (13 MB em vez de matriz própria de 82 MB), sem torch. **3.268.760 combinações avaliadas em 0,46 s** |
+| 2 | Filtro ativo (`MotorGaussiano`, p3–p97) rejeitava **33,7%** dos sorteios reais | 2.499/3.767 concursos históricos passavam | Recalibrado para p1–p99 + `CONSEC_MAX=8` → **93,9% de aprovação**; nova métrica `taxa_aprovacao_filtro` exposta após treino |
+| 3 | Faixas estáticas do `config.py` rejeitavam **69,9%** dos sorteios reais | ex.: SOMA 185–220 vs. real 133–257 | Recalibradas para os p1–p99 medidos (soma 155–235, primos 3–8, fib 2–7, borda 7–12, repetição 6–12, consecutivos 14) |
+| 4 | `/gerar` era rota-fantasma | GET redirecionava para `/cerebro`; `gerar.html` (169 linhas) nunca renderizado; sem item no menu | Página real server-rendered (form → geração → cartelas + métricas) e item **"Gerar Cartelas"** adicionado ao menu |
+| 5 | Módulo financeiro desconectado | `registrar_resultado_financeiro()` nunca chamado; tabela com 0 linhas desde a criação | Hook `_registrar_financeiro` nas rotas de conferência (com guarda anti-duplicata e rateio real da Caixa). Primeiro registro real: concurso 3766 — 56 cartelas, custo R$ 196, **lucro −R$ 196** |
+| 6 | 4 módulos órfãos exportados sem uso | `FiltrosGaussianos`, `MarkovEngine`, `FisicaQuantica`, `CoveringDesigns` nunca instanciados; duplicados por motores internos e pelo `wheeling` | Removidos (junto com as linhas de export no `core/__init__.py`) — superseded |
+| 7 | `MotorExaustaoUniverso` nunca integrado à UI | classe morta | Endpoint `POST /api/analise/exaustao` + card "Exaustão do Universo" na página Análise (com aviso de honestidade) |
+
+## 14. O que foi verificado e passou
+
+- **Imports**: 10/10 módulos `core/` importam limpo após a limpeza (antes: 11/12, com `heavyweight` quebrado).
+- **Menu × rotas**: os 12 itens do menu apontam para rotas existentes; 12/12 páginas respondem 200 (`/gerar` agora incluída). Todos os endpoints chamados por `fetch` nos templates/JS existem.
+- **Conferência**: fluxo `conferir_concurso`/`conferir_lote` validado com dados reais (56 cartelas do 3766, prêmios oficiais da Caixa, 0 premiadas — registrado com fidelidade).
+- **Regressão**: suíte do wheeling 11/11 após todas as mudanças; pipeline wheeling e backtest de captura seguem operando.
+
+## 15. Nota honesta sobre os filtros
+
+Recalibrar filtros **não aumenta a probabilidade de acerto** — toda combinação de 15 dezenas tem a mesma distribuição hipergeométrica. O que a correção resolve: (a) o gerador não desperdiça ciclos nem cai no "fallback" por rejeição excessiva; (b) as cartelas geradas deixam de se concentrar num estereótipo atípico que excluía 1/3 dos sorteios reais; (c) a taxa de aprovação agora é medida e exibida em vez de implícita.

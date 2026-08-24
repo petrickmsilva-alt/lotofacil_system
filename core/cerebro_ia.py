@@ -486,7 +486,9 @@ class MotorGaussiano(_Motor):
             fib_l.append(len(set(dez) & FIBONACCI))
             borda_l.append(len(set(dez) & BORDA))
 
-        def pct(arr, lo=3, hi=97):
+        # Auditoria Fase 3: p3–p97 rejeitava ~34% dos sorteios reais.
+        # p1–p99 mantém o recorte "típico" rejeitando só ~1% por dimensão.
+        def pct(arr, lo=1, hi=99):
             a = sorted(arr) if arr else [0, 25]
             n = len(a)
             return (a[max(0, int(n*lo/100))], a[min(n-1, int(n*hi/100))])
@@ -496,7 +498,17 @@ class MotorGaussiano(_Motor):
         self.PRIMOS_MIN, self.PRIMOS_MAX = pct(primos_l) if primos_l else (3, 7)
         self.FIB_MIN, self.FIB_MAX = pct(fib_l) if fib_l else (2, 6)
         self.BORDA_MIN, self.BORDA_MAX = pct(borda_l) if borda_l else (7, 11)
-        self.CONSEC_MAX = 5
+        self.CONSEC_MAX = 8  # maior sequência real observada no histórico: 14
+                              # → nunca rejeinar por consecutivos típicos
+
+        # Métrica honesta: % dos sorteios reais que passariam no filtro
+        aprov = 0
+        for i in range(len(matriz)):
+            dez = list(np.where(matriz[i] == 1)[0] + 1)
+            ok, _ = self.filtrar(dez)
+            aprov += 1 if ok else 0
+        self.taxa_aprovacao_historica = (
+            round(aprov / len(matriz), 4) if len(matriz) else 1.0)
 
     def filtrar(self, dez: List[int]) -> Tuple[bool, Dict]:
         ds = set(dez); soma = sum(dez)
@@ -873,6 +885,8 @@ class CerebroIA:
         self.ultima_exec = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         tempo = time.time() - t0
         self.metricas["tempo_treino"] = round(tempo, 2)
+        self.metricas["taxa_aprovacao_filtro"] = getattr(
+            self._gaussiano, "taxa_aprovacao_historica", None)
         cb("✅ 14 módulos + Oráculo treinados em {:.1f}s".format(tempo))
         return {"status": "ok", "modulos": 14, "oraculos": 15, "tempo": round(tempo, 2)}
 
