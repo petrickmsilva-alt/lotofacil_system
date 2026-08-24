@@ -41,12 +41,17 @@
         <div class="form-group">
             <label for="modo">Modo de Geração:</label>
             <select name="modo" id="modo" class="form-control"
-                    style="max-width:200px;">
-                <option value="hibrido">Híbrido (recomendado)</option>
+                    style="max-width:280px;">
+                <option value="cerebro">🧠 O Cérebro Decide (recomendado)</option>
+                <option value="hibrido">Híbrido</option>
                 <option value="combinatorio">Combinatório</option>
                 <option value="monte_carlo">Monte Carlo</option>
                 <option value="sistematico">Sistemático</option>
             </select>
+            <small style="display:block;color:var(--text-muted);margin-top:4px;">
+                🧠 1 cartela = exaustão das 3.268.760 combinações · 2–7 = exaustão
+                diversa · 8+ = wheeling com garantia de 14 se o pool capturar
+            </small>
         </div>
         <div class="form-group">
             <label>Custo estimado:</label>

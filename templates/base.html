@@ -32,8 +32,14 @@
             </li>
             <li>
                 <a href="/cerebro"
-                   class="{% if request.path == '/cerebro' or request.path == '/gerar' %}active{% endif %}">
+                   class="{% if request.path == '/cerebro' %}active{% endif %}">
                     <i class="fas fa-brain"></i> Cérebro IA
+                </a>
+            </li>
+            <li>
+                <a href="/gerar"
+                   class="{% if request.path == '/gerar' %}active{% endif %}">
+                    <i class="fas fa-dice"></i> Gerar Cartelas
                 </a>
             </li>
             <li>
@@ -87,7 +93,7 @@
             <li>
                 <a href="/wheeling"
                    class="{% if request.path == '/wheeling' %}active{% endif %}">
-                    <i class="fas fa-project-diagram"></i> Desdobramento
+                    <i class="fas fa-diagram-project"></i> Wheeling 14/15
                 </a>
             </li>
             <li>
@@ -97,7 +103,7 @@
                 </a>
             </li>
         </ul>
-        
+
         <div class="sidebar-footer">
             <div class="status-indicator">
                 <span class="dot {% if status and status.ia_treinada %}green{% else %}red{% endif %}"></span>

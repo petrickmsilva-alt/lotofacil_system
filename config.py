@@ -48,18 +48,21 @@ GRAVIDADE = 9.78               # São Paulo
 
 # ============================================================
 # PARÂMETROS DOS FILTROS
+# (Recalibrados na auditoria Fase 3 — 2026-08-24, 3.767 concursos:
+#  faixas = percentis p1–p99 REAIS do histórico. As faixas antigas
+#  rejeitavam ~70% dos sorteios reais.)
 # ============================================================
-SOMA_MIN = 185
-SOMA_MAX = 220
-MAX_CONSECUTIVOS = 4
-PRIMOS_MIN = 4
-PRIMOS_MAX = 6
-FIBONACCI_MIN = 3
-FIBONACCI_MAX = 5
-BORDA_MIN = 8
-BORDA_MAX = 10
-REPETICAO_MIN = 8
-REPETICAO_MAX = 10
+SOMA_MIN = 155
+SOMA_MAX = 235
+MAX_CONSECUTIVOS = 14      # maior sequência real observada
+PRIMOS_MIN = 3
+PRIMOS_MAX = 8
+FIBONACCI_MIN = 2
+FIBONACCI_MAX = 7
+BORDA_MIN = 7
+BORDA_MAX = 12
+REPETICAO_MIN = 6
+REPETICAO_MAX = 12
 
 # Quadrantes do volante
 QUADRANTES = {

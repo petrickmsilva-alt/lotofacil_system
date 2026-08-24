@@ -172,3 +172,125 @@ Novo módulo **`core/singularidade.py`** (substitui o arquivo vazio), com métod
 O sistema é um excelente **laboratório** de matemática aplicada e estatística, mas deve ser tratado como tal. A auditoria corrigiu os defeitos estruturais mais graves (aprendizado perverso, backtest fantasma, finanças/auditoria desconectadas) e adicionou uma camada de **medição honesta contra o acaso**.
 
 **A recomendação central:** use o sistema para estudar, explorar e se divertir — nunca como fonte de vantagem financeira. Nenhuma técnica, lógica ou "não-lógica", muda o fato de que 13/14/15 pontos obedecem a probabilidades fixas que nenhum algoritmo supera.
+
+---
+
+# 🔁 FASE 2 (2026-08-24) — Motor de Desdobramento com Cobertura Garantida
+
+Entrega o item 1 do roadmap (§7): **wheeling com garantia condicional exata + contabilidade exata do lote**, integrado ao Cérebro como orquestrador (`pipeline_wheeling`), com página própria (`/wheeling`) e backtest honesto de captura.
+
+## 9. Teorema do fechamento condicional (novo resultado implementado)
+
+Seja um **pool** de N dezenas (16 ≤ N ≤ 25). Uma cartela `c` e um sorteio `d` são 15-subconjuntos do pool; seus complementos `c̄, d̄` têm `s = N − 15` dezenas. Então:
+
+```
+|c ∩ d| = 30 − N + |c̄ ∩ d̄|
+```
+
+**Teorema (família α = 1).** O número mínimo de cartelas que garante **31 − N pontos** (se as 15 sorteadas estiverem no pool) é exatamente:
+
+```
+C(N, 15, 31−N) = ⌈16 / (N−15)⌉
+```
+
+*Prova.* ≥: com `m` cartelas, a união dos complementos tem ≤ `m·s` dezenas; se `m < 16/s` então ≤ 15 dezenas cobertas, e existe um complemento `d̄` de tamanho `s` disjunto de todos — aquele sorteio atinge apenas `30−N` pontos. ≤: particionando 16 dezenas do pool em `⌈16/s⌉` grupos de tamanho `s` (completando o último com dezenas extras), as cartelas `pool ∖ grupo` cobrem tudo: qualquer `d̄` precisa conter uma das 16 primeiras dezenas, que está em algum grupo. ∎
+
+Menu resultante (verificado exaustivamente por código, `tests/test_wheeling.py`):
+
+| Pool | Garantia | Cartelas | Custo | P(pool ⊇ sorteio) |
+|---|---|---|---|---|
+| 16 | **15** | 16 | R$ 56,00 | 1 em 204.298 |
+| **17** | **14** | **8** | **R$ 28,00** | **1 em 24.035** |
+| 18 | 13 | 6 | R$ 21,00 | 1 em 4.006 |
+| 19 | 12 | 4 | R$ 14,00 | 1 em 843 |
+| 20 | 11 | 4 | R$ 14,00 | 1 em 211 |
+| 21 | 10 | 3 | R$ 10,50 | 1 em 60 |
+| 22 | 9 | 3 | R$ 10,50 | 1 em 19 |
+| 23 | 8 | 2 | R$ 7,00 | 1 em 6,7 |
+
+Para garantias acima disso (α ≥ 2, ex.: 14 pontos em pool de 18): **greedy com vizinhanças de Johnson** + verificação exaustiva (N ≤ 20). Medido: pool 18 → garantia 14 com 24 cartelas (limite inferior teórico: 18).
+
+## 10. Contabilidade exata do lote (sem Monte Carlo)
+
+`analisar_lote()` enumera **todos os 3.268.760 sorteios possíveis** (máscaras uint32 + `np.bitwise_count`, universo em cache) e calcula com exatidão:
+
+- distribuição do **melhor acerto do lote** → P(lote ≥ 14), P(15);
+- **prêmio esperado e EV exatos** (fixos 11/12/13 + médias históricas de 14/15);
+- distribuição **condicional à captura** do pool (mínimo garantido verificado).
+
+Exemplo real (pool de 17 escolhido pelos motores, 8 cartelas, R$ 28,00): se o pool capturar → **mínimo 14 pontos garantido**, P(15 | captura) = 5,88%; incondicional → P(≥14) = 1 em 2.983; **EV do lote = −R$ 14,03** (retorno ~50%, como manda a casa).
+
+## 11. Backtest honesto de captura
+
+`/api/cerebro/wheeling/backtest`: walk-forward que re-treina os 14 motores sem cada concurso e mede a interseção pool×sorteio. Baselines teóricos: E[interseção] = 15·N/25 = 10,2 (pool 17) e P(captura) = 1 em 24.035. Resultado inicial (k=3): interseções 10–12, 0 capturas — **consistente com o acaso**, como estabelece a §3. O veredito é exibido ao usuário junto com os números.
+
+## 12. O que mudou no código
+
+| Arquivo | Mudança |
+|---|---|
+| `core/wheeling.py` | **novo** — família exata α=1, greedy Johnson, verificação exaustiva, análise exata do universo, cache do universo 25/15 |
+| `core/cerebro_ia.py` | `pipeline_wheeling()` (orquestração motores→pool→fechamento→análise), `backtest_captura()` (walk-forward), `treinar(matriz_override)` para janelas |
+| `app.py` | página `/wheeling`, `POST /api/cerebro/wheeling` (gera e salva lote tipo `wheeling`), `POST /api/cerebro/wheeling/backtest` |
+| `templates/wheeling.html`, `templates/base.html` | página com menu de fechamentos, gerador, cartelas, números exatos e backtest; item na navegação |
+| `tests/test_wheeling.py` | 11 testes: construção exata N=16–20 verificada exaustivamente, prova de otimalidade N=17 (7 cartelas falham), greedy N=18/14, marginal = hipergeométrica, probabilidades de captura |
+
+`core/covering_designs.py` (órfão, greedy O(C(N,15)²) sem verificação) fica **obsoleto**: `core/wheeling.py` o substitui com garantias verificadas e análise exata. Recomenda-se remoção futura.
+
+**A mesma conclusão da §3 permanece de pé** — agora com números exatos por lote: o wheeling converte *acertar o pool* em *pontos garantidos*, mas não muda a probabilidade de capturar (hipergeométrica pura) nem torna o EV positivo. É a ferramenta certa para quem joga por diversão com orçamento definido: maximiza o que se extrai de cada real **se** o pool acertar, e diz com honestidade matemática o preço disso.
+
+---
+
+# 🔍 FASE 3 (2026-08-24) — Auditoria de módulos, filtros e navegação
+
+Varredura de todos os módulos `core/`, dos filtros combinatórios e do menu/páginas, com correções aplicadas e validadas ao vivo.
+
+## 13. Falhas encontradas e corrigidas
+
+| # | Falha | Evidência | Correção |
+|---|---|---|---|
+| 1 | `core/heavyweight_engine.py` **nem importava** | `NameError: Tuple` — módulo morto desde a criação | Reescrito (v11): import corrigido, reaproveita o cache de máscaras do `wheeling` (13 MB em vez de matriz própria de 82 MB), sem torch. **3.268.760 combinações avaliadas em 0,46 s** |
+| 2 | Filtro ativo (`MotorGaussiano`, p3–p97) rejeitava **33,7%** dos sorteios reais | 2.499/3.767 concursos históricos passavam | Recalibrado para p1–p99 + `CONSEC_MAX=8` → **93,9% de aprovação**; nova métrica `taxa_aprovacao_filtro` exposta após treino |
+| 3 | Faixas estáticas do `config.py` rejeitavam **69,9%** dos sorteios reais | ex.: SOMA 185–220 vs. real 133–257 | Recalibradas para os p1–p99 medidos (soma 155–235, primos 3–8, fib 2–7, borda 7–12, repetição 6–12, consecutivos 14) |
+| 4 | `/gerar` era rota-fantasma | GET redirecionava para `/cerebro`; `gerar.html` (169 linhas) nunca renderizado; sem item no menu | Página real server-rendered (form → geração → cartelas + métricas) e item **"Gerar Cartelas"** adicionado ao menu |
+| 5 | Módulo financeiro desconectado | `registrar_resultado_financeiro()` nunca chamado; tabela com 0 linhas desde a criação | Hook `_registrar_financeiro` nas rotas de conferência (com guarda anti-duplicata e rateio real da Caixa). Primeiro registro real: concurso 3766 — 56 cartelas, custo R$ 196, **lucro −R$ 196** |
+| 6 | 4 módulos órfãos exportados sem uso | `FiltrosGaussianos`, `MarkovEngine`, `FisicaQuantica`, `CoveringDesigns` nunca instanciados; duplicados por motores internos e pelo `wheeling` | Removidos (junto com as linhas de export no `core/__init__.py`) — superseded |
+| 7 | `MotorExaustaoUniverso` nunca integrado à UI | classe morta | Endpoint `POST /api/analise/exaustao` + card "Exaustão do Universo" na página Análise (com aviso de honestidade) |
+
+## 14. O que foi verificado e passou
+
+- **Imports**: 10/10 módulos `core/` importam limpo após a limpeza (antes: 11/12, com `heavyweight` quebrado).
+- **Menu × rotas**: os 12 itens do menu apontam para rotas existentes; 12/12 páginas respondem 200 (`/gerar` agora incluída). Todos os endpoints chamados por `fetch` nos templates/JS existem.
+- **Conferência**: fluxo `conferir_concurso`/`conferir_lote` validado com dados reais (56 cartelas do 3766, prêmios oficiais da Caixa, 0 premiadas — registrado com fidelidade).
+- **Regressão**: suíte do wheeling 11/11 após todas as mudanças; pipeline wheeling e backtest de captura seguem operando.
+
+## 15. Nota honesta sobre os filtros
+
+Recalibrar filtros **não aumenta a probabilidade de acerto** — toda combinação de 15 dezenas tem a mesma distribuição hipergeométrica. O que a correção resolve: (a) o gerador não desperdiça ciclos nem cai no "fallback" por rejeição excessiva; (b) as cartelas geradas deixam de se concentrar num estereótipo atípico que excluía 1/3 dos sorteios reais; (c) a taxa de aprovação agora é medida e exibida em vez de implícita.
+
+---
+
+# 🧠 FASE 4 (2026-08-24) — O Cérebro IA como motor único do sistema
+
+`CerebroIA.gerar_otimas(n)` — um único comando, o Cérebro faz TUDO: treina os 14 motores, combina os vetores, escolhe a estratégia e entrega as cartelas com contabilidade exata sobre o universo completo.
+
+## 17. Estratégia automática por quantidade
+
+| Pedido | Estratégia | O que o Cérebro faz |
+|---|---|---|
+| **1 cartela** | `exaustao-unica` | Pontua **todas as 3.268.760 combinações** contra o vetor combinado e entrega a melhor que existe (aprovada no filtro gaussiano) |
+| 2–7 | `exaustao-diversa` | As n melhores com sobreposição ≤ 13 dezenas entre si (cobertura espalhada sem abandonar o critério dos motores) |
+| **≥ 8** | `wheeling-garantia-14` | Pool elite de 17 fechado em 8 cartelas com **garantia 14 se capturar** (ótimo provado) + excedente por exaustão |
+
+Integrações: `POST /api/cerebro/otimas` · página `/gerar` com modo **"🧠 O Cérebro Decide"** (padrão) · lote salvo como `cerebro_otimas`.
+
+## 18. Números exatos por estratégia (medidos sobre o universo)
+
+| n | Custo | P(lote ≥ 14) | Garantia condicional |
+|---|---|---|---|
+| 1 | R$ 3,50 | 1 em 21.647 | — |
+| 3 | R$ 10,50 | 1 em 7.412 | — |
+| 8 | R$ 28,00 | 1 em 2.983 | **14 se pool capturar (1 em 24.035)** |
+
+Validação: 10/10 testes (`tests/test_otimas.py`) — probabilidades da cartela única conferem ao exato hipergeométrico (P(15) = 1/3.268.760), sobreposições ≤ 13 na diversa, garantia verificada na wheeling.
+
+**A verdade continua a mesma e o sistema segue dizendo:** com uma cartela, 14 pontos é 1 em 21.647 e 15 pontos é 1 em 3.268.760 — qualquer que seja a análise. O que o Cérebro agora garante é que a escolha é a **melhor definível** pelos critérios dos motores (exaustiva, não amostral) e, quando você aceita jogar 8+, que **se** o pool de 17 capturar as sorteadas, **14 pontos são garantidos por construção matemática**.

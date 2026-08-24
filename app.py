@@ -350,11 +350,99 @@ def cerebro_page():
     )
 
 
+@app.route("/api/cerebro/otimas", methods=["POST"])
+def api_cerebro_otimas():
+    """A DECISÃO do Cérebro: análise completa → estratégia automática →
+    cartelas (1 = exaustão do universo; 2–7 = exaustão diversa;
+    ≥8 = wheeling com garantia 14) + contabilidade exata do lote."""
+    try:
+        dados = request.get_json() or {}
+        n = int(dados.get("n", 1))
+        salvar = bool(dados.get("salvar", False))
+        if not (1 <= n <= 100):
+            return jsonify({"status": "erro", "msg": "n entre 1 e 100"})
+        res = cerebro.gerar_otimas(n_cartelas=n)
+        salvos = 0
+        if salvar and res["n_cartelas"] > 0:
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+            salvos = _salvar_cartelas_banco(
+                res["cartelas"], concurso,
+                tipo="cerebro_otimas", modo=res["estrategia"],
+                grupo_elite=res["pool_elite"],
+                cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
+            )
+        return jsonify({"status": "ok", "resultado": res, "salvas": salvos})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
 @app.route("/gerar", methods=["GET", "POST"])
 def gerar():
+    """Geração rápida de cartelas (página server-rendered, auditada Fase 3:
+    antes era rota-fantasma que só redirecionava para /cerebro)."""
     if request.method == "POST":
-        return cerebro_page()
-    return redirect(url_for("cerebro_page"))
+        try:
+            quantidade = int(request.form.get("quantidade", 10))
+            modo = request.form.get("modo", "hibrido")
+            quantidade = max(1, min(50, quantidade))
+            t0 = time.time()
+            if modo == "cerebro":
+                # O CÉREBRO DECIDE: estratégia automática pela quantidade
+                res = cerebro.gerar_otimas(n_cartelas=quantidade)
+                concurso = (db.get_ultimo_concurso() or 0) + 1
+                salvos = _salvar_cartelas_banco(
+                    res["cartelas"], concurso,
+                    tipo="cerebro_otimas", modo=res["estrategia"],
+                    grupo_elite=res["pool_elite"],
+                    cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
+                )
+                a = res["analise"]
+                extra = ""
+                if res["estrategia"] == "wheeling-garantia-14":
+                    extra = (" · garantia 14 se o pool capturar (1 em {:,})"
+                             .format(int(res["um_em_captura"]))
+                             .replace(",", "."))
+                msg = ("✅ Estratégia {} · {} cartela(s) salva(s) para o "
+                       "concurso {} · P(lote≥14) = {:.6f}%{} · EV R$ {:.2f}"
+                       .format(res["estrategia"], salvos, concurso,
+                               100 * a["p_melhor_14_mais"], extra,
+                               a["ev_lote"]))
+                metricas = {
+                    "tempo": res["tempo"],
+                    "salvos": salvos,
+                    "cobertura_13": a["p_melhor_14_mais"],
+                    "custo": res["custo"],
+                    "grupo_elite": res["pool_elite"],
+                }
+                return render_template(
+                    "gerar.html", metricas=metricas, cartelas=res["cartelas"],
+                    msg=msg,
+                )
+            cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+            salvos = _salvar_cartelas_banco(
+                cartelas, concurso, tipo="multiplas", modo=modo,
+                grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+                cobertura=cerebro.metricas.get("cobertura_13", 0),
+            )
+            metricas = {
+                "tempo": round(time.time() - t0, 1),
+                "salvos": salvos,
+                "cobertura_13": cerebro.metricas.get("cobertura_13", 0),
+                "custo": round(salvos * VALOR_APOSTA, 2),
+                "grupo_elite": cerebro.decisoes.get("grupo_elite", []),
+            }
+            return render_template(
+                "gerar.html", metricas=metricas, cartelas=cartelas,
+                msg="✅ {} cartela(s) gerada(s) e salva(s) para o concurso {}"
+                    .format(salvos, concurso),
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return render_template("gerar.html",
+                                   msg="Erro ao gerar: {}".format(e))
+    return render_template("gerar.html")
 
 
 @app.route("/cartela_do_dia")
@@ -419,6 +507,32 @@ def financeiro_page():
         "financeiro.html",
         resumo = financeiro.get_resumo_geral(),
     )
+
+
+@app.route("/api/analise/exaustao", methods=["POST"])
+def api_analise_exaustao():
+    """Exaustão do universo: pontua TODAS as 3.268.760 combinações contra
+    o vetor combinado dos motores (Motor Heavyweight revivido na Fase 3)."""
+    try:
+        from core.heavyweight_engine import MotorExaustaoUniverso
+        dados = request.get_json() or {}
+        top_n = max(1, min(int(dados.get("top_n", 10)), 100))
+        if not cerebro.treinado:
+            cerebro.treinar()
+        vetor = cerebro._vetor_combinado()
+        motor = MotorExaustaoUniverso()
+        t0 = time.time()
+        top = motor.top_n(vetor, top_n)
+        return jsonify({
+            "status": "ok",
+            "total": len(motor.universo),
+            "tempo": round(time.time() - t0, 2),
+            "concursos": cerebro.n,
+            "top": top,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
 
 
 @app.route("/analise")
@@ -493,157 +607,6 @@ def ia_auditoria():
 @app.route("/singularidade")
 def singularidade_page():
     return render_template("singularidade.html", status=status_sistema)
-
-
-@app.route("/wheeling")
-def wheeling_page():
-    return render_template("wheeling.html", status=status_sistema)
-
-# ============================================================
-# REGISTRO DE AVALIAÇÃO DO DESDOBRAMENTO (Passo 7)
-# ============================================================
-
-def _criar_tabela_avaliacao():
-    conn = db.get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS avaliacao_desdobramento (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            concurso INTEGER,
-            data TEXT,
-            grupo TEXT,
-            v INTEGER,
-            t INTEGER,
-            acertou_grupo INTEGER DEFAULT 0,
-            dezenas_escaparam INTEGER DEFAULT 0,
-            dezenas_fora TEXT,
-            melhor_acerto INTEGER DEFAULT 0,
-            observacao TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-
-@app.route("/avaliacao")
-def avaliacao_page():
-    return render_template("avaliacao.html", status=status_sistema)
-
-
-@app.route("/api/avaliacao", methods=["POST"])
-def api_avaliacao_registrar():
-    """
-    Registra a avaliação de um desdobramento para um concurso.
-    O sistema busca o resultado real no banco e calcula automaticamente
-    se o grupo acertou (as 15 dentro) e quantas dezenas escaparam.
-    """
-    try:
-        _criar_tabela_avaliacao()
-        dados = request.get_json() or {}
-        concurso = int(dados.get("concurso", 0))
-        grupo = sorted({int(x) for x in dados.get("grupo", []) if x not in (None, "")})
-        t = int(dados.get("t", 13))
-        observacao = str(dados.get("observacao", ""))
-
-        if concurso < 1 or not grupo:
-            return jsonify({"status": "erro", "msg": "Informe o concurso e o grupo de dezenas."})
-
-        res = db.get_resultado_concurso(concurso)
-        if not res:
-            return jsonify({"status": "erro",
-                            "msg": "Concurso {} não está no banco. Atualize os dados primeiro.".format(concurso)})
-
-        sorteadas = [int(res["d{}".format(i)]) for i in range(1, 16)]
-        gset = set(grupo)
-        sset = set(sorteadas)
-        acertos = len(gset & sset)
-        fora = sorted(sset - gset)
-        escaparam = len(fora)
-        acertou = 1 if escaparam == 0 else 0
-        melhor_acerto = 15 - escaparam
-
-        conn = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO avaliacao_desdobramento
-            (concurso, data, grupo, v, t, acertou_grupo, dezenas_escaparam,
-             dezenas_fora, melhor_acerto, observacao)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (
-            concurso,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            json.dumps(grupo),
-            len(grupo),
-            t,
-            acertou,
-            escaparam,
-            json.dumps(fora),
-            melhor_acerto,
-            observacao,
-        ))
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            "status": "ok",
-            "registro": {
-                "concurso": concurso,
-                "grupo": grupo,
-                "sorteadas": sorteadas,
-                "acertos": acertos,
-                "acertou_grupo": bool(acertou),
-                "dezenas_escaparam": escaparam,
-                "dezenas_fora": fora,
-                "melhor_acerto": melhor_acerto,
-            },
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
-
-
-@app.route("/api/avaliacao", methods=["GET"])
-def api_avaliacao_listar():
-    """Lista as avaliações + estatísticas agregadas (taxa de acerto do grupo)."""
-    try:
-        _criar_tabela_avaliacao()
-        conn = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM avaliacao_desdobramento ORDER BY id DESC LIMIT 200")
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-
-        registros = []
-        for r in rows:
-            try:
-                r["grupo"] = json.loads(r.get("grupo") or "[]")
-            except Exception:
-                r["grupo"] = []
-            try:
-                r["dezenas_fora"] = json.loads(r.get("dezenas_fora") or "[]")
-            except Exception:
-                r["dezenas_fora"] = []
-            registros.append(r)
-
-        total = len(registros)
-        acertos = sum(1 for r in registros if r.get("acertou_grupo"))
-        taxa = round(acertos / total * 100, 1) if total else 0.0
-        escapadas = [r.get("dezenas_escaparam", 0) for r in registros]
-        media_escap = round(float(np.mean(escapadas)), 2) if escapadas else 0.0
-
-        return jsonify({
-            "status": "ok",
-            "registros": registros,
-            "stats": {
-                "total": total,
-                "acertos_grupo": acertos,
-                "taxa_acerto_pct": taxa,
-                "media_dezenas_escaparam": media_escap,
-            },
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
 
 
 # ============================================================
@@ -721,89 +684,212 @@ def api_singularidade_backtest():
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(e)})
 
+
 # ============================================================
-# API — DESDOBRAMENTO COM COBERTURA GARANTIDA (WHEELING)
+# PÁGINA + API — DESDOBRAMENTO COM COBERTURA GARANTIDA (WHEELING)
 # ============================================================
 
-def _vetor_reducao():
-    """
-    Vetor de 25 pontuações para montar a redução (grupo fechado).
-    Usa o consenso dos 14 motores + oráculo; treina sob demanda se preciso.
-    """
+@app.route("/wheeling")
+def wheeling_page():
+    from core.wheeling import MotorWheeling
+    return render_template(
+        "wheeling.html",
+        status=status_sistema,
+        menu=MotorWheeling.menu_exato(),
+    )
+
+
+@app.route("/api/cerebro/wheeling", methods=["POST"])
+def api_cerebro_wheeling():
+    """Pipeline completo: motores → pool → fechamento c/ garantia →
+    análise exata. Corpo: {n_pool, garantia, max_cartelas, orcamento,
+    salvar, limite_segundos}."""
     try:
-        if not cerebro.treinado and cerebro.n >= 50:
-            cerebro.treinar()
-        if cerebro.treinado:
-            return cerebro._vetor_combinado()
-    except Exception:
-        pass
-    # fallback: frequência global normalizada
-    matriz, _ = cerebro._ingestor.carregar_matriz()
-    freq = np.sum(matriz, axis=0) if len(matriz) else np.ones(25)
-    s = freq.sum()
-    return (freq / s) if s > 0 else np.ones(25) / 25
+        dados = request.get_json() or {}
+        n_pool = int(dados.get("n_pool", 17))
+        garantia = dados.get("garantia", None)
+        max_cartelas = int(dados.get("max_cartelas", 40))
+        salvar = bool(dados.get("salvar", False))
+        limite = float(dados.get("limite_segundos", 25))
 
+        res = cerebro.pipeline_wheeling(
+            n_pool=n_pool, garantia=int(garantia) if garantia else None,
+            max_cartelas=max_cartelas,
+            orcamento=dados.get("orcamento", None),
+            limite_segundos=limite,
+        )
 
-@app.route("/api/wheeling", methods=["POST"])
-def api_wheeling():
-    """
-    Gera desdobramento com cobertura garantida C(v,15,t).
-    Corpo: { n_dezenas (17-20), t (13|14), max_tickets, n_sim }
-    """
-    try:
-        from core.wheeling import WheelEngine, escolher_reducao
-
-        dados     = request.get_json() or {}
-        n_dezenas = int(dados.get("n_dezenas", 18))
-        t         = int(dados.get("t", 13))
-        max_tick  = int(dados.get("max_tickets", 0)) or None
-        n_sim     = int(dados.get("n_sim", 20000))
-
-        if not (17 <= n_dezenas <= 20):
-            return jsonify({"status": "erro", "msg": "n_dezenas deve estar entre 17 e 20"})
-        if t not in (13, 14):
-            return jsonify({"status": "erro", "msg": "t deve ser 13 ou 14"})
-        if t == 14 and n_dezenas > 18:
-            return jsonify({"status": "erro", "msg": "t=14 com v>18 gera muitos jogos; use v<=18"})
-
-        # 1. Monta a redução a partir do vetor combinado (14 motores + oráculo)
-        vetor = _vetor_reducao()
-        universo = escolher_reducao(vetor, n_dezenas)
-
-        # 2. Gera o design de cobertura
-        eng = WheelEngine(universo, t=t)
-        rel = eng.relatorio(max_tickets=max_tick, n_sim=n_sim)
-
-        # 3. (Opcional) Salva os jogos como um lote para conferência futura
         salvos = 0
-        if dados.get("salvar"):
-            proximo = (db.get_ultimo_concurso() or 0) + 1
-            cartelas_fmt = [{"dezenas": tk, "bitmask": 0,
-                             "score_total": float(t)} for tk in rel["tickets"]]
+        lote_id = None
+        if salvar and res["n_cartelas"] > 0:
+            concurso = (db.get_ultimo_concurso() or 0) + 1
             salvos = _salvar_cartelas_banco(
-                cartelas_fmt, proximo, tipo="wheel",
-                modo="cobertura_{}".format(t),
-                grupo_elite=universo,
-                cobertura=float(rel["cobertura"]),
+                res["cartelas"], concurso,
+                tipo="wheeling", modo=res["metodo"],
+                grupo_elite=res["pool"],
+                cobertura=100.0 * (res["analise"]["p_melhor_14_mais"]),
             )
+            lote_id = "wheeling_{}".format(concurso)
 
         return jsonify({
             "status": "ok",
-            "reducao": universo,
-            "n_dezenas": n_dezenas,
-            "t": t,
-            "n_tickets": rel["n_tickets"],
-            "tickets": rel["tickets"],
-            "cobertura": rel["cobertura"],
-            "garantia": rel["garantia"],
-            "custo_total_R$": rel["custo_total_R$"],
-            "premio_garantido_R$": rel["premio_garantido_R$"],
-            "p_reducao_certa": rel["p_reducao_certa"],
-            "p_reducao_1_em": rel["p_reducao_1_em"],
-            "ev_condicional_R$": rel["ev_condicional"],
-            "ev_incondicional_R$": rel["ev_incondicional_R$"],
-            "distribuicao_acertos": rel["distribuicao_acertos"],
-            "salvos": salvos,
+            "resultado": res,
+            "salvas": salvos,
+            "concurso": (db.get_ultimo_concurso() or 0) + 1,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/cerebro/wheeling/backtest", methods=["POST"])
+def api_cerebro_wheeling_backtest():
+    """Walk-forward honesto da taxa de captura do pool."""
+    try:
+        dados = request.get_json() or {}
+        k = int(dados.get("k", 10))
+        n_pool = int(dados.get("n_pool", 17))
+        if not (1 <= k <= 25):
+            return jsonify({"status": "erro", "msg": "k entre 1 e 25"})
+        bt = cerebro.backtest_captura(k=k, n_pool=n_pool)
+        return jsonify({"status": "ok", "backtest": bt})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+# ============================================================
+# AVALIAÇÃO DO DESDOBRAMENTO (página própria da main, preservada)
+# ============================================================
+
+def _criar_tabela_avaliacao():
+    conn = db.get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS avaliacao_desdobramento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            concurso INTEGER,
+            data TEXT,
+            grupo TEXT,
+            v INTEGER,
+            t INTEGER,
+            acertou_grupo INTEGER DEFAULT 0,
+            dezenas_escaparam INTEGER DEFAULT 0,
+            dezenas_fora TEXT,
+            melhor_acerto INTEGER DEFAULT 0,
+            observacao TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+@app.route("/avaliacao")
+def avaliacao_page():
+    return render_template("avaliacao.html", status=status_sistema)
+
+
+@app.route("/api/avaliacao", methods=["POST"])
+def api_avaliacao_registrar():
+    """
+    Registra a avaliação de um desdobramento para um concurso.
+    Busca o resultado real no banco e calcula automaticamente
+    se o grupo acertou (as 15 dentro) e quantas dezenas escaparam.
+    """
+    try:
+        _criar_tabela_avaliacao()
+        dados = request.get_json() or {}
+        concurso = int(dados.get("concurso", 0))
+        grupo = sorted({int(x) for x in dados.get("grupo", []) if x not in (None, "")})
+        t = int(dados.get("t", 13))
+        observacao = str(dados.get("observacao", ""))
+
+        if concurso < 1 or not grupo:
+            return jsonify({"status": "erro",
+                            "msg": "Informe o concurso e o grupo de dezenas."})
+
+        res = db.get_resultado_concurso(concurso)
+        if not res:
+            return jsonify({"status": "erro",
+                            "msg": "Concurso {} não está no banco. Atualize os dados primeiro."
+                                   .format(concurso)})
+
+        sorteadas = [int(res["d{}".format(i)]) for i in range(1, 16)]
+        gset, sset = set(grupo), set(sorteadas)
+        acertos = len(gset & sset)
+        fora = sorted(sset - gset)
+        escaparam = len(fora)
+        acertou = 1 if escaparam == 0 else 0
+        melhor_acerto = 15 - escaparam
+
+        conn = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO avaliacao_desdobramento
+            (concurso, data, grupo, v, t, acertou_grupo, dezenas_escaparam,
+             dezenas_fora, melhor_acerto, observacao)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (
+            concurso, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            json.dumps(grupo), len(grupo), t, acertou, escaparam,
+            json.dumps(fora), melhor_acerto, observacao,
+        ))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "status": "ok",
+            "registro": {
+                "concurso": concurso, "grupo": grupo, "sorteadas": sorteadas,
+                "acertos": acertos, "acertou_grupo": bool(acertou),
+                "dezenas_escaparam": escaparam, "dezenas_fora": fora,
+                "melhor_acerto": melhor_acerto,
+            },
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/avaliacao", methods=["GET"])
+def api_avaliacao_listar():
+    """Lista as avaliações + estatísticas agregadas (taxa de acerto do grupo)."""
+    try:
+        _criar_tabela_avaliacao()
+        conn = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM avaliacao_desdobramento "
+                       "ORDER BY id DESC LIMIT 200")
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        registros = []
+        for r in rows:
+            try:
+                r["grupo"] = json.loads(r.get("grupo") or "[]")
+            except Exception:
+                r["grupo"] = []
+            try:
+                r["dezenas_fora"] = json.loads(r.get("dezenas_fora") or "[]")
+            except Exception:
+                r["dezenas_fora"] = []
+            registros.append(r)
+
+        total = len(registros)
+        acertos = sum(1 for r in registros if r.get("acertou_grupo"))
+        taxa = round(acertos / total * 100, 1) if total else 0.0
+        escapadas = [r.get("dezenas_escaparam", 0) for r in registros]
+        media_escap = round(float(np.mean(escapadas)), 2) if escapadas else 0.0
+
+        return jsonify({
+            "status": "ok",
+            "registros": registros,
+            "stats": {
+                "total": total,
+                "acertos_grupo": acertos,
+                "taxa_acerto_pct": taxa,
+                "media_dezenas_escaparam": media_escap,
+            },
         })
     except Exception as e:
         traceback.print_exc()
@@ -1002,10 +1088,54 @@ def api_cartela_do_dia():
 # API — CONFERÊNCIA E LOTES
 # ============================================================
 
+# ============================================================
+# HELPER: Hook financeiro pós-conferência (auditoria Fase 3)
+# ============================================================
+
+def _registrar_financeiro(resultado_conf):
+    """Alimenta o módulo financeiro após uma conferência bem-sucedida.
+    Antes da Fase 3 a tabela `financeiro` ficava eternamente vazia
+    porque `registrar_resultado_financeiro` nunca era chamado."""
+    try:
+        if not isinstance(resultado_conf, dict):
+            return None
+        if resultado_conf.get("status") != "ok":
+            return None
+        cartelas = resultado_conf.get("cartelas", [])
+        concurso = int(resultado_conf.get("concurso", 0))
+        if not cartelas or concurso < 1:
+            return None
+
+        # evita duplicar registro no re-conferir do mesmo concurso
+        conn = db.get_conn()
+        ja_tem = conn.execute(
+            "SELECT COUNT(*) FROM financeiro WHERE concurso = ?",
+            (concurso,)
+        ).fetchone()[0]
+        conn.close()
+        if ja_tem:
+            return None
+
+        premios = resultado_conf.get("premios_oficiais") or {}
+        fin = financeiro.registrar_resultado_financeiro(
+            concurso, cartelas,
+            valor_14=float(premios.get(14) or 0) or None,
+            valor_15=float(premios.get(15) or 0) or None,
+        )
+        print("[FINANCEIRO] concurso {} registrado: lucro R$ {:.2f}"
+              .format(concurso, fin.get("lucro", 0)))
+        return fin
+    except Exception as e:
+        print("[FINANCEIRO] erro: {}".format(e))
+        return None
+
+
 @app.route("/api/conferir", methods=["POST"])
 def api_conferir():
     try:
         resultados = conferencia.conferir_todas_pendentes()
+        for r in resultados:
+            _registrar_financeiro(r)
         return jsonify({"status": "ok", "conferidas": len(resultados)})
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
@@ -1018,7 +1148,11 @@ def api_conferir_concurso():
         concurso = int(dados.get("concurso", 0))
         if concurso < 1:
             return jsonify({"status": "erro", "msg": "Concurso inválido"})
-        return jsonify(conferencia.conferir_concurso(concurso))
+        res = conferencia.conferir_concurso(concurso)
+        fin = _registrar_financeiro(res)
+        if fin:
+            res["financeiro"] = fin
+        return jsonify(res)
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(e)})
@@ -1066,7 +1200,11 @@ def api_conferir_lote():
     lote_id = dados.get("lote_id", "")
     if not lote_id:
         return jsonify({"status": "erro", "msg": "Lote ID inválido"})
-    return jsonify(conferencia.conferir_lote(lote_id))
+    res = conferencia.conferir_lote(lote_id)
+    fin = _registrar_financeiro(res)
+    if fin:
+        res["financeiro"] = fin
+    return jsonify(res)
 
 
 @app.route("/api/apagar_cartelas_concurso", methods=["POST"])
