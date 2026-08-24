@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Wheeling — Desdobramento com Cobertura Garantida{% endblock %}
+{% block page_title %}Desdobramento Wheeling 14/15{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="panel-header">
+        <h2><i class="fas fa-diagram-project"></i> Fechamentos com Garantia Matemática</h2>
+        <p class="muted">
+            O Cérebro seleciona um <strong>pool de N dezenas</strong> e o motor de wheeling gera o
+            menor conjunto de cartelas que <strong>garante 14 pontos se as 15 sorteadas
+            estiverem no pool</strong>. Nenhuma previsão: garantia condicional exata,
+            verificada combinação a combinação.
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Menu dos fechamentos exatos — C(N,15,31−N) = ⌈16/(N−15)⌉ cartelas</h3>
+        <p class="muted">
+            Ótimo provado (ver AUDITORIA.md). A garantia vale <em>se o pool capturar
+            as 15 dezenas</em> — a coluna "captura" mostra essa probabilidade, que é
+            hipergeométrica e indepen­dente de qualquer motor.
+        </p>
+        <table class="tabela" style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="text-align:left;">
+                    <th>Pool</th><th>Garantia</th><th>Cartelas</th>
+                    <th>Custo</th><th>P(pool ⊇ sorteio)</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for linha in menu %}
+                <tr>
+                    <td><strong>{{ linha.n_pool }}</strong> dezenas</td>
+                    <td>{{ linha.garantia }} pontos</td>
+                    <td>{{ linha.cartelas }}</td>
+                    <td>R$ {{ "%.2f"|format(linha.custo) }}</td>
+                    <td>1 em {{ "{:,.0f}".format(linha.um_em) }}</td>
+                    <td><button class="btn" onclick="preencherForm({{ linha.n_pool }}, {{ linha.garantia }})">usar</button></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <h3>Gerar fechamento</h3>
+            <div class="inline-form">
+                <label>Pool (N)</label>
+                <input type="number" id="n-pool" value="17" min="16" max="23">
+            </div>
+            <div class="inline-form">
+                <label>Garantia</label>
+                <input type="number" id="garantia" value="14" min="8" max="15">
+                <span class="muted">(padrão do N: 31−N; acima disso usa greedy)</span>
+            </div>
+            <div class="inline-form">
+                <label>Máx. cartelas</label>
+                <input type="number" id="max-cartelas" value="40" min="1" max="200">
+                <label>Orçamento R$</label>
+                <input type="number" id="orcamento" placeholder="opcional" min="0" step="0.5">
+            </div>
+            <div class="inline-form">
+                <label><input type="checkbox" id="salvar"> salvar no lote</label>
+                <button class="btn" id="btn-gerar" onclick="gerarWheeling()">
+                    <i class="fas fa-play"></i> Gerar
+                </button>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Backtest honesto da captura do pool</h3>
+            <p class="muted">
+                Walk-forward: re-treina o Cérebro sem cada concurso passado e mede
+                quantas dezenas do sorteio o pool teria capturado. Baseline teórico:
+                interseção média 15·N/25.
+            </p>
+            <div class="inline-form">
+                <label>Janelas</label>
+                <input type="number" id="bt-k" value="10" min="1" max="25">
+                <button class="btn" id="btn-bt" onclick="rodarBacktest()">
+                    <i class="fas fa-play"></i> Executar
+                </button>
+            </div>
+            <div id="bt-resultado" class="mt"></div>
+        </div>
+    </div>
+
+    <div id="resultado" class="mt"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function preencherForm(n, t) {
+    document.getElementById('n-pool').value = n;
+    document.getElementById('garantia').value = t;
+}
+
+function fmtPct(p, dec) {
+    return (100 * p).toFixed(dec === undefined ? 6 : dec) + '%';
+}
+
+function fmtUmEm(p) {
+    if (!p || p <= 0) return '—';
+    return '1 em ' + (1 / p).toLocaleString('pt-BR',
+        {maximumFractionDigits: 1});
+}
+
+function cartelaHTML(c) {
+    const nums = c.dezenas.map(d =>
+        '<span class="dezena">' + String(d).padStart(2, '0') + '</span>'
+    ).join(' ');
+    return '<div class="cartela-item">' + nums + '</div>';
+}
+
+async function gerarWheeling() {
+    const btn = document.getElementById('btn-gerar');
+    const div = document.getElementById('resultado');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+    div.innerHTML = '<p class="muted">Treinando motores, selecionando pool e ' +
+        'fechando combinações (análise exata sobre 3.268.760 sorteios)...</p>';
+    try {
+        const corpo = {
+            n_pool: parseInt(document.getElementById('n-pool').value),
+            garantia: parseInt(document.getElementById('garantia').value),
+            max_cartelas: parseInt(document.getElementById('max-cartelas').value),
+            salvar: document.getElementById('salvar').checked,
+        };
+        const orc = parseFloat(document.getElementById('orcamento').value);
+        if (!isNaN(orc) && orc > 0) corpo.orcamento = orc;
+
+        const r = await fetch('/api/cerebro/wheeling', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(corpo)
+        });
+        const j = await r.json();
+        if (j.status !== 'ok') throw new Error(j.msg);
+        renderResultado(j.resultado, j.salvas, j.concurso);
+    } catch (e) {
+        div.innerHTML = '<p class="erro">Erro: ' + e.message + '</p>';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Gerar';
+    }
+}
+
+function renderResultado(res, salvas, concurso) {
+    const a = res.analise;
+    const g = res.garantia_verificada;
+    const badge = g
+        ? '<span class="badge-ok">GARANTIA VERIFICADA ✓</span>'
+        : '<span class="badge-parc">COBERTURA PARCIAL (' + res.cobertura_pct + '%)</span>';
+    let html = '<div class="card">';
+    html += '<h3>Resultado — ' + res.n_cartelas + ' cartelas · garantia ' +
+            res.garantia + ' pontos · ' + badge + '</h3>';
+    html += '<p class="muted">Pool (' + res.pool.length + ' dezenas): <strong>' +
+            res.pool.join(', ') + '</strong> · método: ' + res.metodo +
+            ' · tempo: ' + res.tempo + 's' +
+            (salvas ? ' · <strong>' + salvas + ' cartelas salvas</strong> (concurso ' + concurso + ')' : '') +
+            '</p>';
+
+    html += '<div class="grid-2">';
+    html += '<div><h4>Se o pool capturar (P = ' + fmtUmEm(res.p_captura) + ')</h4><ul>';
+    html += '<li>Mínimo de acertos garantido: <strong>' +
+            (a.cond_min_acertos !== undefined ? a.cond_min_acertos : '—') + ' pontos</strong></li>';
+    html += '<li>P(14+ | captura) = ' + fmtPct(a.cond_p_14_mais || 0, 2) + '</li>';
+    html += '<li>P(15 | captura) = ' + fmtPct(a.cond_p_15 || 0, 2) + '</li>';
+    html += '</ul></div>';
+    html += '<div><h4>Números exatos do lote (incondicional)</h4><ul>';
+    html += '<li>Custo: R$ ' + a.custo.toFixed(2) + '</li>';
+    html += '<li>Prêmio esperado: R$ ' + a.premio_esperado.toFixed(4) + '</li>';
+    html += '<li>EV do lote: <span class="neg">R$ ' + a.ev_lote.toFixed(2) +
+            '</span> (retorno ' + a.retorno_pct + '%)</li>';
+    html += '<li>P(melhor cartela ≥ 14) = ' + fmtPct(a.p_melhor_14_mais) +
+            ' (' + fmtUmEm(a.p_melhor_14_mais) + ')</li>';
+    html += '<li>P(15 no lote) = ' + fmtPct(a.p_melhor_15) + '</li>';
+    html += '</ul></div>';
+    html += '</div>';
+
+    html += '<h4>Cartelas</h4><div class="grid-cartelas">';
+    res.cartelas.forEach(c => { html += cartelaHTML(c); });
+    html += '</div></div>';
+    document.getElementById('resultado').innerHTML = html;
+}
+
+async function rodarBacktest() {
+    const btn = document.getElementById('btn-bt');
+    const div = document.getElementById('bt-resultado');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+    div.innerHTML = '<p class="muted">Re-treinando por janela (≈1,5s cada)...</p>';
+    try {
+        const r = await fetch('/api/cerebro/wheeling/backtest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                k: parseInt(document.getElementById('bt-k').value),
+                n_pool: parseInt(document.getElementById('n-pool').value)
+            })
+        });
+        const j = await r.json();
+        if (j.status !== 'ok') throw new Error(j.msg);
+        const b = j.backtest;
+        let html = '<p>Interseção média <strong>' + b.media_intersecao +
+                   '</strong> vs baseline ' + b.baseline_intersecao +
+                   ' · capturas: <strong>' + b.capturas + '/' + b.k +
+                   '</strong> (baseline 1 em ' + b.baseline_um_em.toLocaleString('pt-BR') + ')</p>';
+        html += '<p class="muted">' + b.veredito + '</p>';
+        html += '<table class="tabela" style="width:100%"><tr><th>Concurso</th><th>Dezenas no pool</th><th>Capturou?</th></tr>';
+        b.detalhes.forEach(d => {
+            html += '<tr><td>' + d.concurso + '</td><td>' + d.intersecao +
+                    '/15</td><td>' + (d.capturou ? '✓ SIM' : '—') + '</td></tr>';
+        });
+        html += '</table>';
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="erro">Erro: ' + e.message + '</p>';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Executar';
+    }
+}
+</script>
+<style>
+.grid-cartelas { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+.cartela-item { background:var(--bg-card,#1e2433); border-radius:8px; padding:8px 10px; }
+.cartela-item .dezena { display:inline-block; min-width:26px; text-align:center;
+    background:#2c3651; color:#e8ecf5; border-radius:6px; margin:2px; padding:2px 4px;
+    font-weight:600; font-size:0.9em; }
+.badge-ok { background:#1d6b40; color:#fff; border-radius:6px; padding:2px 10px; font-size:0.85em; }
+.badge-parc { background:#8a6d1d; color:#fff; border-radius:6px; padding:2px 10px; font-size:0.85em; }
+.tabela th, .tabela td { padding:6px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
+</style>
+{% endblock %}

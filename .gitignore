@@ -29,3 +29,5 @@ Thumbs.db
 # Backups
 *.backup
 app.py.backup
+# Cache do universo 25/15 (regenerável em segundos pelo core/wheeling.py)
+database/modelos/universo_25_15.npy

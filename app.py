@@ -572,6 +572,79 @@ def api_singularidade_backtest():
 
 
 # ============================================================
+# PÁGINA + API — DESDOBRAMENTO COM COBERTURA GARANTIDA (WHEELING)
+# ============================================================
+
+@app.route("/wheeling")
+def wheeling_page():
+    from core.wheeling import MotorWheeling
+    return render_template(
+        "wheeling.html",
+        status=status_sistema,
+        menu=MotorWheeling.menu_exato(),
+    )
+
+
+@app.route("/api/cerebro/wheeling", methods=["POST"])
+def api_cerebro_wheeling():
+    """Pipeline completo: motores → pool → fechamento c/ garantia →
+    análise exata. Corpo: {n_pool, garantia, max_cartelas, orcamento,
+    salvar, limite_segundos}."""
+    try:
+        dados = request.get_json() or {}
+        n_pool = int(dados.get("n_pool", 17))
+        garantia = dados.get("garantia", None)
+        max_cartelas = int(dados.get("max_cartelas", 40))
+        salvar = bool(dados.get("salvar", False))
+        limite = float(dados.get("limite_segundos", 25))
+
+        res = cerebro.pipeline_wheeling(
+            n_pool=n_pool, garantia=int(garantia) if garantia else None,
+            max_cartelas=max_cartelas,
+            orcamento=dados.get("orcamento", None),
+            limite_segundos=limite,
+        )
+
+        salvos = 0
+        lote_id = None
+        if salvar and res["n_cartelas"] > 0:
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+            salvos = _salvar_cartelas_banco(
+                res["cartelas"], concurso,
+                tipo="wheeling", modo=res["metodo"],
+                grupo_elite=res["pool"],
+                cobertura=100.0 * (res["analise"]["p_melhor_14_mais"]),
+            )
+            lote_id = "wheeling_{}".format(concurso)
+
+        return jsonify({
+            "status": "ok",
+            "resultado": res,
+            "salvas": salvos,
+            "concurso": (db.get_ultimo_concurso() or 0) + 1,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+@app.route("/api/cerebro/wheeling/backtest", methods=["POST"])
+def api_cerebro_wheeling_backtest():
+    """Walk-forward honesto da taxa de captura do pool."""
+    try:
+        dados = request.get_json() or {}
+        k = int(dados.get("k", 10))
+        n_pool = int(dados.get("n_pool", 17))
+        if not (1 <= k <= 25):
+            return jsonify({"status": "erro", "msg": "k entre 1 e 25"})
+        bt = cerebro.backtest_captura(k=k, n_pool=n_pool)
+        return jsonify({"status": "ok", "backtest": bt})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
+# ============================================================
 # API — DADOS
 # ============================================================
 

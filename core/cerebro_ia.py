@@ -26,6 +26,7 @@ from config import (
 )
 from database.db_manager import DBManager
 from .oraculo_convergente import OraculoConvergente
+from .wheeling import MotorWheeling
 
 
 # ============================================================
@@ -716,6 +717,9 @@ class CerebroIA:
         self._ultimo_processado = 0
         self.proximo_sorteio    = None
 
+        # Motor de Desdobramento com Cobertura Garantida (wheeling)
+        self.wheeling = MotorWheeling()
+
         # Instância o Motor Disruptivo de Repulsão Vetorial
         self.repulsao_vetorial = MotorRepulsaoVetorial(self.db)
 
@@ -799,11 +803,17 @@ class CerebroIA:
         except Exception:
             return 0
 
-    def treinar(self, callback=None) -> Dict:
+    def treinar(self, callback=None, matriz_override=None, raw_override=None) -> Dict:
         self.estado = "treinando"
         t0 = time.time()
 
-        self.matriz, self.raw = self._ingestor.carregar_matriz()
+        if matriz_override is not None:
+            # Walk-forward: treina só com o passado até uma janela
+            self.matriz = np.asarray(matriz_override, dtype=self.matriz.dtype)
+            self.raw = (list(raw_override) if raw_override is not None
+                        else self.raw[:len(self.matriz)])
+        else:
+            self.matriz, self.raw = self._ingestor.carregar_matriz()
         self.n = len(self.matriz)
 
         def cb(msg):
@@ -1176,6 +1186,162 @@ class CerebroIA:
         self.ultima_exec = ts
         cb("✅ {} cartelas inéditas entregues com sucesso em {:.1f}s".format(len(resultado), tempo))
         return resultado
+
+    # ============================================================
+    # PIPELINE DE DESDOBRAMENTO (WHEELING) 14/15 PONTOS
+    # motores → pool → fechamento c/ garantia → análise exata
+    # ============================================================
+    def pipeline_wheeling(self, n_pool=17, garantia=None, max_cartelas=40,
+                          orcamento=None, limite_segundos=25,
+                          salvar=False, callback=None) -> Dict[str, Any]:
+        """
+        Orquestra o processo completo de cartelas com garantia condicional:
+
+        1. Treina os 14 motores + oráculo (se necessário)
+        2. Seleciona o POOL de n_pool dezenas pelo vetor combinado
+        3. Gera o fechamento (desdobramento) com garantia:
+           - família exata α=1: ⌈16/(N−15)⌉ cartelas garantem 31−N pontos
+           - greedy Johnson p/ garantias maiores (α≥2)
+        4. Analisa o lote EXATAMENTE sobre os 3.268.760 sorteios possíveis
+        """
+        def cb(msg):
+            self._log("WHEELING", msg)
+            if callback:
+                callback(msg)
+
+        self.estado = "gerando"
+        t0 = time.time()
+
+        if not (16 <= int(n_pool) <= 23):
+            raise ValueError("n_pool deve estar entre 16 e 23")
+        n_pool = int(n_pool)
+
+        if not self.treinado:
+            cb("Treinando antes de gerar...")
+            self.treinar(callback=callback)
+
+        vf = self._vetor_combinado()
+        pool = sorted(int(d) for d in self._selecionar_elite(vf, n_pool))
+        cb("Pool de {} dezenas selecionado: {}".format(len(pool), pool))
+
+        t_padrao = 31 - n_pool
+        t = int(garantia) if garantia else t_padrao
+        if t > t_padrao:
+            cb("Garantia {} > família exata ({}): usando greedy Johnson..."
+               .format(t, t_padrao))
+
+        res = self.wheeling.gerar(
+            pool, garantia=t, max_cartelas=max_cartelas,
+            orcamento=orcamento, limite_segundos=limite_segundos, vf=vf,
+        )
+        res["tempo"] = round(time.time() - t0, 2)
+        res["treino_premissas"] = {
+            "concursos": self.n,
+            "top5_vetor": [int(x) for x in (np.argsort(vf)[::-1][:5] + 1)],
+        }
+
+        g = res.get("garantia_verificada")
+        cb("Fechamento: {} cartelas | garantia {} pontos {} | custo R$ {:.2f}"
+           .format(res["n_cartelas"], res["garantia"],
+                   "VERIFICADA" if g else "PARCIAL", res["custo"]))
+        an = res["analise"]
+        cb("Análise exata: captura do pool 1 em {:,.0f} | P(lote≥14)={:.6f}% | "
+           "EV do lote R$ {:.2f}".format(
+               res["um_em_captura"], 100 * an["p_melhor_14_mais"],
+               an["ev_lote"]))
+
+        self.decisoes["wheeling"] = {
+            "pool": pool, "garantia": res["garantia"],
+            "n_cartelas": res["n_cartelas"], "metodo": res["metodo"],
+        }
+        self.metricas["wheeling_ev_lote"] = an["ev_lote"]
+        self.metricas["wheeling_p_captura"] = res["p_captura"]
+        self.estado = "pronto"
+
+        if salvar:
+            res["salvar"] = True  # a camada app persiste via _salvar_cartelas_banco
+        return res
+
+    # ============================================================
+    # BACKTEST WALK-FORWARD DA TAXA DE CAPTURA DO POOL
+    # (métrica honesta: o wheeling só brilha se o pool capturar)
+    # ============================================================
+    def backtest_captura(self, k=10, n_pool=17, callback=None) -> Dict[str, Any]:
+        """
+        Para cada um dos últimos k concursos:
+          1. Treina o Cérebro SEM aquele concurso (e sem os posteriores)
+          2. Seleciona o pool de n_pool dezenas com os dados do passado
+          3. Verifica se o pool capturou as 15 sorteadas (|interseção|=15)
+
+        Baselines teóricos:
+          P(captura)      = C(N,15)/C(25,15)
+          E[interseção]   = 15·N/25
+        A premissa da auditoria (§3 do AUDITORIA.md) é que nenhum motor
+        bate o baseline de forma consistente — este backtest deixa o
+        usuário VER isso com os próprios dados.
+        """
+        def cb(msg):
+            self._log("BACKTEST", msg)
+            if callback:
+                callback(msg)
+
+        k = max(1, min(int(k), 40))
+        matriz_full = self.matriz.copy()
+        raw_full = list(self.raw)
+        n_total = len(matriz_full)
+        capturas = 0
+        intersecoes = []
+        detalhes = []
+
+        for i in range(1, k + 1):
+            alvo_idx = n_total - i
+            if alvo_idx < 50:
+                break
+            passado = matriz_full[:alvo_idx]
+            sorteado = set(
+                int(x) + 1 for x in np.where(matriz_full[alvo_idx] == 1)[0]
+            )
+            np.random.seed(1000 + i)  # reprodutível (vetor tem ruído caótico)
+            self.treinar(matriz_override=passado, raw_override=raw_full[:alvo_idx])
+            vf = self._vetor_combinado()
+            pool = sorted(int(d) for d in self._selecionar_elite(vf, n_pool))
+            inter = len(sorteado & set(pool))
+            capturou = inter == 15
+            capturas += 1 if capturou else 0
+            intersecoes.append(inter)
+            detalhes.append({
+                "concurso": int(raw_full[alvo_idx].get("concurso", alvo_idx + 1))
+                            if isinstance(raw_full[alvo_idx], dict) else alvo_idx + 1,
+                "intersecao": inter, "capturou": capturou,
+            })
+            cb("janela {:>2}: interseção {}/15 {}".format(
+                i, inter, "← CAPTUROU" if capturou else ""))
+
+        # restaura treino completo
+        np.random.seed(None)
+        self.treinar(matriz_override=matriz_full, raw_override=raw_full)
+
+        p_base = self.wheeling.prob_captura(n_pool)
+        e_base = 15.0 * n_pool / TOTAL_DEZENAS
+        media_inter = sum(intersecoes) / len(intersecoes) if intersecoes else 0.0
+        return {
+            "k": len(detalhes),
+            "n_pool": n_pool,
+            "capturas": capturas,
+            "taxa_captura": round(capturas / len(detalhes), 4) if detalhes else 0,
+            "baseline_p_captura": round(p_base, 6),
+            "baseline_um_em": round(1 / p_base, 1),
+            "media_intersecao": round(media_inter, 2),
+            "baseline_intersecao": round(e_base, 2),
+            "detalhes": detalhes,
+            "veredito": (
+                "Consistente com o acaso (como previsto na auditoria §3): "
+                "o pool não captura além do baseline."
+                if capturas <= max(1, p_base * len(detalhes) * 3)
+                else "Taxa acima do esperado — investigar antes de comemorar "
+                     "(múltiplos testes/seleção a posteriori)."
+            ),
+        }
 
     def _selecionar_elite(self, v: np.ndarray, tam: int) -> List[int]:
         ranking = list(np.argsort(v)[::-1] + 1)
