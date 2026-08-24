@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Avaliação do Desdobramento{% endblock %}
+{% block page_title %}Registro de Avaliação — Desdobramento{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-clipboard-check"></i> Avaliar se o grupo acertou (Passo 7)</h2>
+    </div>
+    <p style="color:#8888aa; font-size:13px; margin-bottom:16px;">
+        Registre aqui, a cada concurso, o <strong>grupo de dezenas</strong> que o desdobramento
+        usou. O sistema busca o resultado real automaticamente e calcula se as 15 sorteadas
+        caíram <strong>todas dentro</strong> do grupo — que é a métrica que define o sucesso
+        do desdobramento.
+    </p>
+
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:16px;">
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#8888aa;">
+            Concurso
+            <input type="number" id="av-concurso" placeholder="ex.: 3768"
+                   style="padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:#2d2d5e; color:#e0e0ff; font-size:14px; width:140px;">
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#8888aa;">
+            Garantia (t)
+            <select id="av-t" style="padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:#2d2d5e; color:#e0e0ff; font-size:14px;">
+                <option value="13" selected>13 pontos</option>
+                <option value="14">14 pontos</option>
+            </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#8888aa; flex:1; min-width:280px;">
+            Grupo de dezenas (ex.: 1 5 9 12 13 14 15 18 20 21 22 24 25)
+            <input type="text" id="av-grupo" placeholder="cole as dezenas separadas por espaço ou vírgula"
+                   style="padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:#2d2d5e; color:#e0e0ff; font-size:14px;">
+        </label>
+        <button class="btn" id="btn-av" onclick="registrarAvaliacao()">
+            <i class="fas fa-save"></i> Registrar
+        </button>
+    </div>
+
+    <div id="av-resultado" style="margin-bottom:16px;"></div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-chart-pie"></i> Estatísticas do desdobramento</h2>
+    </div>
+    <div class="cards-grid" id="av-stats"></div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h2><i class="fas fa-history"></i> Histórico de avaliações</h2>
+    </div>
+    <div class="table-container">
+        <table class="table" id="av-tabela">
+            <thead>
+                <tr>
+                    <th>Concurso</th>
+                    <th>v</th>
+                    <th>Grupo</th>
+                    <th>Acertou grupo?</th>
+                    <th>Dezenas fora</th>
+                    <th>Data</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function parseDezenas(txt) {
+    const partes = txt.split(/[\s,]+/).filter(x => x !== '');
+    const nums = [];
+    for (const p of partes) {
+        const n = parseInt(p);
+        if (!isNaN(n) && n >= 1 && n <= 25 && !nums.includes(n)) nums.push(n);
+    }
+    return nums;
+}
+
+async function registrarAvaliacao() {
+    const btn = document.getElementById('btn-av');
+    const out = document.getElementById('av-resultado');
+    const concurso = parseInt(document.getElementById('av-concurso').value);
+    const grupo = parseDezenas(document.getElementById('av-grupo').value);
+    const t = parseInt(document.getElementById('av-t').value);
+
+    if (!concurso || grupo.length === 0) {
+        out.innerHTML = '<p style="color:#E17055;font-weight:600;">Informe o concurso e o grupo de dezenas.</p>';
+        return;
+    }
+
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+    out.innerHTML = '';
+    try {
+        const r = await fetch('/api/avaliacao', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({concurso, grupo, t, observacao: ''})
+        });
+        const d = await r.json();
+        if (d.status !== 'ok') { out.innerHTML = '<p style="color:#E17055;font-weight:600;">' + d.msg + '</p>'; return; }
+
+        const reg = d.registro;
+        const cor = reg.acertou_grupo ? '#00B894' : '#E17055';
+        out.innerHTML =
+            '<div class="card" style="display:block;border-left:4px solid ' + cor + ';">' +
+            '<p style="margin-bottom:6px;"><strong>Concurso ' + reg.concurso + '</strong></p>' +
+            '<p>Sorteadas: <span style="font-family:monospace;">' + reg.sorteadas.join(' ') + '</span></p>' +
+            '<p>Acertos do grupo: <strong>' + reg.acertos + '/15</strong></p>' +
+            '<p style="color:' + cor + ';font-weight:700;">' +
+                (reg.acertou_grupo
+                    ? '✅ GRUPO ACERTOU — 13+ pontos garantidos!'
+                    : '⚠️ Grupo falhou — ' + reg.dezenas_escaparam + ' dezena(s) fora: ' + reg.dezenas_fora.join(' ')) +
+            '</p>' +
+            '</div>';
+
+        document.getElementById('av-grupo').value = '';
+        carregarAvaliacao();
+    } catch (err) {
+        out.innerHTML = '<p style="color:#E17055;font-weight:600;">' + err + '</p>';
+    } finally {
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Registrar';
+    }
+}
+
+async function carregarAvaliacao() {
+    try {
+        const r = await fetch('/api/avaliacao');
+        const d = await r.json();
+        if (d.status !== 'ok') return;
+
+        const s = d.stats;
+        document.getElementById('av-stats').innerHTML =
+            '<div class="card card-info" style="display:block;">' +
+                '<div class="card-icon"><i class="fas fa-list-ol"></i></div>' +
+                '<h3>' + s.total + '</h3><p>Registros</p></div>' +
+            '<div class="card ' + (s.taxa_acerto_pct >= 50 ? 'card-success' : 'card-warning') + '" style="display:block;">' +
+                '<div class="card-icon"><i class="fas fa-bullseye"></i></div>' +
+                '<h3>' + s.taxa_acerto_pct + '%</h3><p>Taxa de acerto do grupo</p></div>' +
+            '<div class="card card-info" style="display:block;">' +
+                '<div class="card-icon"><i class="fas fa-sign-out-alt"></i></div>' +
+                '<h3>' + s.media_dezenas_escaparam + '</h3><p>Média de dezenas fora</p></div>' +
+            '<div class="card card-info" style="display:block;">' +
+                '<div class="card-icon"><i class="fas fa-check-circle"></i></div>' +
+                '<h3>' + s.acertos_grupo + '</h3><p>Grupos que acertaram</p></div>';
+
+        const tbody = document.querySelector('#av-tabela tbody');
+        tbody.innerHTML = '';
+        for (const reg of d.registros) {
+            const ok = reg.acertou_grupo === 1;
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td>' + reg.concurso + '</td>' +
+                '<td>' + reg.v + '</td>' +
+                '<td style="font-family:monospace;font-size:11px;">' + (reg.grupo || []).join(' ') + '</td>' +
+                '<td>' + (ok ? '✅ Sim' : '❌ Não') + '</td>' +
+                '<td>' + ((reg.dezenas_fora || []).join(' ') || '—') + '</td>' +
+                '<td>' + (reg.data || '').slice(0, 16) + '</td>';
+            tbody.appendChild(tr);
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', carregarAvaliacao);
+</script>
+{% endblock %}
