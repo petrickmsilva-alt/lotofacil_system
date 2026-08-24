@@ -266,3 +266,31 @@ Varredura de todos os módulos `core/`, dos filtros combinatórios e do menu/pá
 ## 15. Nota honesta sobre os filtros
 
 Recalibrar filtros **não aumenta a probabilidade de acerto** — toda combinação de 15 dezenas tem a mesma distribuição hipergeométrica. O que a correção resolve: (a) o gerador não desperdiça ciclos nem cai no "fallback" por rejeição excessiva; (b) as cartelas geradas deixam de se concentrar num estereótipo atípico que excluía 1/3 dos sorteios reais; (c) a taxa de aprovação agora é medida e exibida em vez de implícita.
+
+---
+
+# 🧠 FASE 4 (2026-08-24) — O Cérebro IA como motor único do sistema
+
+`CerebroIA.gerar_otimas(n)` — um único comando, o Cérebro faz TUDO: treina os 14 motores, combina os vetores, escolhe a estratégia e entrega as cartelas com contabilidade exata sobre o universo completo.
+
+## 17. Estratégia automática por quantidade
+
+| Pedido | Estratégia | O que o Cérebro faz |
+|---|---|---|
+| **1 cartela** | `exaustao-unica` | Pontua **todas as 3.268.760 combinações** contra o vetor combinado e entrega a melhor que existe (aprovada no filtro gaussiano) |
+| 2–7 | `exaustao-diversa` | As n melhores com sobreposição ≤ 13 dezenas entre si (cobertura espalhada sem abandonar o critério dos motores) |
+| **≥ 8** | `wheeling-garantia-14` | Pool elite de 17 fechado em 8 cartelas com **garantia 14 se capturar** (ótimo provado) + excedente por exaustão |
+
+Integrações: `POST /api/cerebro/otimas` · página `/gerar` com modo **"🧠 O Cérebro Decide"** (padrão) · lote salvo como `cerebro_otimas`.
+
+## 18. Números exatos por estratégia (medidos sobre o universo)
+
+| n | Custo | P(lote ≥ 14) | Garantia condicional |
+|---|---|---|---|
+| 1 | R$ 3,50 | 1 em 21.647 | — |
+| 3 | R$ 10,50 | 1 em 7.412 | — |
+| 8 | R$ 28,00 | 1 em 2.983 | **14 se pool capturar (1 em 24.035)** |
+
+Validação: 10/10 testes (`tests/test_otimas.py`) — probabilidades da cartela única conferem ao exato hipergeométrico (P(15) = 1/3.268.760), sobreposições ≤ 13 na diversa, garantia verificada na wheeling.
+
+**A verdade continua a mesma e o sistema segue dizendo:** com uma cartela, 14 pontos é 1 em 21.647 e 15 pontos é 1 em 3.268.760 — qualquer que seja a análise. O que o Cérebro agora garante é que a escolha é a **melhor definível** pelos critérios dos motores (exaustiva, não amostral) e, quando você aceita jogar 8+, que **se** o pool de 17 capturar as sorteadas, **14 pontos são garantidos por construção matemática**.

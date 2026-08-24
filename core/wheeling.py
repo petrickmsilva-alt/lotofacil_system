@@ -397,7 +397,8 @@ class MotorWheeling:
         total = len(universo)  # 3.268.760
         masks_c = np.array([dezenas_para_mascara(c) for c in cartelas],
                            dtype=np.uint32)
-        pool_mask = np.uint32(dezenas_para_mascara(pool))
+        pool_mask = (np.uint32(dezenas_para_mascara(pool))
+                     if pool is not None else None)
 
         premios = np.array([self.premio_por_acertos(k) for k in range(16)],
                            dtype=np.float64)
@@ -419,10 +420,11 @@ class MotorWheeling:
                 soma_premio_chunk += premios[hits]
             dist_melhor += np.bincount(melhor, minlength=16)
             premio_total += float(soma_premio_chunk.sum())
-            dentro = _popcount(chunk & pool_mask) == 15
-            n_dentro += int(dentro.sum())
-            if dentro.any():
-                melhor_dentro += np.bincount(melhor[dentro], minlength=16)
+            if pool_mask is not None:
+                dentro = _popcount(chunk & pool_mask) == 15
+                n_dentro += int(dentro.sum())
+                if dentro.any():
+                    melhor_dentro += np.bincount(melhor[dentro], minlength=16)
 
         custo = len(masks_c) * VALOR_APOSTA
         p_captura = n_dentro / total

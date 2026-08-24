@@ -350,6 +350,33 @@ def cerebro_page():
     )
 
 
+@app.route("/api/cerebro/otimas", methods=["POST"])
+def api_cerebro_otimas():
+    """A DECISÃO do Cérebro: análise completa → estratégia automática →
+    cartelas (1 = exaustão do universo; 2–7 = exaustão diversa;
+    ≥8 = wheeling com garantia 14) + contabilidade exata do lote."""
+    try:
+        dados = request.get_json() or {}
+        n = int(dados.get("n", 1))
+        salvar = bool(dados.get("salvar", False))
+        if not (1 <= n <= 100):
+            return jsonify({"status": "erro", "msg": "n entre 1 e 100"})
+        res = cerebro.gerar_otimas(n_cartelas=n)
+        salvos = 0
+        if salvar and res["n_cartelas"] > 0:
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+            salvos = _salvar_cartelas_banco(
+                res["cartelas"], concurso,
+                tipo="cerebro_otimas", modo=res["estrategia"],
+                grupo_elite=res["pool_elite"],
+                cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
+            )
+        return jsonify({"status": "ok", "resultado": res, "salvas": salvos})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(e)})
+
+
 @app.route("/gerar", methods=["GET", "POST"])
 def gerar():
     """Geração rápida de cartelas (página server-rendered, auditada Fase 3:
@@ -360,6 +387,38 @@ def gerar():
             modo = request.form.get("modo", "hibrido")
             quantidade = max(1, min(50, quantidade))
             t0 = time.time()
+            if modo == "cerebro":
+                # O CÉREBRO DECIDE: estratégia automática pela quantidade
+                res = cerebro.gerar_otimas(n_cartelas=quantidade)
+                concurso = (db.get_ultimo_concurso() or 0) + 1
+                salvos = _salvar_cartelas_banco(
+                    res["cartelas"], concurso,
+                    tipo="cerebro_otimas", modo=res["estrategia"],
+                    grupo_elite=res["pool_elite"],
+                    cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
+                )
+                a = res["analise"]
+                extra = ""
+                if res["estrategia"] == "wheeling-garantia-14":
+                    extra = (" · garantia 14 se o pool capturar (1 em {:,})"
+                             .format(int(res["um_em_captura"]))
+                             .replace(",", "."))
+                msg = ("✅ Estratégia {} · {} cartela(s) salva(s) para o "
+                       "concurso {} · P(lote≥14) = {:.6f}%{} · EV R$ {:.2f}"
+                       .format(res["estrategia"], salvos, concurso,
+                               100 * a["p_melhor_14_mais"], extra,
+                               a["ev_lote"]))
+                metricas = {
+                    "tempo": res["tempo"],
+                    "salvos": salvos,
+                    "cobertura_13": a["p_melhor_14_mais"],
+                    "custo": res["custo"],
+                    "grupo_elite": res["pool_elite"],
+                }
+                return render_template(
+                    "gerar.html", metricas=metricas, cartelas=res["cartelas"],
+                    msg=msg,
+                )
             cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
             concurso = (db.get_ultimo_concurso() or 0) + 1
             salvos = _salvar_cartelas_banco(
