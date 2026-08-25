@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends base_layout|default("base.html") %}
 {% block title %}Gerar Cartelas — Cérebro IA{% endblock %}
 {% block page_title %}
     <i class="fas fa-brain"></i> Gerar Cartelas com Cérebro IA
@@ -32,7 +32,7 @@
 <!-- Configuração -->
 <div class="section">
     <h2><i class="fas fa-sliders-h"></i> Configuração da Geração</h2>
-    <form method="POST" class="form-gerar">
+    <form method="POST" action="/gerar?fragmento=1" class="form-gerar">
         <div class="form-group">
             <label for="n_cartelas">Quantidade de Cartelas:</label>
             <input type="number" name="n_cartelas" id="n_cartelas"

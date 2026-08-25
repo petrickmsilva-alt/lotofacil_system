@@ -294,3 +294,89 @@ Integrações: `POST /api/cerebro/otimas` · página `/gerar` com modo **"🧠 O
 Validação: 10/10 testes (`tests/test_otimas.py`) — probabilidades da cartela única conferem ao exato hipergeométrico (P(15) = 1/3.268.760), sobreposições ≤ 13 na diversa, garantia verificada na wheeling.
 
 **A verdade continua a mesma e o sistema segue dizendo:** com uma cartela, 14 pontos é 1 em 21.647 e 15 pontos é 1 em 3.268.760 — qualquer que seja a análise. O que o Cérebro agora garante é que a escolha é a **melhor definível** pelos critérios dos motores (exaustiva, não amostral) e, quando você aceita jogar 8+, que **se** o pool de 17 capturar as sorteadas, **14 pontos são garantidos por construção matemática**.
+
+---
+
+# 🧠 FASE 6 (2026-08-25) — Unificação: o Cérebro IA como Inteligência Magna ÚNICA
+
+Atendendo ao pedido para que o Cérebro IA seja o **único módulo a gerar
+cartelas** e a única porta de entrada das áreas de geração/análise, todas
+essas áreas foram unificadas em abas internas de `/cerebro`, sem perder
+nenhum cálculo, fórmula, filtro ou template já construídos.
+
+## 19. Arquitetura unificada
+
+```
+/cerebro  (HUB — Inteligência Magna)
+ ├─ aba Cabine         → /cerebro/central?fragmento=1   (treino, loop, geração clássica, pesos, filtros, ciclos, log)
+ ├─ aba Gerar Cartelas → /gerar?fragmento=1             (Cérebro decide: exaustão/diversa/wheeling + modos)
+ ├─ aba Cartela do Dia→ /cartela_do_dia?fragmento=1     (15 oráculos, idempotente por concurso)
+ ├─ aba Wheeling 14/15→ /wheeling?fragmento=1           (fechamentos com garantia + análise exata)
+ ├─ aba Análise       → /analise?fragmento=1            (heatmap total/recente)
+ ├─ aba Singularidade → /singularidade?fragmento=1      (banca/Kelly, Hurst, entropia, Steiner)
+ └─ aba Auditoria     → /ia_auditoria?fragmento=1       (transparência dos módulos)
+
+Continuam no menu (fora do hub, como pedido):
+ /  Dashboard · /conferencia · /financeiro_page · /historico · /premios · /avaliacao
+```
+
+## 20. Como foi feito (sem perder nada)
+
+- **Helper `_render()`** em `app.py`: renderiza o template completo
+  normalmente ou, quando a requisição traz `?fragmento=1`, usa a casca
+  mínima `_fragmento.html` (só `{% block content %}` + `{% block scripts %}`).
+  Cada template antigo passou a fazer
+  `{% extends base_layout|default("base.html") %}` — sozinho, continua
+  funcionando como página; no hub, vira fragmento.
+- **Página `/cerebro` reescrita** como hub com abas; cada aba carrega seu
+  fragmento via `fetch` e re-executa os `<script>` embutidos (necessário
+  porque `innerHTML` não executa scripts injetados). O hash da URL
+  (`#aba-...`) permite linkar e usar o botão voltar.
+- **Novo `templates/_cerebro_central.html`**: conteúdo da antiga Cabine de
+  Comando (treino, loop, geração clássica, pesos SPSA, filtros, ciclos,
+  log em tempo real), agora servido por `/cerebro/central`.
+- **Formulários do hub** postam para a própria rota com `?fragmento=1`
+  (`/cerebro/central?fragmento=1`, `/gerar?fragmento=1`), mantendo o
+  usuário dentro do hub.
+- **Rotas legadas redirecionam** (302) para a aba correspondente quando
+  acessadas sem `?fragmento=1`; com `?fragmento=1`, devolvem só o miolo.
+- **Sidebar reorganizada** em dois grupos: **CÉREBRO IA** (hub + atalhos
+  das abas) e **SISTEMA** (Dashboard, Conferência, Financeiro, Histórico,
+  Prêmios, Avaliação).
+- **`context_processor`** movido para depois da criação de
+  `status_sistema` (corrige NameError em runtime).
+
+## 21. Garantias preservadas
+
+- Todos os **cálculos/fórmulas** seguem em `core/cerebro_ia.py` (14 motores
+  + SPSA + genético + gaussiano + repulsão), `core/wheeling.py`
+  (família exata α=1, greedy Johnson, análise exata do universo),
+  `core/singularidade.py` (Kelly, Hurst, entropia, Steiner) e
+  `core/oraculo_convergente.py` (15 oráculos).
+- **Filtros** gaussianos e de repulsão continuam ativos em TODA geração.
+- **Toda geração passa pelo `CerebroIA`**: `/gerar` chama
+  `cerebro.gerar_otimas/gerar_cartelas`; wheeling chama
+  `cerebro.pipeline_wheeling`; cartela do dia chama
+  `cerebro.gerar_cartela_do_dia`. Nenhuma rota gera cartelas por fora.
+- APIs de geração (`/api/cerebro/otimas`, `/api/cerebro/wheeling`,
+  `/api/cerebro/gerar`, `/api/analise/exaustao`) seguem intactas para os
+  JS das abas.
+
+## 22. Testes
+
+- 37/37 testes passam. Novos testes em `tests/test_hub_unificado.py`:
+  - `/cerebro` tem layout completo + 7 abas declaradas;
+  - cada aba carrega como fragmento **sem** a sidebar/`<!DOCTYPE>`;
+  - rotas legadas redirecionam (302) para a âncora correta E continuam
+    servindo o fragmento com `?fragmento=1`;
+  - Conferência, Financeiro, Histórico e Prêmios seguem 200.
+- Servidor verificado ao vivo: redirects 302 confirmados e os 7
+  fragmentos retornam 200 sem a casca do app.
+
+## 23. Nota honesta (mantida)
+
+Unificar a interface não muda a matemática do sorteio: 13/14/15 pontos
+continuam com as mesmas probabilidades hipergeométricas. O que a unificação
+ganha é clareza: **um único cérebro analisa, decide, gera e aprende**, com
+todos os instrumentos (filtros, wheeling, oráculos, auditoria cética)
+organizados sob o mesmo teto.

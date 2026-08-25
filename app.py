@@ -23,7 +23,9 @@ except Exception as _e:
     print("[AVISO] Migração: {}".format(_e))
 
 # ── Flask ─────────────────────────────────────────────────────
-from flask import Flask, render_template, request, jsonify
+from flask import (
+    Flask, render_template, request, jsonify, redirect, url_for,
+)
 
 app = Flask(__name__)
 
@@ -59,15 +61,6 @@ class NumpyJSONProvider(DefaultJSONProvider):
 
 app.json = NumpyJSONProvider(app)
 
-
-@app.context_processor
-def inject_status():
-    """Disponibiliza `status` em TODOS os templates, inclusive nas páginas
-    que antes não o passavam (wheeling, singularidade, avaliacao etc.),
-    evitando que o indicador da sidebar mostrasse 'IA: Offline / 0 concursos'
-    só porque a rota esqueceu de passar a variável."""
-    return {"status": status_sistema}
-
 # ── Módulos ───────────────────────────────────────────────────
 from config import VALOR_APOSTA
 from database.db_manager import DBManager
@@ -97,6 +90,15 @@ status_sistema = {
     "carregando":       False,
     "treinando":        False,
 }
+
+
+@app.context_processor
+def inject_status():
+    """Disponibiliza `status` em TODOS os templates, inclusive nas páginas
+    que antes não o passavam (wheeling, singularidade, avaliacao etc.),
+    evitando que o indicador da sidebar mostrasse 'IA: Offline / 0 concursos'
+    só porque a rota esqueceu de passar a variável."""
+    return {"status": status_sistema}
 
 
 # ============================================================
@@ -263,8 +265,18 @@ def historico():
     return render_template("historico.html", resultados=lista)
 
 
-@app.route("/cerebro", methods=["GET", "POST"])
+@app.route("/cerebro")
 def cerebro_page():
+    """Hub unificado: o Cérebro IA é a INTELIGÊNCIA MAGNA única. Todas as
+    áreas de geração/análise (cabine, gerar, cartela do dia, wheeling,
+    análise, singularidade, auditoria) são abas internas desta página."""
+    return render_template("cerebro.html", status=status_sistema)
+
+
+@app.route("/cerebro/central", methods=["GET", "POST"])
+def cerebro_central():
+    """Fragmento da Cabine de Comando (treino, loop, geração clássica,
+    pesos, filtros, ciclos e log). Renderizado dentro do hub /cerebro."""
     cartelas = []
     msg      = ""
     metricas = {}
@@ -298,9 +310,7 @@ def cerebro_page():
                     ))
 
                     if cartelas_geradas:
-                        # SALVAR EM LOTE (essa era a linha problemática)
                         grupo_e = cerebro.decisoes.get("grupo_elite", [])
-                        # Converter numpy int64 para int puro
                         grupo_e = [int(x) for x in grupo_e] if grupo_e else []
 
                         cob = float(cerebro.metricas.get("cobertura_13", 0))
@@ -346,8 +356,8 @@ def cerebro_page():
     modulos = cerebro.get_desempenho_modulos()
     erros   = cerebro.get_memoria_erros()
 
-    return render_template(
-        "cerebro.html",
+    # O POST/GET vem do formulário da aba (fetch com ?fragmento=1); mantém no hub.
+    return _render("_cerebro_central.html",
         status    = status,
         historico = hist,
         modulos   = modulos,
@@ -356,6 +366,16 @@ def cerebro_page():
         msg       = msg,
         metricas  = metricas,
     )
+
+
+def _render(template, **ctx):
+    """Renderiza um template. Dentro do hub unificado do Cérebro
+    (?fragmento=1), usa a casca mínima (só conteúdo + scripts); fora, usa
+    o layout completo. Permite unificar todas as áreas sob /cerebro sem
+    duplicar templates nem perder funcionalidade."""
+    base = "_fragmento.html" if request.args.get("fragmento") else "base.html"
+    ctx.setdefault("base_layout", base)
+    return render_template(template, **ctx)
 
 
 @app.route("/api/cerebro/otimas", methods=["POST"])
@@ -387,18 +407,28 @@ def api_cerebro_otimas():
 
 @app.route("/gerar", methods=["GET", "POST"])
 def gerar():
-    """Geração rápida de cartelas (página server-rendered, auditada Fase 3:
-    antes era rota-fantasma que só redirecionava para /cerebro)."""
+    """Geração de cartelas pelo Cérebro (aba do hub /cerebro). Toda geração
+    passa por `cerebro` — este módulo é apenas a camada web.
+
+    GET sem ?fragmento=1 redireciona para a aba "Gerar Cartelas" do hub;
+    ?fragmento=1 devolve só o miolo para ser embutido via fetch.
+    """
+    if request.method == "GET" and not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-gerar"))
     if request.method == "POST":
+        cartelas = []
+        metricas = {}
+        msg = ""
         try:
             quantidade = int(request.form.get("quantidade", 10))
-            modo = request.form.get("modo", "hibrido")
+            modo = request.form.get("modo", "cerebro")
             quantidade = max(1, min(50, quantidade))
             t0 = time.time()
+            concurso = (db.get_ultimo_concurso() or 0) + 1
+
             if modo == "cerebro":
                 # O CÉREBRO DECIDE: estratégia automática pela quantidade
                 res = cerebro.gerar_otimas(n_cartelas=quantidade)
-                concurso = (db.get_ultimo_concurso() or 0) + 1
                 salvos = _salvar_cartelas_banco(
                     res["cartelas"], concurso,
                     tipo="cerebro_otimas", modo=res["estrategia"],
@@ -423,38 +453,40 @@ def gerar():
                     "custo": res["custo"],
                     "grupo_elite": res["pool_elite"],
                 }
-                return render_template(
-                    "gerar.html", metricas=metricas, cartelas=res["cartelas"],
-                    msg=msg,
+                cartelas = res["cartelas"]
+            else:
+                cartelas = cerebro.gerar_cartelas(
+                    quantidade=quantidade, modo=modo)
+                salvos = _salvar_cartelas_banco(
+                    cartelas, concurso, tipo="multiplas", modo=modo,
+                    grupo_elite=cerebro.decisoes.get("grupo_elite", []),
+                    cobertura=cerebro.metricas.get("cobertura_13", 0),
                 )
-            cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
-            concurso = (db.get_ultimo_concurso() or 0) + 1
-            salvos = _salvar_cartelas_banco(
-                cartelas, concurso, tipo="multiplas", modo=modo,
-                grupo_elite=cerebro.decisoes.get("grupo_elite", []),
-                cobertura=cerebro.metricas.get("cobertura_13", 0),
-            )
-            metricas = {
-                "tempo": round(time.time() - t0, 1),
-                "salvos": salvos,
-                "cobertura_13": cerebro.metricas.get("cobertura_13", 0),
-                "custo": round(salvos * VALOR_APOSTA, 2),
-                "grupo_elite": cerebro.decisoes.get("grupo_elite", []),
-            }
-            return render_template(
-                "gerar.html", metricas=metricas, cartelas=cartelas,
-                msg="✅ {} cartela(s) gerada(s) e salva(s) para o concurso {}"
-                    .format(salvos, concurso),
-            )
+                metricas = {
+                    "tempo": round(time.time() - t0, 1),
+                    "salvos": salvos,
+                    "cobertura_13": cerebro.metricas.get("cobertura_13", 0),
+                    "custo": round(salvos * VALOR_APOSTA, 2),
+                    "grupo_elite": cerebro.decisoes.get("grupo_elite", []),
+                }
+                msg = ("✅ {} cartela(s) gerada(s) e salva(s) para o concurso {}"
+                       .format(salvos, concurso))
         except Exception as e:
             traceback.print_exc()
-            return render_template("gerar.html",
-                                   msg="Erro ao gerar: {}".format(e))
-    return render_template("gerar.html")
+            msg = "Erro ao gerar: {}".format(e)
+
+        return _render(
+            "gerar.html", metricas=metricas, cartelas=cartelas, msg=msg,
+        )
+    return _render("gerar.html")
 
 
 @app.route("/cartela_do_dia")
 def cartela_do_dia():
+    """Cartela do Dia é aba do hub /cerebro. GET sem ?fragmento=1 redireciona
+    para a aba; ?fragmento=1 devolve o miolo."""
+    if not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-cartela_do_dia"))
     # A idempotência (uma cartela por concurso-alvo) é garantida dentro de
     # cerebro.gerar_cartela_do_dia(): chamadas sucessivas reaproveitam a
     # cartela já salva para o próximo concurso, sem gerar duplicatas a cada F5.
@@ -492,7 +524,7 @@ def cartela_do_dia():
 
     hist_cdd = cerebro.get_historico_cartelas_do_dia(10)
 
-    return render_template(
+    return _render(
         "cartela_do_dia.html",
         resultado    = resultado,
         historico_cdd = hist_cdd,
@@ -550,6 +582,9 @@ def api_analise_exaustao():
 
 @app.route("/analise")
 def analise():
+    """Análise é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
+    if not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-analise"))
     resultados = db.get_todos_resultados()
     freq       = bitmatrix.heatmap_frequencia(resultados)
     freq_rec   = bitmatrix.heatmap_frequencia(resultados, janela=50)
@@ -560,7 +595,7 @@ def analise():
         }
         for i in range(25)
     }
-    return render_template(
+    return _render(
         "analise.html",
         heatmap         = heatmap,
         total_concursos = len(resultados),
@@ -608,7 +643,10 @@ def premios():
 
 @app.route("/ia_auditoria")
 def ia_auditoria():
-    return render_template(
+    """Auditoria é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
+    if not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-auditoria"))
+    return _render(
         "ia_auditoria.html",
         stats           = monitor.get_dashboard_stats(),
         ranking_modulos = monitor.get_ranking_modulos(),
@@ -619,7 +657,10 @@ def ia_auditoria():
 
 @app.route("/singularidade")
 def singularidade_page():
-    return render_template("singularidade.html", status=status_sistema)
+    """Singularidade é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
+    if not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-singularidade"))
+    return _render("singularidade.html", status=status_sistema)
 
 
 # ============================================================
@@ -705,8 +746,11 @@ def api_singularidade_backtest():
 
 @app.route("/wheeling")
 def wheeling_page():
+    """Wheeling é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
+    if not request.args.get("fragmento"):
+        return redirect(url_for("cerebro_page", _anchor="aba-wheeling"))
     from core.wheeling import MotorWheeling
-    return render_template(
+    return _render(
         "wheeling.html",
         status=status_sistema,
         menu=MotorWheeling.menu_exato(),
