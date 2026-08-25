@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends base_layout|default("base.html") %}
 {% block title %}Cartela do Dia — Oráculo Convergente{% endblock %}
 {% block page_title %}
     <i class="fas fa-eye"></i> A Cartela do Dia
@@ -222,7 +222,7 @@
 {% endif %}
 
 <div style="text-align:center;margin:30px 0;">
-    <a href="/cartela_do_dia"
+    <a href="/cerebro#aba-cartela_do_dia"
        class="btn btn-primary btn-lg"
        onclick="mostrarCarregando(this)">
        <i class="fas fa-sync"></i> Consultar Oráculos Novamente

@@ -283,6 +283,15 @@ class Conferencia:
         }
 
     def conferir_todas_pendentes(self):
+        """Confere, concurso a concurso, todas as cartelas ainda pendentes
+        cujo resultado já está no banco.
+
+        Retorna uma lista de resultados por concurso (cada um com
+        status/concurso/cartelas), no mesmo formato de conferir_concurso —
+        assim a camada app consegue alimentar o módulo financeiro.
+        Antes retornava uma lista achatada de cartelas, o que impedia o
+        registro financeiro (o hook procurava status='ok' em cada cartela).
+        """
         cartelas    = self.db.get_cartelas_pendentes()
         resultados  = []
         processados = set()
@@ -299,8 +308,8 @@ class Conferencia:
             processados.add(concurso)
             conf = self.conferir_concurso(concurso)
 
-            if conf["status"] == "ok":
-                resultados.extend(conf["cartelas"])
+            if conf.get("status") == "ok":
+                resultados.append(conf)
 
         return resultados
 

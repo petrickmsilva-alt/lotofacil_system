@@ -15,14 +15,13 @@ import time
 import threading
 import itertools
 import requests
-import joblib
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
 from config import (
     DATABASE_PATH, TOTAL_DEZENAS, DEZENAS_POR_JOGO,
     PRIMOS, FIBONACCI, BORDA, QUADRANTES,
-    VALOR_APOSTA, MODELS_PATH,
+    VALOR_APOSTA,
 )
 from database.db_manager import DBManager
 from .oraculo_convergente import OraculoConvergente
@@ -66,26 +65,8 @@ class MotorRepulsaoVetorial:
             return []
 
     def calcular_forca_repulsao(self, candidato: List[int], cartelas_recentes: List[set]) -> float:
-        if not cartelas_recentes:
-            return 1.0
-
-        set_cand = set(candidato)
-        penalidade = 1.0
-
-        for antiga in cartelas_recentes:
-            intersecao = len(set_cand & antiga)
-            if intersecao >= 15:
-                return 0.0  # Repulsão total (Bloqueio de jogo idêntico)
-            elif intersecao == 14:
-                penalidade *= 0.20  # Penaliza 80%
-            elif intersecao == 13:
-                penalidade *= 0.60  # Penaliza 40%
-
-        return max(0.001, penalidade)
-
-    def calcular_forca_repulsao(self, candidato: List[int], cartelas_recentes: List[set]) -> float:
         """
-        Calcula a repulsão. Se a cartela for idêntica ou muito parecida 
+        Calcula a repulsão. Se a cartela for idêntica ou muito parecida
         com uma gerada recentemente, a força de repulsão explode (penalidade alta).
         """
         if not cartelas_recentes:
@@ -196,7 +177,7 @@ class IngestorDados:
 # BLOCO 2 — MOTORES ANALÍTICOS COM FLUTUAÇÃO CAÓTICA
 # ============================================================
 class _Motor:
-    def score_vetor(Self) -> np.ndarray:
+    def score_vetor(self) -> np.ndarray:
         return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
 
 
@@ -582,7 +563,7 @@ class MotorGenetico(_Motor):
         rngs = [np.random.default_rng(i * 37 + seed_dyn) for i in range(self.n_ilhas)]
         ilhas = [[self._ind(rngs[k], cands) for _ in range(self.tam)] for k in range(self.n_ilhas)]
         fits = [[fn_fitness(ind) for ind in ilha] for ilha in ilhas]
-        melhor_f = -np.inf; melhor_i = []
+        melhor_f = -np.inf; melhor_i = []  # noqa: F841 (melhor_ind no fim)
         for g in range(self.geracoes):
             if time.time() - t0 > timeout: break
             for k in range(self.n_ilhas):
@@ -908,8 +889,13 @@ class CerebroIA:
 
     def _vetor_combinado(self) -> np.ndarray:
         v = np.zeros(TOTAL_DEZENAS)
-        # Injeta uma micro-flutuação de ruído caótico nos pesos para dar dinamismo diário
-        ruido_caotico = np.random.normal(1.0, 0.03, len(self.pesos))
+        # Injeta uma micro-flutuação de ruído caótico nos pesos para dar dinamismo diário.
+        # RNG local (não usa np.random global) para não contaminar outros módulos.
+        rng = getattr(self, "_rng_vetor", None)
+        if rng is None:
+            rng = np.random.default_rng()
+            self._rng_vetor = rng
+        ruido_caotico = rng.normal(1.0, 0.03, len(self.pesos))
         for idx, (k, p) in enumerate(self.pesos.items()):
             peso_dinamico = p * ruido_caotico[idx]
             vec = self._vetores.get(k, np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS)
@@ -934,10 +920,15 @@ class CerebroIA:
 
         return (ev*0.25 + div*0.20 + kl*0.12 + mk*0.15 + vl*0.10 + sg*0.06 + 0.12)
 
-    def gerar_cartela_do_dia(self) -> Dict:
+    def gerar_cartela_do_dia(self, reaproveitar: bool = True) -> Dict:
         """
         A CARTELA ÚNICA do dia baseada em CONSENSO de 15 oráculos.
         Lê todas as cartelas do dia já geradas no banco para nunca repetir o mesmo jogo.
+
+        Se `reaproveitar=True` (padrão) e já existir uma cartela salva para o
+        PRÓXIMO concurso (concurso-alvo), o método a devolve — recompondo a
+        análise dos oráculos — em vez de gerar/salvar uma nova a cada chamada
+        (evita duplicatas a cada F5 na página).
         """
         self._log("ORACULO", "Consultando 15 oráculos independentes com filtro de inéditas...")
 
@@ -946,6 +937,68 @@ class CerebroIA:
                 "status": "erro",
                 "msg": "Dados insuficientes (mínimo 30 concursos)",
             }
+
+        proximo = (self.db.get_ultimo_concurso() or 0) + 1
+
+        # 0. Idempotência: reaproveita a cartela do concurso-alvo se já existir.
+        if reaproveitar:
+            try:
+                conn = self.db.get_conn()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM cartela_do_dia WHERE concurso_alvo=? "
+                    "ORDER BY id DESC LIMIT 1", (proximo,))
+                row = cursor.fetchone()
+                conn.close()
+                if row is not None:
+                    existente = dict(row)
+                    dez_exist = json.loads(existente.get("dezenas") or "[]")
+                    if isinstance(dez_exist, list) and len(dez_exist) == 15:
+                        self._oraculo = OraculoConvergente(self.matriz)
+                        # Recompõe os metadados dos oráculos (votos/detalhes)
+                        # sem escolher outra cartela.
+                        consulta = self._oraculo.consultar_todos()
+                        votos = consulta["votos"]
+                        pesos = consulta["pesos_acumulados"]
+                        score_final = votos.astype(float) + pesos * 2.0
+                        resultado = {
+                            "cartela": sorted(int(x) for x in dez_exist),
+                            "quorum_usado": existente.get("quorum_usado"),
+                            "quorum_original": self._oraculo.QUORUM_MINIMO,
+                            "votos_por_dezena": {
+                                int(i + 1): int(votos[i]) for i in range(25)},
+                            "score_por_dezena": {
+                                int(i + 1): round(float(score_final[i]), 4)
+                                for i in range(25)},
+                            "consenso_forca": float(
+                                existente.get("consenso_forca") or 0),
+                            "soma": sum(dez_exist),
+                            "pares": sum(1 for d in dez_exist if d % 2 == 0),
+                            "impares": sum(1 for d in dez_exist if d % 2 != 0),
+                            "consecutivos_max": self._max_consecutivos(dez_exist),
+                            "confianca": existente.get("confianca"),
+                            "detalhes_oraculos": consulta["detalhes"],
+                            "n_oraculos": self._oraculo.N_ORACULOS,
+                            "salvo_concurso": proximo,
+                            "reaproveitada": True,
+                        }
+                        aprovado, det = self._gaussiano.filtrar(resultado["cartela"])
+                        resultado["aprovado_filtros"] = aprovado
+                        resultado["detalhes_filtros"] = det
+                        vf = (self._vetor_combinado() if self.treinado
+                              else np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS)
+                        resultado["score_cerebro"] = round(
+                            float(self._score_cartela(resultado["cartela"], vf, [])), 4)
+                        from .bitmatrix import BitMatrix
+                        resultado["bitmask"] = BitMatrix().dezenas_para_bitmask(
+                            resultado["cartela"])
+                        resultado["timestamp"] = existente.get("timestamp")
+                        self._log("ORACULO",
+                                  "Cartela do concurso {} reaproveitada (idempotente)"
+                                  .format(proximo))
+                        return resultado
+            except Exception as e:
+                print("[CEREBRO] Erro ao reaproveitar cartela_do_dia: {}".format(e))
 
         # 1. Carrega todas as cartelas do dia já salvas no banco de dados
         cartelas_passadas = []
@@ -1082,24 +1135,75 @@ class CerebroIA:
         aprovadas = []
         reprov_gauss = 0
         reprov_duplicada = 0
-        vistas = set()
+        reprov_repulsao = 0
+        vistas = set()            # combinações já aprovadas (não repetir)
+        bloqueadas = set()        # duplicatas exatas (nunca voltam)
+        relaxaveis = []           # candidatas válidas no filtro, mas com repulsão forte
         outras = []
 
         # Passagem 1: Estrita (Sem repetições idênticas ou quase idênticas)
         for cand in todas:
             dez = sorted([int(x) for x in cand])
             key = tuple(dez)
-            if key in vistas: continue
-            vistas.add(key)
+            if key in vistas or key in bloqueadas:
+                continue
 
             f_rep = self.repulsao_vetorial.calcular_forca_repulsao(dez, recentes)
             if f_rep <= 0.0:  # 15 números idênticos a um jogo anterior
+                bloqueadas.add(key)
                 reprov_duplicada += 1
                 continue
 
             ok, det = self._gaussiano.filtrar(dez)
-            if ok:
-                sc = self._score_cartela(dez, vf, outras) * f_rep
+            if not ok:
+                reprov_gauss += 1
+                continue
+
+            # Repulsão forte (≥13 dezenas iguais a um jogo recente) → adia
+            # para a passagem 2 (que relaxa a repulsão) em vez de descartar
+            # silenciosamente. Antes estas candidatas eram marcadas como
+            # "vistas" e a passagem 2 nunca as reencontrava (código morto).
+            if f_rep < 0.5:
+                relaxaveis.append((dez, det, f_rep))
+                reprov_repulsao += 1
+                continue
+
+            vistas.add(key)
+            sc = self._score_cartela(dez, vf, outras) * f_rep
+            outras.append(dez)
+            aprovadas.append({
+                "dezenas": dez,
+                "score_total": round(sc, 6),
+                "soma": det["soma"],
+                "pares": det["pares"],
+                "primos": det["primos"],
+                "fibonacci": det["fibonacci"],
+                "borda": det["borda"],
+                "f_repulsao": round(f_rep, 3),
+                "scores": {
+                    "ev_prob": round(float(sum(vf[d-1] for d in dez)), 4),
+                    "markov": round(self._motores["markov"].score_jogo(dez) if "markov" in self._motores else 0.5, 4),
+                    "verlet": round(self._motores["verlet"].score_jogo(dez) if "verlet" in self._motores else 0.5, 4),
+                    "gaussiano": round(max(0.0, 1.0 - abs(det["soma"] - 200) / 50), 4),
+                },
+            })
+
+        # Passagem 2: Se ainda não atingiu a quantidade, relaxa a repulsão
+        # e reaproveita as candidatas válidas que só foram adiadas.
+        if len(aprovadas) < qtd and relaxaveis:
+            # ordena por score inerente para entregar as melhores mesmo aqui
+            relaxaveis.sort(
+                key=lambda t: self._score_cartela(t[0], vf, outras),
+                reverse=True,
+            )
+            for dez, det, f_rep in relaxaveis:
+                if len(aprovadas) >= qtd:
+                    break
+                key = tuple(dez)
+                if key in vistas or key in bloqueadas:
+                    continue
+                vistas.add(key)
+                sc = self._score_cartela(dez, vf, outras) * 0.8
                 outras.append(dez)
                 aprovadas.append({
                     "dezenas": dez,
@@ -1109,42 +1213,9 @@ class CerebroIA:
                     "primos": det["primos"],
                     "fibonacci": det["fibonacci"],
                     "borda": det["borda"],
-                    "f_repulsao": round(f_rep, 3),
-                    "scores": {
-                        "ev_prob": round(float(sum(vf[d-1] for d in dez)), 4),
-                        "markov": round(self._motores["markov"].score_jogo(dez) if "markov" in self._motores else 0.5, 4),
-                        "verlet": round(self._motores["verlet"].score_jogo(dez) if "verlet" in self._motores else 0.5, 4),
-                        "gaussiano": round(max(0.0, 1.0 - abs(det["soma"] - 200) / 50), 4),
-                    },
+                    "f_repulsao": round(max(f_rep, 0.5), 3),
+                    "scores": {},
                 })
-            else:
-                reprov_gauss += 1
-
-        # Passagem 2: Se ainda não atingiu a quantidade desejada, relaxa a repulsão parcial
-        if len(aprovadas) < qtd:
-            for cand in todas:
-                dez = sorted([int(x) for x in cand])
-                key = tuple(dez)
-                if key in vistas: continue
-
-                ok, det = self._gaussiano.filtrar(dez)
-                if ok:
-                    vistas.add(key)
-                    sc = self._score_cartela(dez, vf, outras)
-                    outras.append(dez)
-                    aprovadas.append({
-                        "dezenas": dez,
-                        "score_total": round(sc * 0.8, 6),
-                        "soma": det["soma"],
-                        "pares": det["pares"],
-                        "primos": det["primos"],
-                        "fibonacci": det["fibonacci"],
-                        "borda": det["borda"],
-                        "f_repulsao": 0.5,
-                        "scores": {},
-                    })
-                if len(aprovadas) >= qtd:
-                    break
 
         # Passagem 3: Fallback final para garantir que o número de cartelas SEMPRE seja entregue
         if len(aprovadas) < qtd:
@@ -1197,7 +1268,10 @@ class CerebroIA:
         self.metricas.update({
             "total_geradas": len(resultado),
             "candidatas_total": len(todas),
-            "reprovadas": reprov_gauss + reprov_duplicada,
+            "reprovadas": reprov_gauss + reprov_duplicada + reprov_repulsao,
+            "reprovadas_gauss": reprov_gauss,
+            "reprovadas_duplicada": reprov_duplicada,
+            "reprovadas_repulsao": reprov_repulsao,
             "tempo_seg": round(tempo, 2),
         })
 
@@ -1442,6 +1516,19 @@ class CerebroIA:
             m |= 1 << (int(d) - 1)
         return m
 
+    @staticmethod
+    def _max_consecutivos(dezenas) -> int:
+        """Maior sequência de dezenas consecutivas numa cartela."""
+        sd = sorted(int(d) for d in dezenas)
+        mc = cc = 1
+        for i in range(1, len(sd)):
+            if sd[i] == sd[i - 1] + 1:
+                cc += 1
+                mc = max(mc, cc)
+            else:
+                cc = 1
+        return mc
+
 
     def backtest_captura(self, k=10, n_pool=17, callback=None) -> Dict[str, Any]:
         """
@@ -1470,6 +1557,10 @@ class CerebroIA:
         intersecoes = []
         detalhes = []
 
+        # RNG local e determinístico para o backtest (não usa np.random.seed
+        # global, que contaminava a aleatoriedade dos outros módulos).
+        rng = np.random.default_rng(1000)
+
         for i in range(1, k + 1):
             alvo_idx = n_total - i
             if alvo_idx < 50:
@@ -1478,8 +1569,9 @@ class CerebroIA:
             sorteado = set(
                 int(x) + 1 for x in np.where(matriz_full[alvo_idx] == 1)[0]
             )
-            np.random.seed(1000 + i)  # reprodutível (vetor tem ruído caótico)
             self.treinar(matriz_override=passado, raw_override=raw_full[:alvo_idx])
+            # injeta o RNG determinístico no ruído do vetor combinado
+            self._rng_vetor = rng
             vf = self._vetor_combinado()
             pool = sorted(int(d) for d in self._selecionar_elite(vf, n_pool))
             inter = len(sorteado & set(pool))
@@ -1494,8 +1586,8 @@ class CerebroIA:
             cb("janela {:>2}: interseção {}/15 {}".format(
                 i, inter, "← CAPTUROU" if capturou else ""))
 
-        # restaura treino completo
-        np.random.seed(None)
+        # restaura treino completo e RNG de produção
+        self._rng_vetor = None
         self.treinar(matriz_override=matriz_full, raw_override=raw_full)
 
         p_base = self.wheeling.prob_captura(n_pool)
@@ -1537,14 +1629,15 @@ class CerebroIA:
             if d not in grupo: grupo.append(d)
         return grupo[:tam]
 
-    def _monte_carlo(self, cands, v, n) -> List[List[int]]:
+    def _monte_carlo(self, cands, v, n, rng=None) -> List[List[int]]:
+        rng = rng or np.random.default_rng()
         pesos = np.array([float(v[d-1]) for d in cands])
         pesos = np.clip(pesos, 0.001, None) / pesos.sum()
         res = []
         for _ in range(n * 6):
             if len(res) >= n: break
             try:
-                idx = np.random.choice(len(cands), 15, replace=False, p=pesos)
+                idx = rng.choice(len(cands), 15, replace=False, p=pesos)
                 cand = sorted([cands[i] for i in idx])
                 res.append(cand)
             except Exception: continue
@@ -1558,14 +1651,15 @@ class CerebroIA:
         )
         return [list(co) for co in combos[:n]]
 
-    def _fallback(self, v, elite, n) -> List[List[int]]:
+    def _fallback(self, v, elite, n, rng=None) -> List[List[int]]:
+        rng = rng or np.random.default_rng()
         res = []
         pesos = np.array([float(v[d-1]) for d in elite])
         pesos = np.clip(pesos, 0.001, None) / pesos.sum()
         for _ in range(n * 30):
             if len(res) >= n: break
             try:
-                idx = np.random.choice(len(elite), 15, replace=False, p=pesos)
+                idx = rng.choice(len(elite), 15, replace=False, p=pesos)
                 cand = sorted([elite[i] for i in idx])
                 soma = sum(cand)
                 par = sum(1 for d in cand if d % 2 == 0)
@@ -1593,10 +1687,7 @@ class CerebroIA:
         resultado = {"ciclo_id": ciclo_id, "concurso": concurso, "status": "erro"}
 
         try:
-            proximo = concurso + 1
-            cartelas = self.gerar_cartelas(self.n_cartelas)
-            self._salvar_fila(proximo, cartelas)
-
+            # 1) Busca o resultado do concurso que ACABOU de sair.
             data_json = self._ingestor.buscar_concurso_caixa(concurso)
             if not data_json:
                 raise Exception("Resultado {} não disponível".format(concurso))
@@ -1604,8 +1695,19 @@ class CerebroIA:
             dezenas_reais = self._ingestor.extrair_dezenas(data_json)
             premios_reais = self._ingestor.extrair_premios(data_json)
 
-            conf = self._conferir(proximo, dezenas_reais, premios_reais)
-            aprd = self._aprender(concurso, conf, dezenas_reais, cartelas)
+            # 2) Confere as apostas que estavam na fila para ESTE concurso.
+            #    (Bug anterior: conferia a fila de "proximo" contra o
+            #     resultado de "concurso" — nunca acertava nada.)
+            conf = self._conferir(concurso, dezenas_reais, premios_reais)
+
+            # 3) Aprende com o resultado real (fora-da-amostra).
+            self._aprender(concurso, conf, dezenas_reais, [])
+
+            # 4) Gera e enfileira novas apostas para o PRÓXIMO concurso.
+            proximo = concurso + 1
+            cartelas = self.gerar_cartelas(self.n_cartelas)
+            self._salvar_fila(proximo, cartelas)
+
             resultado["status"] = "completo"
             self._ciclos_ok += 1
             self._ultimo_processado = concurso
@@ -1690,7 +1792,7 @@ class CerebroIA:
             "melhor_acertos": melhor, "media_acertos": round(media, 2), "total_ganho": round(total_g, 2)
         }
 
-    def _aprender(self, concurso: int, conf: Dict, dezenas_reais: List[int], cartelas: List[Dict]) -> Dict:
+    def _aprender(self, concurso: int, conf: Dict, dezenas_reais: List[int]) -> Dict:
         """
         Aprendizado honesto por desempenho FORA-DA-AMOSTRA de cada módulo:
         cada módulo 'vota' num top-15; o módulo que mais acertou no sorteio
@@ -1785,7 +1887,8 @@ class CerebroIA:
     def pausar_loop(self) -> Dict: self._pausado = True; return {"status": "pausado"}
     def retomar_loop(self) -> Dict: self._pausado = False; return {"status": "retomado"}
 
-    def backtesting(self, n_testes: int = 20, n_cart: int = 5) -> Dict:
+    def backtesting(self, n_testes: int = 20, n_cart: int = 5,
+                    n_random: int = 200) -> Dict:
         """
         Backtesting FORA-DA-AMOSTRA real (walk-forward) com baseline aleatória.
         Substitui o stub anterior. Avalia os 15 oráculos e o consenso,
@@ -1795,9 +1898,11 @@ class CerebroIA:
             from .singularidade import ValidadorForaDaAmostra
             matriz, _ = self._ingestor.carregar_matriz()
             validador = ValidadorForaDaAmostra(matriz)
-            relatorio = validador.backtest(n_testes=n_testes, n_random=200)
+            relatorio = validador.backtest(
+                n_testes=n_testes, n_random=n_random)
             relatorio["status"] = "ok"
-            relatorio["concursos_testados"] = n_testes
+            relatorio["concursos_testados"] = relatorio.get(
+                "concursos_testados", n_testes)
             return relatorio
         except Exception as e:
             import traceback

@@ -1574,3 +1574,12 @@ body {
     font-family: monospace; font-size: 12px; padding: 4px 8px;
     border-radius: 6px; background: var(--dark-3); border: 1px solid rgba(255,255,255,0.15);
 }
+/* Menu unificado do Cérebro IA (Fase 6) */
+.nav-grupo-titulo {
+    font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-muted); padding: 14px 18px 6px; opacity: .8;
+}
+.nav-sub a {
+    padding-left: 42px !important; font-size: 13px; opacity: .85;
+}
+.nav-sub a:hover { opacity: 1; }
