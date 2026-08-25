@@ -47,7 +47,7 @@ def test_menu_expoe_apenas_a_inteligencia_magna(client):
 
 @pytest.mark.parametrize("rota", [
     "/cerebro/central", "/gerar", "/cartela_do_dia", "/wheeling",
-    "/analise", "/singularidade", "/ia_auditoria",
+    "/analise", "/singularidade", "/ia_auditoria", "/fisica", "/avaliacao",
 ])
 def test_paginas_antigas_redirecionam_para_magna(client, rota):
     response = client.get(rota)
@@ -58,7 +58,7 @@ def test_paginas_antigas_redirecionam_para_magna(client, rota):
 def test_menus_do_sistema_continuam_independentes(client):
     for rota in (
         "/conferencia", "/financeiro_page", "/historico", "/premios",
-        "/", "/avaliacao",
+        "/",
     ):
         assert client.get(rota).status_code == 200, rota
 

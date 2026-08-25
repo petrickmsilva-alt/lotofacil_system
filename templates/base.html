@@ -29,7 +29,7 @@
             </li>
             <li>
                 <a href="/cerebro"
-                   class="{% if request.path.startswith('/cerebro') or request.path in ['/gerar','/cartela_do_dia','/wheeling','/analise','/singularidade','/ia_auditoria'] %}active{% endif %}">
+                   class="{% if request.path.startswith('/cerebro') or request.path in ['/gerar','/cartela_do_dia','/wheeling','/analise','/singularidade','/ia_auditoria','/fisica','/avaliacao'] %}active{% endif %}">
                     <i class="fas fa-wand-magic-sparkles"></i> Inteligência Magna
                 </a>
             </li>
@@ -65,18 +65,6 @@
                 <a href="/premios"
                    class="{% if request.path == '/premios' %}active{% endif %}">
                     <i class="fas fa-trophy"></i> Prêmios
-                </a>
-            </li>
-            <li>
-                <a href="/avaliacao"
-                   class="{% if request.path == '/avaliacao' %}active{% endif %}">
-                    <i class="fas fa-clipboard-check"></i> Avaliação
-                </a>
-            </li>
-            <li>
-                <a href="/fisica"
-                   class="{% if request.path == '/fisica' %}active{% endif %}">
-                    <i class="fas fa-basketball"></i> Física
                 </a>
             </li>
         </ul>

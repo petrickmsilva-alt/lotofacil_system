@@ -175,6 +175,111 @@
     <div class="magna-empty"><i class="fas fa-fingerprint"></i><p>A primeira decisão unificada criará a memória auditável.</p></div>
     {% endif %}
 </section>
+
+<!-- Seção de Física do Sorteio (integrada na Magna) -->
+<section class="magna-physics">
+    <div class="magna-section-title">
+        <div><span>FÍSICA DO SORTEIO</span><h3>Perfil das bolas e condições ambientais</h3></div>
+        <span class="magna-physics-status {{ 'ativa' if magna_status.fisica.tem_dados_reais else 'neutra' }}">
+            <i class="fas {{ 'fa-check-circle' if magna_status.fisica.tem_dados_reais else 'fa-minus-circle' }}"></i>
+            {{ magna_status.fisica.estado }}
+        </span>
+    </div>
+    
+    <div class="magna-physics-grid">
+        <div class="magna-physics-stats">
+            <div><strong>{{ magna_status.fisica.bolas_registradas }}</strong><span>Bolas medidas</span></div>
+            <div><strong>{{ magna_status.fisica.ambientes_registrados }}</strong><span>Ambientes</span></div>
+            <div><strong>{{ "%.1f"|format(pesos.fisica * 100) }}%</strong><span>Peso na decisão</span></div>
+        </div>
+        
+        <div class="magna-physics-info">
+            <p><strong>Como funciona:</strong> Cada bola tem propriedades físicas individuais (massa, cor, desgaste). O ambiente registra temperatura, pressão e umidade. Quando existem medições reais, a física diferencia as dezenas.</p>
+            <p><strong>Estado atual:</strong> {% if magna_status.fisica.tem_dados_reais %}A fonte física está ATIVA e influencia a decisão.{% else %}Sem medições reais — fonte neutra (não influencia).{% endif %}</p>
+        </div>
+    </div>
+    
+    {% if bolas %}
+    <div class="magna-physics-bolas">
+        <h4>Perfil das 25 Bolas</h4>
+        <div class="magna-bolas-grid">
+            {% for bola in bolas %}
+            <div class="magna-bola-card">
+                <div class="magna-bola-numero" style="background: {{ cores_rgb[bola.cor] }}">
+                    {{ bola.numero }}
+                </div>
+                <div class="magna-bola-info">
+                    <span>{{ bola.cor }}</span>
+                    <span>{{ bola.massa_g }}g</span>
+                    <span>Desgaste: {{ "%.0f"|format(bola.indice_desgaste * 100) }}%</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Formulário de Ambiente -->
+    <div class="magna-physics-form">
+        <h4>Registrar Ambiente de Sorteio</h4>
+        <form id="ambiente-form-magna">
+            <div class="form-row-magna">
+                <label>
+                    Concurso
+                    <input type="number" name="concurso" placeholder="Ex: 3771">
+                </label>
+                <label>
+                    Temperatura (°C)
+                    <input type="number" name="temperatura_C" value="21.5" step="0.1" required>
+                </label>
+                <label>
+                    Pressão (atm)
+                    <input type="number" name="pressao_atm" value="0.92" step="0.01" required>
+                </label>
+                <label>
+                    Umidade (%)
+                    <input type="number" name="umidade_pct" value="55" step="1" required>
+                </label>
+            </div>
+            <button type="submit" class="magna-btn-secondary">
+                <i class="fas fa-save"></i> Registrar Ambiente
+            </button>
+        </form>
+        <div id="ambiente-resultado-magna" class="magna-resultado" hidden></div>
+    </div>
+</section>
+
+<!-- Seção de Avaliação (integrada na Magna) -->
+<section class="magna-avaliacao">
+    <div class="magna-section-title">
+        <div><span>AVALIAÇÃO DE DESEMPENHO</span><h3>A Magna avalia e aprende com os resultados</h3></div>
+    </div>
+    
+    <div class="magna-avaliacao-grid">
+        <div class="magna-avaliacao-stats">
+            <div><strong>{{ historico_magna|selectattr('status', 'equalto', 'conferida')|list|length }}</strong><span>Decisões conferidas</span></div>
+            <div><strong>{{ "%.1f"|format(media_acertos) }}</strong><span>Média de acertos</span></div>
+            <div><strong>{{ melhor_acertos }}</strong><span>Melhor resultado</span></div>
+        </div>
+        
+        <div class="magna-avaliacao-info">
+            <p><strong>Como a Magna aprende:</strong> Após cada sorteio real, a Magna compara suas previsões com o resultado. Fontes que acertam mais ganham peso; fontes que erram perdem peso. Cada ajuste fica registrado na memória auditável.</p>
+            <p><strong>Backtesting:</strong> A Magna pode testar suas previsões contra dados históricos para validar se os motores batem o acaso.</p>
+        </div>
+    </div>
+    
+    <!-- Botões de Avaliação -->
+    <div class="magna-avaliacao-actions">
+        <button id="btn-backtest" class="magna-btn-secondary">
+            <i class="fas fa-flask"></i> Executar Backtest
+        </button>
+        <button id="btn-conferir" class="magna-btn-secondary">
+            <i class="fas fa-check-double"></i> Conferir Pendentes
+        </button>
+    </div>
+    
+    <div id="avaliacao-resultado" class="magna-resultado" hidden></div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -279,6 +384,127 @@
             btn.disabled = false;
         }
     });
+
+    // Formulário de Ambiente (Física)
+    const ambForm = document.getElementById('ambiente-form-magna');
+    if (ambForm) {
+        ambForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const btn = form.querySelector('button');
+            const resultado = document.getElementById('ambiente-resultado-magna');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+            
+            const dados = {
+                concurso: form.concurso.value ? parseInt(form.concurso.value) : null,
+                maquina: "Padrao Caixa SP",
+                conjunto_bolas: "A",
+                temperatura_K: parseFloat(form.temperatura_C.value) + 273.15,
+                pressao_atm: parseFloat(form.pressao_atm.value),
+                umidade: parseFloat(form.umidade_pct.value) / 100,
+                velocidade_rotacao: 30.0,
+                duracao_mistura: 60.0,
+                data_ultima_manutencao: null
+            };
+            
+            try {
+                const response = await fetch('/api/magna/fisica/ambiente', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(dados)
+                });
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    resultado.className = 'magna-resultado sucesso';
+                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> Ambiente registrado com sucesso!';
+                    resultado.hidden = false;
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error(data.msg || 'Erro desconhecido');
+                }
+            } catch (err) {
+                resultado.className = 'magna-resultado erro';
+                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
+                resultado.hidden = false;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Registrar Ambiente';
+            }
+        });
+    }
+
+    // Botão de Backtest
+    const btnBacktest = document.getElementById('btn-backtest');
+    if (btnBacktest) {
+        btnBacktest.addEventListener('click', async function() {
+            const resultado = document.getElementById('avaliacao-resultado');
+            btnBacktest.disabled = true;
+            btnBacktest.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executando...';
+            
+            try {
+                const response = await fetch('/api/cerebro/backtesting', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({n_testes: 10, n_random: 100})
+                });
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    resultado.className = 'magna-resultado sucesso';
+                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> Backtest concluído: ' + 
+                        data.concursos_testados + ' concursos testados';
+                    resultado.hidden = false;
+                } else {
+                    throw new Error(data.msg || 'Erro no backtest');
+                }
+            } catch (err) {
+                resultado.className = 'magna-resultado erro';
+                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
+                resultado.hidden = false;
+            } finally {
+                btnBacktest.disabled = false;
+                btnBacktest.innerHTML = '<i class="fas fa-flask"></i> Executar Backtest';
+            }
+        });
+    }
+
+    // Botão de Conferir
+    const btnConferir = document.getElementById('btn-conferir');
+    if (btnConferir) {
+        btnConferir.addEventListener('click', async function() {
+            const resultado = document.getElementById('avaliacao-resultado');
+            btnConferir.disabled = true;
+            btnConferir.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conferindo...';
+            
+            try {
+                const response = await fetch('/api/conferir', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    resultado.className = 'magna-resultado sucesso';
+                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> ' + 
+                        data.conferidas + ' cartelas conferidas em ' + data.concursos + ' concursos';
+                    resultado.hidden = false;
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    throw new Error(data.msg || 'Erro na conferência');
+                }
+            } catch (err) {
+                resultado.className = 'magna-resultado erro';
+                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
+                resultado.hidden = false;
+            } finally {
+                btnConferir.disabled = false;
+                btnConferir.innerHTML = '<i class="fas fa-check-double"></i> Conferir Pendentes';
+            }
+        });
+    }
 })();
 </script>
 
@@ -291,6 +517,38 @@
 .magna-weight{margin:16px 0}.magna-weight>div:first-child{display:flex;justify-content:space-between;color:#b8b9ca;font-size:11px}.magna-weight strong{color:#dad6ff}.magna-weight-track{height:5px;margin-top:7px;border-radius:5px;background:#292a3b;overflow:hidden}.magna-weight-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#6c5ce7,#a892ff)}.magna-note{padding:12px;margin-top:20px;border-left:2px solid #6c5ce7;background:#13141f;color:#777990;font-size:10px;line-height:1.6}
 .magna-processing{display:flex;align-items:center;gap:20px;padding:20px 24px;margin-bottom:18px;border:1px solid rgba(108,92,231,.35);border-radius:14px;background:#19182a}.magna-loader{position:relative;width:50px;height:50px;display:grid;place-items:center;color:#b5a9ff}.magna-loader span{position:absolute;inset:0;border:2px solid transparent;border-top-color:#8f7cf5;border-radius:50%;animation:magnaSpin 1s linear infinite}@keyframes magnaSpin{to{transform:rotate(360deg)}}.magna-processing p{margin:4px 0;color:#85879e;font-size:11px}
 .magna-result{margin-bottom:18px;border-color:rgba(108,92,231,.45);box-shadow:0 18px 45px rgba(0,0,0,.15)}.magna-result-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid #2a2b3d}.magna-result-head>div>span{color:#68d9b4;font-size:10px;font-weight:800;letter-spacing:1.5px}.magna-result-head h2{margin:7px 0;color:#fff}.magna-result-head p{margin:0;max-width:760px;color:#9294aa;font-size:12px;line-height:1.5}.magna-result-seal{width:64px;height:64px;border:1px solid #4f477e;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ab9eff}.magna-result-seal span{font-size:8px;font-weight:800;letter-spacing:1px}.magna-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}.magna-metrics div{padding:14px;border:1px solid #292a3b;border-radius:11px;background:#12131e}.magna-metrics span,.magna-metrics strong{display:block}.magna-metrics span{color:#72748b;font-size:9px;text-transform:uppercase}.magna-metrics strong{margin-top:5px;color:#efeff7;font-size:16px}.magna-decision-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.magna-panel{padding:18px;border-radius:12px;background:#12131e}.magna-panel h3{margin:0 0 15px;color:#dcddea;font-size:13px}.magna-panel h3 i{color:#8e7cf2;margin-right:6px}.magna-panel p{color:#707289;font-size:10px;line-height:1.5}.magna-balls{display:flex;flex-wrap:wrap;gap:7px}.magna-balls span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(145deg,#7464d7,#4e429e);color:#fff;font-size:11px;font-weight:800;box-shadow:inset 0 1px 1px rgba(255,255,255,.22)}.magna-diagnostics{margin:0}.magna-diagnostics div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #252636;font-size:10px}.magna-diagnostics dt{color:#777990}.magna-diagnostics dd{margin:0;color:#d5d1fa;font-weight:700}.magna-cartelas-head{margin:24px 0 13px}.magna-cartelas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.magna-ticket{padding:15px;border:1px solid #2b2c3e;border-radius:12px;background:linear-gradient(145deg,#13141f,#191a29)}.magna-ticket header,.magna-ticket footer{display:flex;justify-content:space-between}.magna-ticket header{margin-bottom:12px;color:#85879c;font-size:9px;letter-spacing:1px}.magna-ticket header strong{color:#a99cff}.magna-ticket .magna-balls span{width:28px;height:28px;font-size:9px}.magna-ticket footer{margin-top:12px;color:#6f7188;font-size:9px}.magna-truth{display:flex;align-items:flex-start;gap:12px;padding:15px;margin-top:18px;border-radius:10px;background:#11121c;color:#7f8197;font-size:10px;line-height:1.55}.magna-truth i{color:#e0b75d;margin-top:2px}.magna-truth p{margin:0}.magna-history{margin-bottom:20px}.magna-status{padding:4px 7px;border-radius:10px;background:#292a3b;color:#aaa;font-size:9px}.magna-status.conferida{background:rgba(0,184,148,.15);color:#62d9bd}.magna-empty{text-align:center;padding:28px;color:#696b82}.magna-empty i{font-size:28px;color:#6c5ce7}.magna-empty p{font-size:11px}
-@media(max-width:900px){.magna-grid,.magna-decision-grid{grid-template-columns:1fr}.magna-orbe{display:none}.magna-metrics{grid-template-columns:repeat(2,1fr)}.magna-command form{grid-template-columns:1fr}.magna-check,.magna-primary{grid-column:1}.magna-hero{padding:28px}.magna-hero h2{font-size:27px}}
+@media(max-width:900px){.magna-grid,.magna-decision-grid{grid-template-columns:1fr}.magna-orbe{display:none}.magna-metrics{grid-template-columns:repeat(2,1fr)}.magna-command form{grid-template-columns:1fr}.magna-check,.magna-primary{grid-column:1}.magna-hero{padding:28px}.magna-hero h2{font-size:27px}.magna-physics-grid,.magna-avaliacao-grid{grid-template-columns:1fr}.form-row-magna{grid-template-columns:1fr}.magna-bolas-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}
+
+/* Seções de Física e Avaliação */
+.magna-physics,.magna-avaliacao{border:1px solid var(--border,#2a2d42);border-radius:18px;background:#181925;padding:24px;margin-bottom:18px}
+.magna-physics-status{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700}
+.magna-physics-status.ativa{background:rgba(0,184,148,.15);color:#00b894}
+.magna-physics-status.neutra{background:rgba(255,234,167,.15);color:#ffeaa7}
+.magna-physics-grid,.magna-avaliacao-grid{display:grid;grid-template-columns:1fr 1.5fr;gap:20px;margin-bottom:20px}
+.magna-physics-stats,.magna-avaliacao-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.magna-physics-stats div,.magna-avaliacao-stats div{background:#11121d;border-radius:10px;padding:14px;text-align:center}
+.magna-physics-stats strong,.magna-avaliacao-stats strong{display:block;font-size:22px;color:#fff;margin-bottom:4px}
+.magna-physics-stats span,.magna-avaliacao-stats span{font-size:10px;color:#777990;text-transform:uppercase}
+.magna-physics-info,.magna-avaliacao-info{background:#11121d;border-radius:10px;padding:16px}
+.magna-physics-info p,.magna-avaliacao-info p{margin:6px 0;color:#b8b9cf;font-size:12px;line-height:1.5}
+.magna-physics-info strong,.magna-avaliacao-info strong{color:#fff}
+.magna-physics-bolas{margin-top:20px}
+.magna-physics-bolas h4{margin:0 0 12px;color:#d5d5e2;font-size:14px}
+.magna-bolas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.magna-bola-card{display:flex;align-items:center;gap:8px;background:#11121d;border-radius:8px;padding:8px}
+.magna-bola-numero{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff}
+.magna-bola-info{display:flex;flex-direction:column;gap:2px;font-size:10px;color:#777990}
+.magna-physics-form{margin-top:20px;background:#11121d;border-radius:10px;padding:16px}
+.magna-physics-form h4{margin:0 0 12px;color:#d5d5e2;font-size:14px}
+.form-row-magna{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.form-row-magna label{display:flex;flex-direction:column;gap:4px;color:#777990;font-size:10px}
+.form-row-magna input{background:#181925;border:1px solid #34364b;border-radius:6px;padding:8px;color:#fff;font-size:12px;outline:none}
+.form-row-magna input:focus{border-color:#6c5ce7}
+.magna-btn-secondary{background:#292a3b;color:#b8b9cf;border:1px solid #34364b;border-radius:8px;padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.magna-btn-secondary:hover{background:#34364b;color:#fff}
+.magna-resultado{margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:6px}
+.magna-resultado.sucesso{background:rgba(0,184,148,.15);color:#00b894}
+.magna-resultado.erro{background:rgba(255,118,117,.15);color:#ff7675}
+.magna-avaliacao-actions{display:flex;gap:10px;margin-top:16px}
 </style>
 {% endblock %}

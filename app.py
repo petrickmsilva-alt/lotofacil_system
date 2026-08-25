@@ -290,16 +290,29 @@ def cerebro_page():
     instrumentos analíticos são assimilados por `decidir_e_gerar()` e a página
     exibe somente a conclusão unificada e sua memória auditável.
     """
+    from core.fisica_sorteio import CORES_RGB
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
     status_sistema["total_concursos"] = db.get_total_concursos() or 0
     status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
     status_sistema["ia_treinada"] = magna.treinado
+    
+    # Calcular estatísticas de avaliação
+    historico = magna.get_historico_magna(50)
+    conferidas = [d for d in historico if d.get('status') == 'conferida']
+    media_acertos = sum(d.get('media_acertos', 0) for d in conferidas) / len(conferidas) if conferidas else 0
+    melhor_acertos = max((d.get('melhor_acertos', 0) for d in conferidas), default=0)
+    
     return render_template(
         "cerebro.html",
         status=status_sistema,
         magna_status=magna.get_status(),
-        historico_magna=magna.get_historico_magna(12),
+        historico_magna=historico,
         valor_aposta=VALOR_APOSTA,
+        pesos=magna.pesos_fontes_magna,
+        bolas=magna.fisica.get_bolas(),
+        cores_rgb=CORES_RGB,
+        media_acertos=round(media_acertos, 1),
+        melhor_acertos=melhor_acertos,
     )
 
 
@@ -524,26 +537,14 @@ def ia_auditoria():
 
 @app.route("/fisica")
 def fisica_page():
-    """Página de gerenciamento da física do sorteio."""
-    from core.fisica_sorteio import CORES_RGB
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
-    status_sistema["total_concursos"] = db.get_total_concursos() or 0
-    status_sistema["ia_treinada"] = magna.treinado
+    """A física do sorteio foi integrada na Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
-    # Status da física
-    fisica_status = magna.fisica.get_status()
-    status_com_fisica = dict(status_sistema)
-    status_com_fisica["fisica"] = fisica_status
 
-    return render_template(
-        "fisica.html",
-        status=status_com_fisica,
-        pesos_fontes=magna.pesos_fontes_magna,
-        bolas=magna.fisica.get_bolas(),
-        ambientes=magna.fisica.get_ambientes(20),
-        vetor_fisico=magna.fisica.score_fisico().tolist(),
-        cores_rgb=CORES_RGB,
-    )
+@app.route("/avaliacao")
+def avaliacao_page():
+    """A avaliação foi integrada na Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/singularidade")
@@ -694,11 +695,6 @@ def _criar_tabela_avaliacao():
     """)
     conn.commit()
     conn.close()
-
-
-@app.route("/avaliacao")
-def avaliacao_page():
-    return render_template("avaliacao.html", status=status_sistema)
 
 
 @app.route("/api/avaliacao", methods=["POST"])
