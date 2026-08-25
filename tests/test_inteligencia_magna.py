@@ -38,7 +38,7 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["decisao_id"] is not None
     assert len(resultado["fontes_assimiladas"]) == 6
     assert set(resultado["pesos_fontes"]) == {
-        "motores", "oraculos", "espectral", "informacao", "recente",
+        "motores", "oraculos", "espectral", "informacao", "recente", "fisica",
     }
     assert abs(sum(resultado["pesos_fontes"].values()) - 1.0) < 1e-5
     assert len(resultado["top15_magna"]) == 15

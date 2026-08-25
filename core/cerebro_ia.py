@@ -26,6 +26,7 @@ from database.db_manager import DBManager
 from .oraculo_convergente import OraculoConvergente
 from .wheeling import MotorWheeling
 from .caixa_client import CaixaClient
+from .fisica_sorteio import MotorFisicaSorteio
 
 
 def _popcount_uf(x: int) -> int:
@@ -661,11 +662,12 @@ class OtimizadorSPSA:
 # ============================================================
 class CerebroIA:
     _FONTES_MAGNA_DEFAULT = {
-        "motores": 0.45,
-        "oraculos": 0.25,
+        "motores": 0.40,
+        "oraculos": 0.22,
         "espectral": 0.10,
         "informacao": 0.10,
         "recente": 0.10,
+        "fisica": 0.08,
     }
 
     _PESOS_DEFAULT = {
@@ -719,6 +721,9 @@ class CerebroIA:
 
         # Instância o Motor Disruptivo de Repulsão Vetorial
         self.repulsao_vetorial = MotorRepulsaoVetorial(self.db)
+
+        # Motor de Física do Sorteio (perfil das bolas + ambiente)
+        self.fisica = MotorFisicaSorteio(self.db_path)
 
         # Carregar dados
         self._ingestor = IngestorDados(self.db_path, client=client)
@@ -1645,12 +1650,16 @@ class CerebroIA:
         janela = self.matriz[-min(50, self.n):]
         vetor_recente = self._normalizar_vetor(np.sum(janela, axis=0))
 
+        # Fonte física: perfil individual das bolas + ambiente do sorteio
+        vetor_fisica = self._normalizar_vetor(self.fisica.score_fisico())
+
         fontes = {
             "motores": vetor_motores,
             "oraculos": vetor_oraculos,
             "espectral": vetor_espectral,
             "informacao": vetor_informacao,
             "recente": vetor_recente,
+            "fisica": vetor_fisica,
         }
         return fontes, consulta, espectro, informacao, entropias
 
@@ -2400,6 +2409,7 @@ class CerebroIA:
         print("[CÉREBRO IA][{}] {}".format(tipo, msg))
 
     def get_status(self) -> Dict:
+        fisica_status = self.fisica.get_status()
         return {
             "versao": "9.0-Magna-Unificada",
             "estado": self.estado,
@@ -2412,6 +2422,14 @@ class CerebroIA:
                 "unificada": True,
                 "pesos_fontes": dict(self.pesos_fontes_magna),
                 "ultima_decisao": self.decisoes.get("magna"),
+                "modulos_agregados": 14,
+                "fontes_assimiladas": list(self._FONTES_MAGNA_DEFAULT.keys()),
+            },
+            "fisica": {
+                "estado": fisica_status["estado"],
+                "bolas_registradas": fisica_status["bolas_medidas"],
+                "ambientes_registrados": fisica_status["ambientes_registrados"],
+                "tem_dados_reais": fisica_status["tem_dados_reais"],
             },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],

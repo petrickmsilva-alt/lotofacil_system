@@ -346,6 +346,74 @@ def api_magna_decidir():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+# ============================================================
+# API — FÍSICA DO SORTEIO (Perfil das Bolas + Ambiente)
+# ============================================================
+
+@app.route("/api/magna/fisica")
+def api_magna_fisica():
+    """Retorna o estado atual da fonte física da Magna."""
+    try:
+        return jsonify({
+            "status": "ok",
+            "fisica": magna.fisica.get_status(),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/fisica/bola", methods=["POST"])
+def api_magna_fisica_bola():
+    """Registra ou atualiza o perfil físico de uma bola."""
+    try:
+        dados = request.get_json() or {}
+        numero = int(dados.get("numero", 0))
+        if not 1 <= numero <= 25:
+            return jsonify({"status": "erro", "msg": "numero deve estar entre 1 e 25"}), 400
+        resultado = magna.fisica.registrar_bola(
+            numero=numero,
+            massa_g=dados.get("massa_g"),
+            diametro_mm=dados.get("diametro_mm"),
+            cor=dados.get("cor"),
+            rugosidade=dados.get("rugosidade"),
+            coef_restituicao=dados.get("coef_restituicao"),
+            ciclos_uso=int(dados.get("ciclos_uso", 0)),
+        )
+        return jsonify({"status": "ok", "bola": resultado})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/fisica/ambiente", methods=["POST"])
+def api_magna_fisica_ambiente():
+    """Registra as condições ambientais de um sorteio."""
+    try:
+        dados = request.get_json() or {}
+        resultado = magna.fisica.registrar_ambiente(
+            concurso=dados.get("concurso"),
+            maquina=dados.get("maquina", "padrao"),
+            conjunto_bolas=dados.get("conjunto_bolas", "A"),
+            temperatura_K=dados.get("temperatura_K"),
+            pressao_atm=dados.get("pressao_atm"),
+            umidade=dados.get("umidade"),
+            densidade_ar=dados.get("densidade_ar"),
+            gravidade=dados.get("gravidade"),
+            velocidade_rotacao=dados.get("velocidade_rotacao", 30.0),
+            duracao_mistura=dados.get("duracao_mistura", 60.0),
+            data_ultima_manutencao=dados.get("data_ultima_manutencao"),
+        )
+        return jsonify({"status": "ok", "ambiente": resultado})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/cerebro/otimas", methods=["POST"])
 def api_cerebro_otimas():
     """Alias legado: delega à mesma e única Inteligência Magna."""

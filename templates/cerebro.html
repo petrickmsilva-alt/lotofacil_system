@@ -20,12 +20,13 @@
 </section>
 
 <section class="magna-assimilacao" aria-label="Conhecimentos assimilados">
-    <div><i class="fas fa-dice"></i><span>Combinatória</span></div>
+    <div><i class="fas fa-dice"></i><span>14 módulos</span></div>
     <div><i class="fas fa-eye"></i><span>Consenso</span></div>
     <div><i class="fas fa-diagram-project"></i><span>Wheeling</span></div>
     <div><i class="fas fa-chart-line"></i><span>Análise temporal</span></div>
     <div><i class="fas fa-atom"></i><span>Singularidade</span></div>
     <div><i class="fas fa-shield-halved"></i><span>Auditoria</span></div>
+    <div><i class="fas fa-basketball"></i><span>Física</span></div>
     <div class="magna-fluxo"><span></span><i class="fas fa-arrow-right"></i><strong>DECISÃO MAGNA</strong></div>
 </section>
 
@@ -62,8 +63,8 @@
 
         <div class="magna-facts">
             <div><strong>{{ magna_status.total_concursos }}</strong><span>concursos assimilados</span></div>
-            <div><strong>3.268.760</strong><span>combinações verificáveis</span></div>
-            <div><strong>{{ "online" if magna_status.treinado else "pronta" }}</strong><span>estado da memória</span></div>
+            <div><strong>14 / 14</strong><span>módulos agregados</span></div>
+            <div><strong>{{ magna_status.fisica.estado if magna_status.fisica is defined else "neutra" }}</strong><span>fonte física</span></div>
         </div>
     </section>
 
@@ -77,7 +78,8 @@
             ('oraculos','Consenso convergente'),
             ('espectral','Espectro temporal'),
             ('informacao','Teoria da informação'),
-            ('recente','Leitura recente')
+            ('recente','Leitura recente'),
+            ('fisica','Perfil físico e ambiente')
         ] %}
         <div class="magna-weight">
             <div><span>{{ rotulo }}</span><strong>{{ "%.1f"|format(pesos[nome] * 100) }}%</strong></div>
