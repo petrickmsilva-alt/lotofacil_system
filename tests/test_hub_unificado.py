@@ -91,6 +91,23 @@ def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
     assert data["resultado"]["concurso_alvo"] == 9999
 
 
+def test_api_ancoras_123_existe(client, app_module, monkeypatch):
+    fake = {
+        "status": "ok",
+        "n_cartelas": 3,
+        "cartelas": [],
+        "concurso_alvo": 9999,
+        "pool_elite": [],
+        "estrategia": "ancoradas-01-02-03",
+        "analise": {"p_melhor_14_mais": 0.0},
+    }
+    monkeypatch.setattr(
+        app_module.magna, "decidir_ancoradas_01_02_03", lambda **_: fake)
+    response = client.post("/api/magna/ancoras-123", json={"salvar": False})
+    assert response.status_code == 200
+    assert response.get_json()["resultado"]["estrategia"] == "ancoradas-01-02-03"
+
+
 def test_cartela_do_dia_isolada_foi_desativada(client):
     response = client.get("/api/cartela_do_dia")
     assert response.status_code == 410

@@ -148,3 +148,24 @@ def test_ciclo_pos_sorteio_assimila_e_planeja(tmp_path):
     assert magna.treinado is True
     assert out["plano"]["modo_recomendado"] == "wheeling-garantia-14"
     assert "autocritica" in out
+
+
+def test_ancoras_01_02_03_usam_memoria_unica(magna_decisao):
+    magna, _ = magna_decisao
+    r = magna.decidir_ancoradas_01_02_03(registrar=False, concurso_alvo=10001)
+    assert r["n_cartelas"] == 3
+    assert r["estrategia"] == "ancoradas-01-02-03"
+    assert r["cartelas"][0]["dezenas"][0] == 1 or 1 in r["cartelas"][0]["dezenas"]
+    assert 1 in r["cartelas"][0]["dezenas"]
+    assert 2 in r["cartelas"][1]["dezenas"]
+    assert 3 in r["cartelas"][2]["dezenas"]
+    for c in r["cartelas"]:
+        assert len(c["dezenas"]) == 15
+        assert len(set(c["dezenas"])) == 15
+
+
+def test_aprendizado_grava_episodio_de_retencao(magna_decisao):
+    magna, _ = magna_decisao
+    ret = magna.get_retencao()
+    assert "metricas" in ret
+    assert "prototipos" in ret

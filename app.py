@@ -285,6 +285,7 @@ def cerebro_page():
         cores_rgb=CORES_RGB,
         media_acertos=round(media_acertos, 1),
         melhor_acertos=melhor_acertos,
+        retencao=magna.get_retencao(8),
     )
 
 
@@ -324,6 +325,35 @@ def api_magna_decidir():
     """Única porta pública de análise, interpretação e criação de cartelas."""
     try:
         return jsonify(_responder_decisao_magna(request.get_json() or {}))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/ancoras-123", methods=["POST"])
+def api_magna_ancoras_123():
+    """Comando extra: 3 cartelas âncora 01, 02 e 03 + 14 dezenas da Magna."""
+    try:
+        dados = request.get_json() or {}
+        salvar = bool(dados.get("salvar", True))
+        resultado = magna.decidir_ancoradas_01_02_03(registrar=salvar)
+        salvos = 0
+        if salvar and resultado.get("n_cartelas", 0) > 0:
+            salvos = _salvar_cartelas_banco(
+                resultado["cartelas"], resultado["concurso_alvo"],
+                tipo="inteligencia_magna", modo=resultado["estrategia"],
+                grupo_elite=resultado.get("pool_elite"),
+                cobertura=(resultado.get("analise") or {}).get(
+                    "p_melhor_14_mais", 0),
+            )
+        return jsonify({
+            "status": "ok",
+            "resultado": resultado,
+            "salvas": salvos,
+            "concurso": resultado.get("concurso_alvo"),
+        })
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro", "msg": str(exc)}), 400
     except Exception as exc:
@@ -835,6 +865,23 @@ def _iniciar_sincronizacao_historico(completo=False):
                 if resultado.get("novos") or resultado.get("recuperados"):
                     magna.treinado = False
                     status_sistema["ia_treinada"] = False
+            if resultado.get("novos") or resultado.get("recuperados"):
+                try:
+                    status_sistema["treinando"] = True
+                    status_sistema["progresso"] = (
+                        "Inteligência Magna assimilando o sorteio da Caixa..."
+                    )
+                    pos = magna.ciclo_pos_sorteio_caixa()
+                    status_sistema["ia_treinada"] = magna.treinado
+                    status_sistema["progresso"] = pos.get(
+                        "msg", "Ciclo Magna pós-sorteio concluído")
+                except Exception as exc_ciclo:
+                    traceback.print_exc()
+                    status_sistema["progresso"] = (
+                        "Sincronizado; ciclo Magna: {}".format(exc_ciclo)
+                    )
+                finally:
+                    status_sistema["treinando"] = False
         except Exception as exc:
             traceback.print_exc()
             status_sistema["erro_atualizacao"] = str(exc)

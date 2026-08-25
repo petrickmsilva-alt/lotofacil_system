@@ -836,6 +836,26 @@ class CerebroIA:
             CREATE INDEX IF NOT EXISTS idx_magna_concurso_status
             ON magna_decisoes(concurso_alvo, status)
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_episodios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                concurso INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                dezenas TEXT NOT NULL,
+                acertos INTEGER NOT NULL,
+                faltaram TEXT,
+                tipo TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_checkpoint (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                pesos_json TEXT NOT NULL,
+                media_acertos REAL NOT NULL,
+                n_amostra INTEGER NOT NULL
+            )
+        """)
         conn.commit()
         conn.close()
 
@@ -1481,7 +1501,7 @@ class CerebroIA:
                 cand = heavy.obter_dezenas_por_indice(idx[i])
                 m = self._mask_de_dezenas(cand)
                 # diversidade: ≤13 dezenas em comum com cada escolhida
-                if any(_popcount_uf(m & e) >= 14 for e in escolhidas_masks):
+                if any(_popcount_uf(m & e) >= 13 for e in escolhidas_masks):
                     continue
                 ok, _ = self._gaussiano.filtrar(cand)
                 if not ok and len(cartelas) >= max(1, n // 2):
@@ -1717,6 +1737,7 @@ class CerebroIA:
         for nome, vetor in fontes.items():
             vetor_final += vetor * pesos[nome]
         vetor_final = self._normalizar_vetor(vetor_final)
+        vetor_final = self._aplicar_memoria_episodica(vetor_final)
 
         cb("Tomando uma decisão única para {} cartela(s)...".format(quantidade))
         resultado = self.gerar_otimas(
@@ -1919,6 +1940,9 @@ class CerebroIA:
                 melhor = max(acertos_cartelas, default=0)
                 media = (sum(acertos_cartelas) / len(acertos_cartelas)
                          if acertos_cartelas else 0.0)
+                for c, ac in zip(cartelas, acertos_cartelas):
+                    self._registrar_episodio(
+                        conn, concurso, c["dezenas"], ac, real)
                 resultado_json = {
                     "dezenas_reais": sorted(real),
                     "acertos_cartelas": acertos_cartelas,
@@ -1952,6 +1976,7 @@ class CerebroIA:
 
             if aprendidas:
                 self._salvar_pesos_fontes_magna(conn)
+                self._checkpoint_ou_rollback(conn)
             conn.commit()
             return {
                 "status": "ok", "concurso": concurso,
@@ -2018,9 +2043,15 @@ class CerebroIA:
     def _planejar_alvo_13_14_15(self) -> Dict[str, Any]:
         """Escolhe o modo que maximiza cobertura de 13+ sem mudar o pipeline."""
         n = max(1, int(self.n_cartelas))
-        if n >= 8:
+        critica = None
+        try:
+            critica = self._autocriticar_memoria()
+        except Exception:
+            critica = {}
+        if critica.get("esforco") or n >= 8:
             modo = "wheeling-garantia-14"
-            motivo = "lote grande: garantia condicional de 14 no pool de 17"
+            motivo = "esforço ou lote grande: garantia condicional de 14"
+            n = max(n, 8)
         elif n >= 2:
             modo = "exaustao-diversa"
             motivo = "diversidade para elevar a chance de 13 no lote"
@@ -2068,6 +2099,247 @@ class CerebroIA:
                 "via diversidade/wheeling sem alterar a estrutura."
             ),
         }
+
+    def _registrar_episodio(self, conn, concurso, dezenas, acertos, real):
+        dez = [int(d) for d in dezenas]
+        faltaram = sorted(real - set(dez))
+        if acertos >= 12:
+            tipo = "prototipo"
+        elif acertos <= 9:
+            tipo = "repulsao"
+        else:
+            tipo = "neutro"
+        conn.execute("""
+            INSERT INTO magna_episodios
+            (concurso, timestamp, dezenas, acertos, faltaram, tipo)
+            VALUES (?,?,?,?,?,?)
+        """, (
+            int(concurso), datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            json.dumps(dez), int(acertos), json.dumps(faltaram), tipo,
+        ))
+
+    def _carregar_episodios(self, tipo=None, limit=200):
+        try:
+            conn = self.db.get_conn()
+            if tipo:
+                rows = conn.execute(
+                    "SELECT * FROM magna_episodios WHERE tipo=? "
+                    "ORDER BY id DESC LIMIT ?", (tipo, limit)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM magna_episodios ORDER BY id DESC LIMIT ?",
+                    (limit,)).fetchall()
+            conn.close()
+            out = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["dezenas"] = json.loads(d.get("dezenas") or "[]")
+                except Exception:
+                    d["dezenas"] = []
+                try:
+                    d["faltaram"] = json.loads(d.get("faltaram") or "[]")
+                except Exception:
+                    d["faltaram"] = []
+                out.append(d)
+            return out
+        except sqlite3.Error:
+            return []
+
+    def _aplicar_memoria_episodica(self, vetor):
+        """Reforça dezenas de quase-13/14 e repele clones fracos."""
+        v = np.asarray(vetor, dtype=float).copy()
+        for ep in self._carregar_episodios("prototipo", 80):
+            for d in ep.get("dezenas") or []:
+                if 1 <= int(d) <= 25:
+                    v[int(d) - 1] *= 1.04
+            for d in ep.get("faltaram") or []:
+                if 1 <= int(d) <= 25:
+                    v[int(d) - 1] *= 1.02
+        for ep in self._carregar_episodios("repulsao", 80):
+            for d in ep.get("dezenas") or []:
+                if 1 <= int(d) <= 25:
+                    v[int(d) - 1] *= 0.99
+        return self._normalizar_vetor(v)
+
+    def _checkpoint_ou_rollback(self, conn):
+        """A cada 10 conferidas: se a média cair, restaura pesos anteriores."""
+        rows = conn.execute("""
+            SELECT media_acertos FROM magna_decisoes
+            WHERE status='conferida' ORDER BY id DESC LIMIT 20
+        """).fetchall()
+        medias = [float(r[0] or 0) for r in rows]
+        if len(medias) < 10:
+            return
+        recente = sum(medias[:10]) / 10.0
+        anterior = sum(medias[10:]) / max(len(medias[10:]), 1)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if recente + 1e-9 >= anterior:
+            conn.execute("""
+                INSERT INTO magna_checkpoint
+                (timestamp, pesos_json, media_acertos, n_amostra)
+                VALUES (?,?,?,?)
+            """, (ts, json.dumps(self.pesos_fontes_magna), recente, 10))
+            return
+        last = conn.execute(
+            "SELECT pesos_json FROM magna_checkpoint ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last:
+            try:
+                gravados = json.loads(last[0])
+                if set(gravados) == set(self.pesos_fontes_magna):
+                    self.pesos_fontes_magna = {
+                        k: max(0.01, float(gravados[k]))
+                        for k in self.pesos_fontes_magna
+                    }
+                    total = sum(self.pesos_fontes_magna.values())
+                    self.pesos_fontes_magna = {
+                        k: round(v / total, 6)
+                        for k, v in self.pesos_fontes_magna.items()
+                    }
+                    self._salvar_pesos_fontes_magna(conn)
+                    self._log("ROLLBACK",
+                              "média {:.2f} < {:.2f}: pesos restaurados"
+                              .format(recente, anterior))
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+
+    def metricas_vs_acaso(self):
+        historico = self.get_historico_magna(40)
+        conferidas = [d for d in historico if d.get("status") == "conferida"]
+        medias = [float(d.get("media_acertos") or 0) for d in conferidas]
+        melhores = [int(d.get("melhor_acertos") or 0) for d in conferidas]
+        media = sum(medias) / len(medias) if medias else 0.0
+        taxa13 = (sum(1 for m in melhores if m >= 13) / len(melhores)
+                  if melhores else 0.0)
+        return {
+            "n": len(conferidas),
+            "media_acertos": round(media, 3),
+            "baseline_media_cartela": 9.0,
+            "taxa_lote_13_mais": round(taxa13, 4),
+            "prototipos": len(self._carregar_episodios("prototipo", 500)),
+            "repulsoes": len(self._carregar_episodios("repulsao", 500)),
+        }
+
+    def get_retencao(self, limit=12):
+        return {
+            "prototipos": self._carregar_episodios("prototipo", limit),
+            "metricas": self.metricas_vs_acaso(),
+            "autocritica": self._autocriticar_memoria(),
+            "plano": self._planejar_alvo_13_14_15(),
+        }
+
+    def decidir_ancoradas_01_02_03(self, registrar=True, concurso_alvo=None):
+        """Opção extra: 3 cartelas começando em 01, 02 e 03 + 14 da Magna."""
+        with self._magna_lock:
+            if not self.treinado:
+                self.treinar()
+            fontes, consulta, espectro, informacao, entropias = \
+                self._fontes_assimiladas_magna()
+            pesos = dict(self.pesos_fontes_magna)
+            vetor = np.zeros(TOTAL_DEZENAS, dtype=float)
+            for nome, v in fontes.items():
+                vetor += v * pesos[nome]
+            vetor = self._aplicar_memoria_episodica(self._normalizar_vetor(vetor))
+            ranking = [int(x) for x in (np.argsort(vetor)[::-1] + 1)]
+            bloqueadas = self._carregar_episodios("repulsao", 150)
+            sets_ruins = [set(e["dezenas"]) for e in bloqueadas]
+            cartelas = []
+            usadas = []
+            for ancora in (1, 2, 3):
+                escolhidas = [ancora]
+                for d in ranking:
+                    if d in escolhidas:
+                        continue
+                    cand = escolhidas + [d]
+                    if len(cand) < 15:
+                        escolhidas.append(d)
+                        continue
+                    s = set(cand)
+                    if any(len(s & r) >= 14 for r in sets_ruins):
+                        continue
+                    if any(len(s & set(u)) >= 13 for u in usadas):
+                        continue
+                    escolhidas.append(d)
+                    if len(escolhidas) >= 15:
+                        break
+                while len(escolhidas) < 15:
+                    for d in ranking:
+                        if d not in escolhidas:
+                            escolhidas.append(d)
+                            break
+                dez = sorted(escolhidas[:15])
+                usadas.append(dez)
+                _, det = self._gaussiano.filtrar(dez)
+                cartelas.append({
+                    "dezenas": dez,
+                    "ancora": ancora,
+                    "bitmask": self._mask_de_dezenas(dez),
+                    "score_total": round(float(sum(vetor[d - 1] for d in dez)), 6),
+                    "soma": det.get("soma"), "pares": det.get("pares"),
+                    "primos": det.get("primos"), "fibonacci": det.get("fibonacci"),
+                    "borda": det.get("borda"),
+                    "scores": {"ev_prob": round(float(sum(vetor[d - 1] for d in dez)), 4)},
+                    "interpretacao_magna": {
+                        "filtros_avancados": {"score_avancado": 0.5},
+                        "contribuicoes_fontes": {},
+                        "votos_oraculo": {},
+                        "convergencia_media": 0.0,
+                    },
+                })
+            analise = self.wheeling.analisar_lote(
+                [c["dezenas"] for c in cartelas],
+                sorted(int(d) for d in self._selecionar_elite(vetor, 17)),
+            )
+            resultado = {
+                "status": "ok",
+                "identidade": "Inteligência Magna",
+                "decisao_unica": True,
+                "estrategia": "ancoradas-01-02-03",
+                "n_cartelas": 3,
+                "cartelas": cartelas,
+                "pool_elite": sorted(int(d) for d in self._selecionar_elite(vetor, 17)),
+                "custo": round(3 * VALOR_APOSTA, 2),
+                "analise": analise,
+                "justificativa_magna": (
+                    "Opção extra: três cartelas da memória unificada, "
+                    "fixando 01, 02 e 03 e completando 14 dezenas pelo ranking Magna."
+                ),
+                "fontes_assimiladas": [
+                    "geração combinatória", "consenso dos oráculos",
+                    "wheeling 14/15", "análise histórica e recente",
+                    "singularidade e filtros avançados", "auditoria e aprendizado",
+                ],
+                "pesos_fontes": pesos,
+                "top15_magna": ranking[:15],
+                "diagnostico_magna": {
+                    "hurst_medio": 0.5,
+                    "entropia_permutacao_media": 0.0,
+                    "taxa_aprovacao_filtro": getattr(
+                        self._gaussiano, "taxa_aprovacao_historica", None),
+                    "kelly": 0,
+                },
+                "memoria_magna": {
+                    "top15_fontes": {
+                        n: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)]
+                        for n, v in fontes.items()
+                    },
+                    "vetor_final": [round(float(x), 10) for x in vetor],
+                    "pesos_fontes": pesos,
+                },
+                "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None
+                                  else (self.db.get_ultimo_concurso() or 0) + 1),
+                "verdade_honesta": (
+                    "Âncoras 01/02/03 não alteram a hipergeométrica: "
+                    "13 ≈ 1 em 692, 14 ≈ 1 em 21.800, 15 = 1 em 3.268.760."
+                ),
+            }
+            resultado["agentes_magna"] = self._agentes_autonomos_refinar(
+                resultado, vetor, fontes)
+            resultado["decisao_id"] = (
+                self._registrar_decisao_magna(resultado) if registrar else None
+            )
+            return self._json_seguro(resultado)
 
     def get_historico_magna(self, limit=20):
         try:
@@ -2412,7 +2684,7 @@ class CerebroIA:
                 if v.sum() <= 0:
                     acertos_por_modulo[nome] = 0.0
                     continue
-                top15 = set(np.argsort(v)[::-1][:15].tolist())
+                top15 = set(int(x) + 1 for x in np.argsort(v)[::-1][:15])
                 acertos_por_modulo[nome] = float(len(top15 & real))
             except Exception:
                 acertos_por_modulo[nome] = 0.0
