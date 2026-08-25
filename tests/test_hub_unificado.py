@@ -58,9 +58,17 @@ def test_paginas_antigas_redirecionam_para_magna(client, rota):
 def test_menus_do_sistema_continuam_independentes(client):
     for rota in (
         "/conferencia", "/financeiro_page", "/historico", "/premios",
-        "/",
     ):
         assert client.get(rota).status_code == 200, rota
+    home = client.get("/")
+    assert home.status_code in (301, 302, 303, 307, 308)
+    assert home.headers["Location"].endswith("/cerebro")
+
+
+def test_dashboard_saiu_do_menu(client):
+    body = client.get("/cerebro").data.decode("utf-8")
+    assert "> Dashboard<" not in body
+    assert "Inteligência Magna" in body
 
 
 def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
@@ -81,6 +89,23 @@ def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
     data = response.get_json()
     assert data["status"] == "ok"
     assert data["resultado"]["concurso_alvo"] == 9999
+
+
+def test_api_ancoras_123_existe(client, app_module, monkeypatch):
+    fake = {
+        "status": "ok",
+        "n_cartelas": 3,
+        "cartelas": [],
+        "concurso_alvo": 9999,
+        "pool_elite": [],
+        "estrategia": "ancoradas-01-02-03",
+        "analise": {"p_melhor_14_mais": 0.0},
+    }
+    monkeypatch.setattr(
+        app_module.magna, "decidir_ancoradas_01_02_03", lambda **_: fake)
+    response = client.post("/api/magna/ancoras-123", json={"salvar": False})
+    assert response.status_code == 200
+    assert response.get_json()["resultado"]["estrategia"] == "ancoradas-01-02-03"
 
 
 def test_cartela_do_dia_isolada_foi_desativada(client):
