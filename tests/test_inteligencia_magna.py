@@ -5,6 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import numpy as np
 import pytest
 
 from config import DATABASE_PATH
@@ -124,3 +125,47 @@ def test_ciclo_autonomo_chama_aprendizado_e_decisao_com_assinaturas_corretas(
     assert chamadas["aprender"] == (5000, 15)
     assert chamadas["decidir"]["concurso_alvo"] == 5001
     assert chamadas["fila"] == (5001, 1)
+
+
+def test_gerar_otimas_respeita_vetor_unificado_da_magna(tmp_path):
+    caminho = tmp_path / "override.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    magna = InteligenciaMagna(db_path=str(caminho), n_cartelas=1)
+    magna.treinar()
+    vetor = np.zeros(25, dtype=float)
+    # Força o ranking nas dezenas 11–25 para provar que o override entra.
+    vetor[10:] = 1.0
+    res = magna.gerar_otimas(n_cartelas=1, vetor_override=vetor)
+    assert set(range(11, 26)).issubset(set(res["pool_elite"]))
+
+
+def test_ciclo_pos_sorteio_assimila_e_planeja(tmp_path):
+    caminho = tmp_path / "pos.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    magna = InteligenciaMagna(db_path=str(caminho), n_cartelas=8)
+    out = magna.ciclo_pos_sorteio_caixa()
+    assert out["status"] == "ok"
+    assert magna.treinado is True
+    assert out["plano"]["modo_recomendado"] == "wheeling-garantia-14"
+    assert "autocritica" in out
+
+
+def test_ancoras_01_02_03_usam_memoria_unica(magna_decisao):
+    magna, _ = magna_decisao
+    r = magna.decidir_ancoradas_01_02_03(registrar=False, concurso_alvo=10001)
+    assert r["n_cartelas"] == 3
+    assert r["estrategia"] == "ancoradas-01-02-03"
+    assert r["cartelas"][0]["dezenas"][0] == 1 or 1 in r["cartelas"][0]["dezenas"]
+    assert 1 in r["cartelas"][0]["dezenas"]
+    assert 2 in r["cartelas"][1]["dezenas"]
+    assert 3 in r["cartelas"][2]["dezenas"]
+    for c in r["cartelas"]:
+        assert len(c["dezenas"]) == 15
+        assert len(set(c["dezenas"])) == 15
+
+
+def test_aprendizado_grava_episodio_de_retencao(magna_decisao):
+    magna, _ = magna_decisao
+    ret = magna.get_retencao()
+    assert "metricas" in ret
+    assert "prototipos" in ret

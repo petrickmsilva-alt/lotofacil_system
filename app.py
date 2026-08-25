@@ -222,36 +222,8 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="magna",
 
 @app.route("/")
 def index():
-    status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso() or 0
-    status_sistema["total_concursos"]  = db.get_total_concursos() or 0
-    status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
-    status_sistema["ia_treinada"]      = cerebro.treinado
-
-    resumo_fin  = financeiro.get_resumo_geral()
-    resumo_conf = conferencia.resumo_conferencia()
-
-    cerebro_status = cerebro.get_status()
-    ia_status = {
-        "versao":           cerebro_status.get("versao", "9.0"),
-        "treinado":         cerebro_status.get("treinado", False),
-        "concursos_treino": cerebro_status.get("total_concursos", 0),
-        "fontes_assimiladas": len(magna.pesos_fontes_magna),
-        "pesos": dict(magna.pesos_fontes_magna),
-    }
-
-    conf_simples = {}
-    for pts, dados in resumo_conf.items():
-        conf_simples[pts] = dados.get("qtd", 0) \
-            if isinstance(dados, dict) else dados
-
-    return render_template(
-        "index.html",
-        status       = status_sistema,
-        financeiro   = resumo_fin,
-        conferencia  = conf_simples,
-        ia_status    = ia_status,
-        valor_aposta = VALOR_APOSTA,
-    )
+    """O Dashboard foi absorvido: a entrada do sistema é a Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/historico")
@@ -313,6 +285,7 @@ def cerebro_page():
         cores_rgb=CORES_RGB,
         media_acertos=round(media_acertos, 1),
         melhor_acertos=melhor_acertos,
+        retencao=magna.get_retencao(8),
     )
 
 
@@ -352,6 +325,35 @@ def api_magna_decidir():
     """Única porta pública de análise, interpretação e criação de cartelas."""
     try:
         return jsonify(_responder_decisao_magna(request.get_json() or {}))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/ancoras-123", methods=["POST"])
+def api_magna_ancoras_123():
+    """Comando extra: 3 cartelas âncora 01, 02 e 03 + 14 dezenas da Magna."""
+    try:
+        dados = request.get_json() or {}
+        salvar = bool(dados.get("salvar", True))
+        resultado = magna.decidir_ancoradas_01_02_03(registrar=salvar)
+        salvos = 0
+        if salvar and resultado.get("n_cartelas", 0) > 0:
+            salvos = _salvar_cartelas_banco(
+                resultado["cartelas"], resultado["concurso_alvo"],
+                tipo="inteligencia_magna", modo=resultado["estrategia"],
+                grupo_elite=resultado.get("pool_elite"),
+                cobertura=(resultado.get("analise") or {}).get(
+                    "p_melhor_14_mais", 0),
+            )
+        return jsonify({
+            "status": "ok",
+            "resultado": resultado,
+            "salvas": salvos,
+            "concurso": resultado.get("concurso_alvo"),
+        })
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro", "msg": str(exc)}), 400
     except Exception as exc:
@@ -863,6 +865,23 @@ def _iniciar_sincronizacao_historico(completo=False):
                 if resultado.get("novos") or resultado.get("recuperados"):
                     magna.treinado = False
                     status_sistema["ia_treinada"] = False
+            if resultado.get("novos") or resultado.get("recuperados"):
+                try:
+                    status_sistema["treinando"] = True
+                    status_sistema["progresso"] = (
+                        "Inteligência Magna assimilando o sorteio da Caixa..."
+                    )
+                    pos = magna.ciclo_pos_sorteio_caixa()
+                    status_sistema["ia_treinada"] = magna.treinado
+                    status_sistema["progresso"] = pos.get(
+                        "msg", "Ciclo Magna pós-sorteio concluído")
+                except Exception as exc_ciclo:
+                    traceback.print_exc()
+                    status_sistema["progresso"] = (
+                        "Sincronizado; ciclo Magna: {}".format(exc_ciclo)
+                    )
+                finally:
+                    status_sistema["treinando"] = False
         except Exception as exc:
             traceback.print_exc()
             status_sistema["erro_atualizacao"] = str(exc)
@@ -1297,6 +1316,13 @@ if __name__ == "__main__":
         print("[AVISO] Carregue o histórico primeiro")
 
     status_sistema["ia_treinada"] = cerebro.treinado
+
+    # Monitora a Caixa em segundo plano: novo sorteio → treino + aprendizado.
+    try:
+        cerebro.iniciar_loop(int(os.getenv("LOTOFACIL_LOOP_SEG", "1800")))
+        print("[MAGNA] Loop autônomo de monitoramento da Caixa iniciado")
+    except Exception as exc:
+        print("[AVISO] Loop Magna: {}".format(exc))
 
     host = os.getenv("LOTOFACIL_HOST", "127.0.0.1")
     port = int(os.getenv("LOTOFACIL_PORT", "5000"))
