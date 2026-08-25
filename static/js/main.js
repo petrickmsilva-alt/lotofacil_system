@@ -90,7 +90,7 @@ function carregarDados() {
 }
 
 function treinarIA() {
-    if (!confirm('Iniciar treinamento dos 14 Módulos do Cérebro IA?')) { return; }
+    if (!confirm('Assimilar novamente todo o histórico na memória única da Inteligência Magna?')) { return; }
     
     var progressSection = document.getElementById('progress-section');
     if (progressSection) progressSection.style.display = 'block';

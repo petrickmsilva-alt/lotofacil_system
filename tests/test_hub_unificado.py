@@ -1,14 +1,4 @@
-"""
-Regressão do hub unificado do Cérebro IA (Fase 6).
-
-Garante que:
-- /cerebro é o hub com abas e layout completo;
-- cada aba é carregável como fragmento (?fragmento=1) SEM a sidebar;
-- todas as rotas de geração/análise unificadas respondem 200.
-
-Roda como:
-    pytest tests/test_hub_unificado.py
-"""
+"""Regressões da interface unificada da Inteligência Magna v9."""
 import os
 import sys
 
@@ -18,70 +8,82 @@ import pytest
 
 
 @pytest.fixture()
-def client():
-    # import tardio para já ter o sys.path configurado
-    import app as A
-    A.app.config["TESTING"] = True
-    with A.app.test_client() as c:
-        yield c
+def app_module():
+    import app as app_mod
+    app_mod.app.config["TESTING"] = True
+    return app_mod
 
 
-ABAS = [
-    "/cerebro/central?fragmento=1",
-    "/gerar?fragmento=1",
-    "/cartela_do_dia?fragmento=1",
-    "/wheeling?fragmento=1",
-    "/analise?fragmento=1",
-    "/singularidade?fragmento=1",
-    "/ia_auditoria?fragmento=1",
-]
+@pytest.fixture()
+def client(app_module):
+    with app_module.app.test_client() as test_client:
+        yield test_client
 
 
-def test_hub_tem_layout_completo_e_abas(client):
-    r = client.get("/cerebro")
-    assert r.status_code == 200
-    body = r.data.decode("utf-8")
-    assert 'class="sidebar"' in body
-    assert 'id="cerebro-tabs"' in body
-    # todas as abas declaradas
-    for aba in ["central", "gerar", "cartela_do_dia", "wheeling",
-                "analise", "singularidade", "auditoria"]:
-        assert 'data-aba="{}"'.format(aba) in body
+def test_hub_e_uma_interface_unica_sem_abas(client):
+    response = client.get("/cerebro")
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert 'id="magna-form"' in body
+    assert 'id="magna-decidir"' in body
+    assert "Uma memória. Uma análise. Uma decisão." in body
+    assert 'id="cerebro-tabs"' not in body
+    assert 'class="ctab' not in body
 
 
-@pytest.mark.parametrize("rota", ABAS)
-def test_fragmentos_das_abas_sem_sidebar(client, rota):
-    r = client.get(rota)
-    assert r.status_code == 200
-    body = r.data.decode("utf-8")
-    # fragmento é só conteúdo: não pode vir com a navegação lateral do app.
-    # (Evitamos o termo solto "sidebar", que aparece em classes de cartelas.)
-    assert 'class="sidebar"' not in body
-    assert "<!DOCTYPE html>" not in body
+def test_menu_expoe_apenas_a_inteligencia_magna(client):
+    body = client.get("/cerebro").data.decode("utf-8")
+    assert "INTELIGÊNCIA ÚNICA" in body
+    assert "Magna Unificada" in body
+    # Os antigos recursos podem ser citados como conhecimentos assimilados,
+    # mas não podem continuar como links/submenus independentes.
+    for href in (
+        "/cerebro#aba-gerar", "/cerebro#aba-cartela_do_dia",
+        "/cerebro#aba-wheeling", "/cerebro#aba-analise",
+        "/cerebro#aba-singularidade", "/cerebro#aba-auditoria",
+    ):
+        assert f'href="{href}"' not in body
 
 
-def test_menus_independentes_ainda_existem(client):
-    """Conferência, Financeiro, Histórico e Prêmios continuam no menu."""
-    for rota in ["/conferencia", "/financeiro_page", "/historico",
-                 "/premios", "/", "/avaliacao"]:
-        r = client.get(rota)
-        assert r.status_code == 200, rota
-
-
-@pytest.mark.parametrize("rota,aba", [
-    ("/gerar", "aba-gerar"),
-    ("/cartela_do_dia", "aba-cartela_do_dia"),
-    ("/wheeling", "aba-wheeling"),
-    ("/analise", "aba-analise"),
-    ("/singularidade", "aba-singularidade"),
-    ("/ia_auditoria", "aba-auditoria"),
+@pytest.mark.parametrize("rota", [
+    "/cerebro/central", "/gerar", "/cartela_do_dia", "/wheeling",
+    "/analise", "/singularidade", "/ia_auditoria",
 ])
-def test_rotas_legadas_redirecionam_para_hub(client, rota, aba):
-    """Acessar as rotas legadas SEM ?fragmento=1 redireciona para a aba do
-    hub /cerebro; com ?fragmento=1 devolvem o miolo (200 sem sidebar)."""
-    r = client.get(rota)
-    assert r.status_code in (301, 302, 308), rota
-    assert aba in r.headers.get("Location", "")
-    frag = client.get(rota + "?fragmento=1")
-    assert frag.status_code == 200
-    assert 'class="sidebar"' not in frag.data.decode("utf-8")
+def test_paginas_antigas_redirecionam_para_magna(client, rota):
+    response = client.get(rota)
+    assert response.status_code in (301, 302, 303, 307, 308)
+    assert response.headers["Location"].endswith("/cerebro")
+
+
+def test_menus_do_sistema_continuam_independentes(client):
+    for rota in (
+        "/conferencia", "/financeiro_page", "/historico", "/premios",
+        "/", "/avaliacao",
+    ):
+        assert client.get(rota).status_code == 200, rota
+
+
+def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
+    fake = {
+        "status": "ok",
+        "n_cartelas": 0,
+        "cartelas": [],
+        "concurso_alvo": 9999,
+        "pool_elite": [],
+        "estrategia": "exaustao-unica",
+        "analise": {"p_melhor_14_mais": 0.0},
+    }
+    monkeypatch.setattr(app_module.magna, "decidir_e_gerar", lambda **_: fake)
+    response = client.post("/api/magna/decidir", json={
+        "quantidade": 1, "salvar": False,
+    })
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "ok"
+    assert data["resultado"]["concurso_alvo"] == 9999
+
+
+def test_cartela_do_dia_isolada_foi_desativada(client):
+    response = client.get("/api/cartela_do_dia")
+    assert response.status_code == 410
+    assert response.get_json()["nova_rota"] == "/api/magna/decidir"

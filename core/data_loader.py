@@ -8,8 +8,7 @@ API Oficial: servicebus2.caixa.gov.br
 """
 import requests
 import time
-import json
-from datetime import datetime, date
+from datetime import datetime
 from config import PRIMOS, FIBONACCI, BORDA
 from database.db_manager import DBManager
 from .bitmatrix import BitMatrix

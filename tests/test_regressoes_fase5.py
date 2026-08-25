@@ -20,11 +20,11 @@ Roda como:
 """
 import inspect
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import numpy as np
 import pytest
 
 from core.cerebro_ia import (
@@ -51,8 +51,11 @@ def test_repulsao_duplicata_e_quase_duplicata():
 
 
 @pytest.fixture(scope="module")
-def cerebro():
-    c = CerebroIA()
+def cerebro(tmp_path_factory):
+    from config import DATABASE_PATH
+    caminho = tmp_path_factory.mktemp("regressoes") / "teste.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    c = CerebroIA(db_path=str(caminho))
     c.treinar()
     return c
 
@@ -73,9 +76,8 @@ def test_cartela_do_dia_idempotente(cerebro):
     # Duas chamadas seguidas devem devolver a MESMA cartela para o mesmo
     # concurso-alvo (e não criar uma segunda linha na tabela cartela_do_dia).
     import sqlite3
-    from config import DATABASE_PATH
 
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(cerebro.db_path)
     antes = conn.execute(
         "SELECT COUNT(*) FROM cartela_do_dia").fetchone()[0]
     conn.close()
@@ -83,7 +85,7 @@ def test_cartela_do_dia_idempotente(cerebro):
     r1 = cerebro.gerar_cartela_do_dia()
     r2 = cerebro.gerar_cartela_do_dia()
 
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(cerebro.db_path)
     depois = conn.execute(
         "SELECT COUNT(*) FROM cartela_do_dia").fetchone()[0]
     conn.close()
@@ -98,17 +100,16 @@ def test_ciclo_confere_concurso_certo():
     """O INSERT na fila deve usar o PRÓXIMO concurso, mas a conferência
     (`_conferir`) deve ler a fila do concurso que acabou de sair — não do
     próximo. Garantimos isso conferindo o corpo do método."""
-    src = inspect.getsource(CerebroIA.executar_ciclo)
+    src = inspect.getsource(CerebroIA._executar_ciclo_sem_lock)
     # A busca do resultado acontece ANTES de gerar novas apostas
     pos_resultado = src.find("buscar_concurso_caixa")
-    pos_gerar = src.find("self.gerar_cartelas")
+    pos_gerar = src.find("self.decidir_e_gerar")
     assert 0 < pos_resultado < pos_gerar, \
         "executar_ciclo deve buscar/conferir o resultado antes de gerar " \
         "apostas para o próximo"
-    # A conferência usa o parâmetro `concurso`, não `proximo`
-    pos_conferir = src.find("self._conferir(concurso")
-    assert pos_conferir > 0, \
-        "executar_ciclo deve conferir a fila do concurso que saiu"
+    # A conferência usa o concurso que saiu; a decisão Magna recebe o próximo.
+    assert src.find("self._conferir(concurso") > 0
+    assert "concurso_alvo=proximo" in src
 
 
 def test_modulos_sem_estado_global_np_random():

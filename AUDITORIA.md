@@ -1,5 +1,10 @@
 # 🔬 Auditoria Técnica — Sistema LotoFácil IA
 
+> **Atualização de 25/08/2026:** este arquivo preserva o histórico das fases 1–6.
+> A reauditoria independente do commit atual, com novos achados bloqueantes de
+> segurança, dados e ciclo autônomo, está em
+> **[`AUDITORIA_TECNICA_2026-08-25.md`](AUDITORIA_TECNICA_2026-08-25.md)**.
+
 **Data:** 2026-08-21 · **Base:** 3.767 concursos (concurso 1 → 3767) · **Branch:** `arena/01a02463-lotofacil-system`
 
 ---
@@ -380,3 +385,81 @@ continuam com as mesmas probabilidades hipergeométricas. O que a unificação
 ganha é clareza: **um único cérebro analisa, decide, gera e aprende**, com
 todos os instrumentos (filtros, wheeling, oráculos, auditoria cética)
 organizados sob o mesmo teto.
+
+---
+
+# 🧠 FASE 7 (2026-08-25) — Inteligência Magna realmente única
+
+A unificação anterior organizava sete ferramentas como abas do mesmo hub, mas
+cada aba ainda mantinha uma experiência e um caminho de decisão próprios. A Fase
+7 remove essa separação: existe uma única interface, uma única API de criação,
+uma única memória e uma única trilha de aprendizado.
+
+## 24. Fluxo assimilado
+
+```text
+motores + oráculos + espectro + informação + histórico recente
+                              ↓
+               vetor decisório único da Magna
+                              ↓
+       filtros avançados + risco + cobertura matemática
+                              ↓
+             UMA estratégia e UMA resposta final
+                              ↓
+       conferência → aprendizado → novos pesos auditáveis
+```
+
+- `CerebroIA.decidir_e_gerar()` é o único fluxo autorizado de criação.
+- `InteligenciaMagna` é o nome público; `CerebroIA` fica apenas como alias de
+  compatibilidade para integrações antigas.
+- A estratégia (exaustão única, diversidade ou wheeling) não é mais escolhida
+  em páginas separadas: a Magna decide pela quantidade/orçamento.
+- Singularidade interpreta as cartelas finais com gaps, coocorrência,
+  Mahalanobis e entropia; não produz uma aposta concorrente.
+- O consenso dos 15 oráculos virou uma fonte do vetor único, não uma “Cartela do
+  Dia” paralela.
+- As páginas antigas redirecionam para `/cerebro`; os aliases de API delegam ao
+  mesmo método. `GET /api/cartela_do_dia` foi desativado com HTTP 410.
+
+## 25. Memória única e ciclo fechado
+
+Novas tabelas:
+
+| Tabela | Finalidade |
+|---|---|
+| `magna_estado` | pesos persistentes das cinco fontes assimiladas |
+| `magna_decisoes` | cartelas, estratégia, análise, justificativa e resultado |
+| `magna_aprendizado` | acertos/peso antes/peso depois por fonte e decisão |
+
+Depois da conferência, `aprender_resultado_magna()` mede cada top-15 em base
+1–25, ajusta os pesos suavemente, grava a evolução e impede aprendizado duplicado.
+
+## 26. Correções bloqueantes incorporadas
+
+- ciclo autônomo: removido argumento excedente de `_aprender()`;
+- aprendizado: corrigida comparação 0–24 × 1–25;
+- BLOB NumPy: 50 cartelas migradas para INTEGER e reconferidas;
+- financeiro 3766: corrigido de R$ 0/−R$ 196 para R$ 7/−R$ 189;
+- lotes: cinco cabeçalhos órfãos reconstruídos;
+- persistência: lote + cartelas agora usam uma transação atômica;
+- dependências: removidas cinco bibliotecas sem uso e atualizados Flask/requests;
+- segurança local: debug desligado e bind padrão em `127.0.0.1`;
+- cobertura de Schönheim: custo usa a mesma cota exibida;
+- financeiro: reconciliação substitui o resumo anterior e não lança prêmio
+  estimado como realizado.
+
+## 27. Interface e validação
+
+- Sidebar: somente **Inteligência Magna**, sem submenus internos.
+- `/cerebro`: comando único, pesos da memória, decisão, interpretação, cartelas
+  e rastreabilidade no mesmo painel.
+- `POST /api/magna/decidir`: única API canônica de decisão.
+- **41/41 testes passam**, incluindo decisão integrada, persistência,
+  aprendizado idempotente, BLOB legado e ciclo autônomo executado de ponta a
+  ponta com dependências simuladas.
+- `pip-audit`: nenhuma vulnerabilidade conhecida nas dependências atuais.
+- Bandit: zero achados de severidade alta ou média.
+
+A ressalva matemática permanece: unificar conhecimento melhora coerência,
+rastreabilidade e disciplina de decisão; não cria vantagem comprovada sobre um
+sorteio independente.

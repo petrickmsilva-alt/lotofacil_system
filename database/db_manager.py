@@ -5,14 +5,19 @@ Tabela de resultados com prêmios REAIS da Caixa
 ============================================================
 """
 import sqlite3
-import os
 from config import DATABASE_PATH
 
 
 class DBManager:
 
-    def __init__(self):
-        self.db_path = DATABASE_PATH
+    def __init__(self, db_path=None):
+        """Cria o repositório SQLite.
+
+        O caminho injetável mantém produção e testes separados. Antes, mesmo
+        `CerebroIA(db_path=...)` continuava escrevendo no banco global porque o
+        DBManager ignorava o caminho recebido pelo Cérebro.
+        """
+        self.db_path = db_path or DATABASE_PATH
         self.criar_tabelas()
 
     def get_conn(self):

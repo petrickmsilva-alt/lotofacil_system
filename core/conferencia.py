@@ -5,29 +5,35 @@ Protegido contra conversões de tipo (bytes/numpy/null)
 ============================================================
 """
 import requests
-import json
 from database.db_manager import DBManager
 from .bitmatrix import BitMatrix
-from config import VALOR_APOSTA
 from datetime import datetime
 
 
 def _safe_int(val):
+    """Converte inteiros Python/NumPy e BLOBs SQLite legados.
+
+    Versões antigas gravaram `numpy.int64` diretamente no SQLite, produzindo
+    oito bytes little-endian (por exemplo, 1 = ``01 00 00 ...``). Tentar
+    ``int(blob)`` transforma esse dado válido em erro e, no código anterior,
+    silenciosamente em zero — corrompendo a conferência e o financeiro.
+    """
     if val is None:
         return 0
-    if hasattr(val, 'item'):
+    if hasattr(val, "item"):
         val = val.item()
-    if isinstance(val, (bytes, bytearray)):
+    if isinstance(val, (bytes, bytearray, memoryview)):
+        raw = bytes(val)
         try:
-            return int(val)
-        except Exception:
-            try:
-                return int(val.decode('utf-8'))
-            except Exception:
-                return 0
+            # Mantém compatibilidade com BLOB textual, como b"15".
+            return int(raw.decode("ascii"))
+        except (UnicodeDecodeError, ValueError):
+            if len(raw) in (1, 2, 4, 8):
+                return int.from_bytes(raw, byteorder="little", signed=True)
+            return 0
     try:
         return int(val)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

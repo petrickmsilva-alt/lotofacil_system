@@ -1,159 +1,294 @@
-{% extends base_layout|default("base.html") %}
-{% block title %}Cérebro IA — Inteligência Magna{% endblock %}
-{% block page_title %}
-    <i class="fas fa-brain"></i> Cérebro IA <small style="opacity:.7;font-weight:400;">· Inteligência Magna</small>
-{% endblock %}
+{% extends "base.html" %}
+{% block title %}Inteligência Magna — Decisão Única{% endblock %}
+{% block page_title %}<i class="fas fa-brain"></i> Inteligência Magna{% endblock %}
 
 {% block content %}
-
-<!-- Abas unificadas: todas as áreas de geração/análise passam pelo Cérebro -->
-<div class="cerebro-tabs" id="cerebro-tabs">
-    <button class="ctab active" data-aba="central">
-        <i class="fas fa-robot"></i> Cabine
-    </button>
-    <button class="ctab" data-aba="gerar">
-        <i class="fas fa-dice"></i> Gerar Cartelas
-    </button>
-    <button class="ctab" data-aba="cartela_do_dia">
-        <i class="fas fa-eye"></i> Cartela do Dia
-    </button>
-    <button class="ctab" data-aba="wheeling">
-        <i class="fas fa-diagram-project"></i> Wheeling 14/15
-    </button>
-    <button class="ctab" data-aba="analise">
-        <i class="fas fa-chart-bar"></i> Análise
-    </button>
-    <button class="ctab" data-aba="singularidade">
-        <i class="fas fa-atom"></i> Singularidade
-    </button>
-    <button class="ctab" data-aba="auditoria">
-        <i class="fas fa-microscope"></i> Auditoria
-    </button>
-</div>
-
-<div id="cerebro-conteudo" class="cerebro-conteudo">
-    <div class="cerebro-loading" style="text-align:center;padding:40px;color:var(--text-muted);">
-        <i class="fas fa-spinner fa-spin fa-2x"></i>
-        <p style="margin-top:12px;">Carregando módulo do Cérebro...</p>
+<section class="magna-hero">
+    <div>
+        <span class="magna-kicker"><i class="fas fa-circle-nodes"></i> NÚCLEO UNIFICADO</span>
+        <h2>Uma memória. Uma análise. Uma decisão.</h2>
+        <p>
+            Não existem mais geradores concorrentes. Todo conhecimento estatístico,
+            consenso, cobertura, risco e auditoria é assimilado antes de a
+            <strong>Inteligência Magna</strong> criar qualquer cartela.
+        </p>
     </div>
+    <div class="magna-orbe" aria-hidden="true">
+        <i class="fas fa-brain"></i>
+        <span></span><span></span><span></span>
+    </div>
+</section>
+
+<section class="magna-assimilacao" aria-label="Conhecimentos assimilados">
+    <div><i class="fas fa-dice"></i><span>Combinatória</span></div>
+    <div><i class="fas fa-eye"></i><span>Consenso</span></div>
+    <div><i class="fas fa-diagram-project"></i><span>Wheeling</span></div>
+    <div><i class="fas fa-chart-line"></i><span>Análise temporal</span></div>
+    <div><i class="fas fa-atom"></i><span>Singularidade</span></div>
+    <div><i class="fas fa-shield-halved"></i><span>Auditoria</span></div>
+    <div class="magna-fluxo"><span></span><i class="fas fa-arrow-right"></i><strong>DECISÃO MAGNA</strong></div>
+</section>
+
+<div class="magna-grid">
+    <section class="magna-command">
+        <div class="magna-section-title">
+            <div>
+                <span>COMANDO ÚNICO</span>
+                <h3>Defina apenas o limite</h3>
+            </div>
+            <span class="magna-live"><i></i> memória ativa</span>
+        </div>
+
+        <form id="magna-form">
+            <label>
+                Quantidade máxima de cartelas
+                <input id="magna-quantidade" type="number" min="1" max="100" value="1" required>
+                <small>1: escolha única · 2–7: diversidade · 8+: garantia condicional quando aplicável</small>
+            </label>
+            <label>
+                Orçamento máximo (opcional)
+                <div class="magna-money"><span>R$</span><input id="magna-orcamento" type="number" min="{{ valor_aposta }}" step="0.50" placeholder="sem limite adicional"></div>
+                <small>A Magna nunca ultrapassa o menor limite informado.</small>
+            </label>
+            <label class="magna-check">
+                <input id="magna-salvar" type="checkbox" checked>
+                <span>Salvar a decisão para conferência e aprendizado posterior</span>
+            </label>
+            <button id="magna-decidir" class="magna-primary" type="submit">
+                <i class="fas fa-wand-magic-sparkles"></i>
+                Analisar tudo e tomar a decisão
+            </button>
+        </form>
+
+        <div class="magna-facts">
+            <div><strong>{{ magna_status.total_concursos }}</strong><span>concursos assimilados</span></div>
+            <div><strong>3.268.760</strong><span>combinações verificáveis</span></div>
+            <div><strong>{{ "online" if magna_status.treinado else "pronta" }}</strong><span>estado da memória</span></div>
+        </div>
+    </section>
+
+    <aside class="magna-memory">
+        <div class="magna-section-title">
+            <div><span>MEMÓRIA ÚNICA</span><h3>Influência atual</h3></div>
+        </div>
+        {% set pesos = magna_status.inteligencia_magna.pesos_fontes %}
+        {% for nome, rotulo in [
+            ('motores','Síntese analítica'),
+            ('oraculos','Consenso convergente'),
+            ('espectral','Espectro temporal'),
+            ('informacao','Teoria da informação'),
+            ('recente','Leitura recente')
+        ] %}
+        <div class="magna-weight">
+            <div><span>{{ rotulo }}</span><strong>{{ "%.1f"|format(pesos[nome] * 100) }}%</strong></div>
+            <div class="magna-weight-track"><i style="width:{{ pesos[nome] * 100 }}%"></i></div>
+        </div>
+        {% endfor %}
+        <p class="magna-note">
+            Os pesos mudam somente depois da conferência real e cada alteração fica
+            ligada à decisão que a originou.
+        </p>
+    </aside>
 </div>
 
+<section id="magna-processing" class="magna-processing" hidden>
+    <div class="magna-loader"><i class="fas fa-brain"></i><span></span></div>
+    <div>
+        <strong id="magna-processing-title">Assimilando todo o conhecimento…</strong>
+        <p id="magna-processing-text">Treinando a memória única e interpretando o universo combinatório.</p>
+    </div>
+</section>
+
+<section id="magna-result" class="magna-result" hidden>
+    <header class="magna-result-head">
+        <div>
+            <span id="magna-audit">DECISÃO AUDITÁVEL</span>
+            <h2 id="magna-strategy">Decisão concluída</h2>
+            <p id="magna-reason"></p>
+        </div>
+        <div class="magna-result-seal"><i class="fas fa-fingerprint"></i><span>ÚNICA</span></div>
+    </header>
+
+    <div class="magna-metrics">
+        <div><span>Concurso-alvo</span><strong id="m-concurso">—</strong></div>
+        <div><span>Cartelas</span><strong id="m-cartelas">—</strong></div>
+        <div><span>Custo</span><strong id="m-custo">—</strong></div>
+        <div><span>P(lote ≥14)</span><strong id="m-p14">—</strong></div>
+        <div><span>EV do lote</span><strong id="m-ev">—</strong></div>
+    </div>
+
+    <div class="magna-decision-grid">
+        <div class="magna-panel">
+            <h3><i class="fas fa-ranking-star"></i> Consenso final da Magna</h3>
+            <div id="magna-top15" class="magna-balls"></div>
+            <p>Estas são as 15 dezenas mais fortes do vetor unificado. A estratégia final pode diversificá-las ou fechá-las matematicamente.</p>
+        </div>
+        <div class="magna-panel">
+            <h3><i class="fas fa-wave-square"></i> Interpretação</h3>
+            <dl class="magna-diagnostics">
+                <div><dt>Hurst médio</dt><dd id="m-hurst">—</dd></div>
+                <div><dt>Entropia temporal</dt><dd id="m-entropia">—</dd></div>
+                <div><dt>Filtro histórico</dt><dd id="m-filtro">—</dd></div>
+                <div><dt>Kelly</dt><dd id="m-kelly">—</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    <div class="magna-cartelas-head">
+        <div><span>RESPOSTA FINAL</span><h3>Cartelas decididas</h3></div>
+        <small id="magna-saved"></small>
+    </div>
+    <div id="magna-cartelas" class="magna-cartelas"></div>
+
+    <div class="magna-truth">
+        <i class="fas fa-scale-balanced"></i>
+        <p id="magna-truth-text"></p>
+    </div>
+</section>
+
+<section class="magna-history">
+    <div class="magna-section-title">
+        <div><span>RASTREABILIDADE</span><h3>Decisões anteriores da mesma inteligência</h3></div>
+    </div>
+    {% if historico_magna %}
+    <div class="table-container">
+        <table class="table">
+            <thead><tr><th>ID</th><th>Concurso</th><th>Estratégia</th><th>Cartelas</th><th>Status</th><th>Resultado</th><th>Data</th></tr></thead>
+            <tbody>
+            {% for d in historico_magna %}
+                <tr>
+                    <td>#{{ d.id }}</td>
+                    <td>{{ d.concurso_alvo }}</td>
+                    <td>{{ d.estrategia }}</td>
+                    <td>{{ d.quantidade }}</td>
+                    <td><span class="magna-status {{ d.status }}">{{ d.status }}</span></td>
+                    <td>{% if d.status == 'conferida' %}melhor {{ d.melhor_acertos }} · média {{ "%.1f"|format(d.media_acertos) }}{% else %}aguardando sorteio{% endif %}</td>
+                    <td>{{ d.timestamp }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="magna-empty"><i class="fas fa-fingerprint"></i><p>A primeira decisão unificada criará a memória auditável.</p></div>
+    {% endif %}
+</section>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
-    var CONTEUDO = document.getElementById('cerebro-conteudo');
-    var botoes = document.querySelectorAll('.ctab');
-    var ABA_PADRAO = 'central';
+    const form = document.getElementById('magna-form');
+    const btn = document.getElementById('magna-decidir');
+    const processing = document.getElementById('magna-processing');
+    const resultBox = document.getElementById('magna-result');
+    const stages = [
+        ['Assimilando o histórico…', 'Frequência, transições, distribuição e leitura recente.'],
+        ['Fundindo todas as evidências…', 'Consenso, espectro e teoria da informação entram na mesma memória.'],
+        ['Interpretando risco e cobertura…', 'Filtros avançados, valor esperado e garantia condicional.'],
+        ['Tomando uma decisão única…', 'Somente a Inteligência Magna pode liberar as cartelas finais.']
+    ];
+    let timer;
 
-    // Mapa de abas → rota que devolve o fragmento (conteúdo + scripts)
-    var ROTAS = {
-        'central':        '/cerebro/central',
-        'gerar':          '/gerar?fragmento=1',
-        'cartela_do_dia': '/cartela_do_dia?fragmento=1',
-        'wheeling':       '/wheeling?fragmento=1',
-        'analise':        '/analise?fragmento=1',
-        'singularidade':  '/singularidade?fragmento=1',
-        'auditoria':      '/ia_auditoria?fragmento=1'
-    };
+    function brl(v) {
+        return Number(v || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    }
+    function pct(v, casas) {
+        return (Number(v || 0) * 100).toFixed(casas == null ? 4 : casas) + '%';
+    }
+    function bolas(dezenas) {
+        return (dezenas || []).map(d => '<span>' + String(d).padStart(2, '0') + '</span>').join('');
+    }
+    function iniciarProcessamento() {
+        let i = 0;
+        processing.hidden = false;
+        resultBox.hidden = true;
+        document.getElementById('magna-processing-title').textContent = stages[0][0];
+        document.getElementById('magna-processing-text').textContent = stages[0][1];
+        timer = setInterval(() => {
+            i = Math.min(i + 1, stages.length - 1);
+            document.getElementById('magna-processing-title').textContent = stages[i][0];
+            document.getElementById('magna-processing-text').textContent = stages[i][1];
+        }, 1800);
+    }
+    function pararProcessamento() {
+        clearInterval(timer);
+        processing.hidden = true;
+    }
+    function renderizar(payload) {
+        const r = payload.resultado;
+        const a = r.analise || {};
+        const d = r.diagnostico_magna || {};
+        document.getElementById('magna-audit').textContent = 'DECISÃO AUDITÁVEL #' + (r.decisao_id || '—');
+        document.getElementById('magna-strategy').textContent = r.estrategia.replaceAll('-', ' ').toUpperCase();
+        document.getElementById('magna-reason').textContent = r.justificativa_magna;
+        document.getElementById('m-concurso').textContent = r.concurso_alvo;
+        document.getElementById('m-cartelas').textContent = r.n_cartelas;
+        document.getElementById('m-custo').textContent = brl(r.custo);
+        document.getElementById('m-p14').textContent = pct(a.p_melhor_14_mais, 6);
+        document.getElementById('m-ev').textContent = brl(a.ev_lote);
+        document.getElementById('magna-top15').innerHTML = bolas(r.top15_magna);
+        document.getElementById('m-hurst').textContent = d.hurst_medio;
+        document.getElementById('m-entropia').textContent = d.entropia_permutacao_media;
+        document.getElementById('m-filtro').textContent = pct(d.taxa_aprovacao_filtro, 1);
+        document.getElementById('m-kelly').textContent = d.kelly + ' · não apostar por EV';
+        document.getElementById('magna-saved').textContent = payload.salvas + ' cartela(s) salva(s) atomicamente';
+        document.getElementById('magna-truth-text').textContent = r.verdade_honesta;
 
-    function ativarBotao(aba) {
-        botoes.forEach(function (b) {
-            b.classList.toggle('active', b.dataset.aba === aba);
+        const cards = document.getElementById('magna-cartelas');
+        cards.innerHTML = '';
+        (r.cartelas || []).forEach((c, i) => {
+            const av = ((c.interpretacao_magna || {}).filtros_avancados || {}).score_avancado;
+            const conv = ((c.interpretacao_magna || {}).convergencia_media || 0) * 100;
+            const el = document.createElement('article');
+            el.className = 'magna-ticket';
+            el.innerHTML =
+                '<header><span>CARTELA ' + String(i + 1).padStart(2, '0') + '</span><strong>' + Number(c.score_total || 0).toFixed(4) + '</strong></header>' +
+                '<div class="magna-balls">' + bolas(c.dezenas) + '</div>' +
+                '<footer><span>plausibilidade ' + Number(av || 0).toFixed(2) + '</span><span>convergência ' + conv.toFixed(1) + '%</span></footer>';
+            cards.appendChild(el);
         });
+        resultBox.hidden = false;
+        resultBox.scrollIntoView({behavior:'smooth', block:'start'});
     }
 
-    function executaScripts(el) {
-        // Os fragmentos trazem <script>; quando injetados via innerHTML os
-        // scripts não executam sozinhos — re-executamos na ordem.
-        var scripts = el.querySelectorAll('script');
-        scripts.forEach(function (old) {
-            var novo = document.createElement('script');
-            if (old.src) { novo.src = old.src; }
-            else { novo.textContent = old.textContent; }
-            old.parentNode.replaceChild(novo, old);
-        });
-    }
-
-    function carregar(aba, push) {
-        var url = ROTAS[aba];
-        if (!url) { return; }
-        ativarBotao(aba);
-        CONTEUDO.innerHTML =
-            '<div style="text-align:center;padding:40px;color:var(--text-muted);">' +
-            '<i class="fas fa-spinner fa-spin fa-2x"></i>' +
-            '<p style="margin-top:12px;">Processando no Cérebro...</p></div>';
-        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function (r) {
-                if (!r.ok) { throw new Error('HTTP ' + r.status); }
-                return r.text();
-            })
-            .then(function (html) {
-                CONTEUDO.innerHTML = html;
-                executaScripts(CONTEUDO);
-                if (push) { history.replaceState({ aba: aba }, '', '#aba-' + aba); }
-                CONTEUDO.scrollTop = 0;
-            })
-            .catch(function (e) {
-                CONTEUDO.innerHTML =
-                    '<div class="alert alert-danger">Erro ao carregar módulo: ' +
-                    (e && e.message ? e.message : e) + '</div>';
+    form.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        btn.disabled = true;
+        iniciarProcessamento();
+        const orc = document.getElementById('magna-orcamento').value;
+        try {
+            const response = await fetch('/api/magna/decidir', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    quantidade: Number(document.getElementById('magna-quantidade').value),
+                    orcamento: orc === '' ? null : Number(orc),
+                    salvar: document.getElementById('magna-salvar').checked
+                })
             });
-    }
-
-    botoes.forEach(function (b) {
-        b.addEventListener('click', function () {
-            carregar(b.dataset.aba, true);
-        });
-    });
-
-    // Intercepta navegação de links/formulários DENTRO do fragmento para que
-    // continuem dentro do hub (em vez de trocar a página inteira).
-    document.addEventListener('click', function (ev) {
-        var a = ev.target.closest('a');
-        if (!a) { return; }
-        var href = a.getAttribute('href') || '';
-        if (href.charAt(0) !== '/') { return; }
-        // links que já são fragmentos de aba
-        for (var aba in ROTAS) {
-            var rota = ROTAS[aba].split('?')[0];
-            if (href === rota || href.indexOf(rota + '?') === 0) {
-                ev.preventDefault();
-                carregar(aba, true);
-                return;
-            }
+            const data = await response.json();
+            if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na decisão');
+            renderizar(data);
+        } catch (err) {
+            alert('Inteligência Magna: ' + err.message);
+        } finally {
+            pararProcessamento();
+            btn.disabled = false;
         }
     });
-
-    function abaInicial() {
-        var hash = (location.hash || '').replace('#aba-', '');
-        if (hash && ROTAS[hash]) { return hash; }
-        return ABA_PADRAO;
-    }
-
-    window.addEventListener('popstate', function (e) {
-        if (e.state && e.state.aba) { carregar(e.state.aba, false); }
-    });
-
-    carregar(abaInicial(), true);
 })();
 </script>
 
 <style>
-.cerebro-tabs {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    border-bottom: 2px solid var(--border, #2a2d42);
-    margin-bottom: 20px;
-}
-.ctab {
-    background: transparent; border: none; cursor: pointer;
-    padding: 12px 16px; color: var(--text-muted, #9aa0b4);
-    font-size: 14px; font-weight: 600; border-bottom: 3px solid transparent;
-    transition: all .15s;
-}
-.ctab:hover { color: var(--text, #e6e8ef); }
-.ctab.active { color: var(--primary, #6c5ce7); border-bottom-color: var(--primary, #6c5ce7); }
-.cerebro-conteudo { min-height: 200px; }
+.magna-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;min-height:250px;padding:38px 42px;margin-bottom:18px;border:1px solid rgba(132,94,247,.3);border-radius:22px;background:radial-gradient(circle at 85% 20%,rgba(108,92,231,.28),transparent 34%),linear-gradient(135deg,#17182b 0%,#222044 100%)}
+.magna-hero:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,#000,transparent)}
+.magna-hero>div:first-child{position:relative;z-index:2;max-width:720px}.magna-kicker,.magna-section-title span,.magna-cartelas-head span{color:#9b8cff;font-size:11px;font-weight:800;letter-spacing:1.8px}.magna-hero h2{font-size:34px;line-height:1.1;margin:12px 0;color:#fff}.magna-hero p{font-size:15px;line-height:1.7;color:#b8b9cf;max-width:680px}.magna-orbe{position:relative;width:155px;height:155px;display:grid;place-items:center;margin-right:24px;border-radius:50%;border:1px solid rgba(155,140,255,.35);box-shadow:0 0 60px rgba(108,92,231,.28),inset 0 0 35px rgba(108,92,231,.2)}.magna-orbe>i{font-size:55px;color:#b9adff;filter:drop-shadow(0 0 16px #6c5ce7)}.magna-orbe span{position:absolute;inset:-12px;border:1px solid rgba(155,140,255,.2);border-radius:50%;animation:magnaPulse 3s infinite}.magna-orbe span:nth-child(2){inset:-26px;animation-delay:.8s}.magna-orbe span:nth-child(3){inset:-42px;animation-delay:1.6s}@keyframes magnaPulse{50%{opacity:.25;transform:scale(1.04)}}
+.magna-assimilacao{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:13px 16px;margin-bottom:18px;border:1px solid var(--border,#2a2d42);border-radius:14px;background:#171827}.magna-assimilacao>div:not(.magna-fluxo){display:flex;align-items:center;gap:7px;white-space:nowrap;padding:7px 10px;color:#a9abc0;font-size:11px}.magna-assimilacao i{color:#8174db}.magna-fluxo{margin-left:auto;display:flex;align-items:center;gap:11px;white-space:nowrap;color:#b8adff;font-size:11px}.magna-fluxo span{width:35px;height:1px;background:#6c5ce7}
+.magna-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.75fr);gap:18px;margin-bottom:18px}.magna-command,.magna-memory,.magna-result,.magna-history{border:1px solid var(--border,#2a2d42);border-radius:18px;background:#181925;padding:24px}.magna-section-title,.magna-cartelas-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.magna-section-title h3,.magna-cartelas-head h3{margin:4px 0 0;color:#f2f2fa}.magna-live{display:flex;align-items:center;gap:7px;color:#68d9b4!important;letter-spacing:0!important}.magna-live i{width:7px;height:7px;border-radius:50%;background:#00b894;box-shadow:0 0 10px #00b894}.magna-command form{display:grid;grid-template-columns:1fr 1fr;gap:16px}.magna-command label{display:flex;flex-direction:column;gap:7px;color:#d5d5e2;font-size:12px;font-weight:600}.magna-command small{color:#777990;font-size:10px;font-weight:400;line-height:1.4}.magna-command input[type=number]{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d;color:#fff;padding:12px;font-size:14px;outline:none}.magna-command input:focus{border-color:#786ae4;box-shadow:0 0 0 3px rgba(108,92,231,.14)}.magna-money{position:relative}.magna-money span{position:absolute;left:12px;top:12px;color:#888aa0}.magna-money input{padding-left:38px!important}.magna-check{grid-column:1/3;flex-direction:row!important;align-items:center}.magna-check input{accent-color:#6c5ce7}.magna-primary{grid-column:1/3;border:0;border-radius:11px;padding:14px 20px;color:#fff;background:linear-gradient(135deg,#6c5ce7,#8e77f3);font-weight:800;cursor:pointer;box-shadow:0 10px 25px rgba(108,92,231,.22)}.magna-primary:disabled{opacity:.55;cursor:wait}.magna-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.magna-facts div{padding:12px;border-radius:10px;background:#11121d}.magna-facts strong,.magna-facts span{display:block}.magna-facts strong{color:#fff}.magna-facts span{margin-top:3px;color:#777990;font-size:9px;text-transform:uppercase;letter-spacing:.7px}
+.magna-weight{margin:16px 0}.magna-weight>div:first-child{display:flex;justify-content:space-between;color:#b8b9ca;font-size:11px}.magna-weight strong{color:#dad6ff}.magna-weight-track{height:5px;margin-top:7px;border-radius:5px;background:#292a3b;overflow:hidden}.magna-weight-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#6c5ce7,#a892ff)}.magna-note{padding:12px;margin-top:20px;border-left:2px solid #6c5ce7;background:#13141f;color:#777990;font-size:10px;line-height:1.6}
+.magna-processing{display:flex;align-items:center;gap:20px;padding:20px 24px;margin-bottom:18px;border:1px solid rgba(108,92,231,.35);border-radius:14px;background:#19182a}.magna-loader{position:relative;width:50px;height:50px;display:grid;place-items:center;color:#b5a9ff}.magna-loader span{position:absolute;inset:0;border:2px solid transparent;border-top-color:#8f7cf5;border-radius:50%;animation:magnaSpin 1s linear infinite}@keyframes magnaSpin{to{transform:rotate(360deg)}}.magna-processing p{margin:4px 0;color:#85879e;font-size:11px}
+.magna-result{margin-bottom:18px;border-color:rgba(108,92,231,.45);box-shadow:0 18px 45px rgba(0,0,0,.15)}.magna-result-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid #2a2b3d}.magna-result-head>div>span{color:#68d9b4;font-size:10px;font-weight:800;letter-spacing:1.5px}.magna-result-head h2{margin:7px 0;color:#fff}.magna-result-head p{margin:0;max-width:760px;color:#9294aa;font-size:12px;line-height:1.5}.magna-result-seal{width:64px;height:64px;border:1px solid #4f477e;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ab9eff}.magna-result-seal span{font-size:8px;font-weight:800;letter-spacing:1px}.magna-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}.magna-metrics div{padding:14px;border:1px solid #292a3b;border-radius:11px;background:#12131e}.magna-metrics span,.magna-metrics strong{display:block}.magna-metrics span{color:#72748b;font-size:9px;text-transform:uppercase}.magna-metrics strong{margin-top:5px;color:#efeff7;font-size:16px}.magna-decision-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.magna-panel{padding:18px;border-radius:12px;background:#12131e}.magna-panel h3{margin:0 0 15px;color:#dcddea;font-size:13px}.magna-panel h3 i{color:#8e7cf2;margin-right:6px}.magna-panel p{color:#707289;font-size:10px;line-height:1.5}.magna-balls{display:flex;flex-wrap:wrap;gap:7px}.magna-balls span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(145deg,#7464d7,#4e429e);color:#fff;font-size:11px;font-weight:800;box-shadow:inset 0 1px 1px rgba(255,255,255,.22)}.magna-diagnostics{margin:0}.magna-diagnostics div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #252636;font-size:10px}.magna-diagnostics dt{color:#777990}.magna-diagnostics dd{margin:0;color:#d5d1fa;font-weight:700}.magna-cartelas-head{margin:24px 0 13px}.magna-cartelas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.magna-ticket{padding:15px;border:1px solid #2b2c3e;border-radius:12px;background:linear-gradient(145deg,#13141f,#191a29)}.magna-ticket header,.magna-ticket footer{display:flex;justify-content:space-between}.magna-ticket header{margin-bottom:12px;color:#85879c;font-size:9px;letter-spacing:1px}.magna-ticket header strong{color:#a99cff}.magna-ticket .magna-balls span{width:28px;height:28px;font-size:9px}.magna-ticket footer{margin-top:12px;color:#6f7188;font-size:9px}.magna-truth{display:flex;align-items:flex-start;gap:12px;padding:15px;margin-top:18px;border-radius:10px;background:#11121c;color:#7f8197;font-size:10px;line-height:1.55}.magna-truth i{color:#e0b75d;margin-top:2px}.magna-truth p{margin:0}.magna-history{margin-bottom:20px}.magna-status{padding:4px 7px;border-radius:10px;background:#292a3b;color:#aaa;font-size:9px}.magna-status.conferida{background:rgba(0,184,148,.15);color:#62d9bd}.magna-empty{text-align:center;padding:28px;color:#696b82}.magna-empty i{font-size:28px;color:#6c5ce7}.magna-empty p{font-size:11px}
+@media(max-width:900px){.magna-grid,.magna-decision-grid{grid-template-columns:1fr}.magna-orbe{display:none}.magna-metrics{grid-template-columns:repeat(2,1fr)}.magna-command form{grid-template-columns:1fr}.magna-check,.magna-primary{grid-column:1}.magna-hero{padding:28px}.magna-hero h2{font-size:27px}}
 </style>
 {% endblock %}

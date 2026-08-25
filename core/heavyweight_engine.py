@@ -21,7 +21,7 @@ from typing import List, Tuple
 
 import numpy as np
 
-from config import TOTAL_DEZENAS, DEZENAS_POR_JOGO
+from config import TOTAL_DEZENAS
 from .wheeling import MotorWheeling
 
 

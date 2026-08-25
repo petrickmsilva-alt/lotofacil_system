@@ -9,7 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import DATABASE_PATH
+from config import DATABASE_PATH, VALOR_APOSTA
 
 
 def migrar():
@@ -298,6 +298,151 @@ def migrar():
             aprendizado       TEXT
         )
     """)
+
+    # ── Reparação de inteiros NumPy gravados como BLOB ────────
+    # Builds antigos enviavam np.int64 diretamente ao sqlite3. O driver
+    # persistia oito bytes little-endian e a conferência os lia como zero.
+    # A migração é idempotente: só toca linhas que ainda contêm BLOB.
+    concursos_reparados = set()
+    try:
+        rows_blob = cursor.execute("""
+            SELECT id, concurso_alvo,
+                   d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15
+            FROM cartelas
+            WHERE typeof(d1)='blob' OR typeof(d2)='blob' OR
+                  typeof(d3)='blob' OR typeof(d4)='blob' OR
+                  typeof(d5)='blob' OR typeof(d6)='blob' OR
+                  typeof(d7)='blob' OR typeof(d8)='blob' OR
+                  typeof(d9)='blob' OR typeof(d10)='blob' OR
+                  typeof(d11)='blob' OR typeof(d12)='blob' OR
+                  typeof(d13)='blob' OR typeof(d14)='blob' OR
+                  typeof(d15)='blob'
+        """).fetchall()
+
+        def blob_para_int(valor):
+            if isinstance(valor, (bytes, bytearray, memoryview)):
+                raw = bytes(valor)
+                try:
+                    return int(raw.decode("ascii"))
+                except (UnicodeDecodeError, ValueError):
+                    return int.from_bytes(raw, "little", signed=True)
+            return int(valor)
+
+        for row in rows_blob:
+            cartela_id, concurso_alvo = int(row[0]), int(row[1])
+            dezenas = [blob_para_int(v) for v in row[2:17]]
+            if (len(set(dezenas)) != 15 or
+                    any(d < 1 or d > 25 for d in dezenas)):
+                print("  [!] Cartela {} com BLOB inválido; não migrada".format(
+                    cartela_id))
+                continue
+            bitmask = sum(1 << (d - 1) for d in dezenas)
+            resultado = cursor.execute(
+                "SELECT * FROM resultados WHERE concurso=?", (concurso_alvo,)
+            ).fetchone()
+            acertos = 0
+            premio = 0.0
+            conferida = 0
+            status_cartela = "pendente"
+            if resultado:
+                nomes = [d[0] for d in cursor.description]
+                # `cursor.description` agora pertence ao SELECT resultados.
+                res = dict(zip(nomes, resultado))
+                sorteadas = {int(res["d{}".format(i)]) for i in range(1, 16)}
+                acertos = len(set(dezenas) & sorteadas)
+                conferida = 1
+                status_cartela = (
+                    "premio_15" if acertos == 15 else
+                    "premio_14" if acertos == 14 else
+                    "premio_13" if acertos == 13 else
+                    "premio_12" if acertos == 12 else
+                    "premio_11" if acertos == 11 else "sem_premio"
+                )
+                if acertos in (11, 12, 13):
+                    premio = float(res.get("premio_{}".format(acertos)) or
+                                   {11: 7.0, 12: 14.0, 13: 35.0}[acertos])
+                elif acertos in (14, 15):
+                    premio = float(res.get("premio_{}".format(acertos)) or 0.0)
+
+            cursor.execute("""
+                UPDATE cartelas SET
+                    d1=?,d2=?,d3=?,d4=?,d5=?,d6=?,d7=?,d8=?,d9=?,d10=?,
+                    d11=?,d12=?,d13=?,d14=?,d15=?, bitmask=?,
+                    conferida=?, acertos=?, premio_ganho=?, status=?
+                WHERE id=?
+            """, (*dezenas, bitmask, conferida, acertos, premio,
+                  status_cartela, cartela_id))
+            concursos_reparados.add(concurso_alvo)
+
+        # Reconstrói os resumos financeiros dos concursos afetados usando todas
+        # as cartelas, agora corretamente conferidas.
+        for concurso in sorted(concursos_reparados):
+            resumo = cursor.execute("""
+                SELECT COUNT(*) qtd,
+                       SUM(CASE WHEN acertos=11 THEN 1 ELSE 0 END) a11,
+                       SUM(CASE WHEN acertos=12 THEN 1 ELSE 0 END) a12,
+                       SUM(CASE WHEN acertos=13 THEN 1 ELSE 0 END) a13,
+                       SUM(CASE WHEN acertos=14 THEN 1 ELSE 0 END) a14,
+                       SUM(CASE WHEN acertos=15 THEN 1 ELSE 0 END) a15,
+                       SUM(CASE WHEN acertos=11 THEN premio_ganho ELSE 0 END) p11,
+                       SUM(CASE WHEN acertos=12 THEN premio_ganho ELSE 0 END) p12,
+                       SUM(CASE WHEN acertos=13 THEN premio_ganho ELSE 0 END) p13,
+                       SUM(CASE WHEN acertos=14 THEN premio_ganho ELSE 0 END) p14,
+                       SUM(CASE WHEN acertos=15 THEN premio_ganho ELSE 0 END) p15,
+                       SUM(premio_ganho) total
+                FROM cartelas WHERE concurso_alvo=?
+            """, (concurso,)).fetchone()
+            qtd = int(resumo[0] or 0)
+            custo = qtd * VALOR_APOSTA
+            total_premio = float(resumo[11] or 0.0)
+            cursor.execute("DELETE FROM financeiro WHERE concurso=?", (concurso,))
+            cursor.execute("""
+                INSERT INTO financeiro
+                (concurso,data,qtd_cartelas,custo_total,
+                 acertos_11,acertos_12,acertos_13,acertos_14,acertos_15,
+                 premio_11,premio_12,premio_13,premio_14,premio_15,
+                 premio_total,lucro_liquido)
+                VALUES (?,date('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                concurso, qtd, custo,
+                int(resumo[1] or 0), int(resumo[2] or 0), int(resumo[3] or 0),
+                int(resumo[4] or 0), int(resumo[5] or 0),
+                float(resumo[6] or 0), float(resumo[7] or 0),
+                float(resumo[8] or 0), float(resumo[9] or 0),
+                float(resumo[10] or 0), total_premio, total_premio - custo,
+            ))
+        if rows_blob:
+            print("  [✓] {} cartelas BLOB reparadas".format(len(rows_blob)))
+    except (sqlite3.Error, ValueError, TypeError) as exc:
+        print("  [!] Reparação BLOB: {}".format(exc))
+
+    # Recria cabeçalhos ausentes para lotes legados, preservando a capacidade
+    # de conferi-los e apagá-los pela interface.
+    try:
+        lotes_orfaos = cursor.execute("""
+            SELECT c.lote_id, MIN(c.data_geracao), c.concurso_alvo,
+                   COALESCE(c.tipo_geracao,'migrado'), COUNT(*)
+            FROM cartelas c
+            LEFT JOIN lotes_cartelas l ON l.lote_id=c.lote_id
+            WHERE c.lote_id IS NOT NULL AND l.lote_id IS NULL
+            GROUP BY c.lote_id, c.concurso_alvo, c.tipo_geracao
+        """).fetchall()
+        for lote_id, data_criacao, concurso, tipo, qtd in lotes_orfaos:
+            cursor.execute("""
+                INSERT INTO lotes_cartelas
+                (lote_id,data_criacao,concurso_alvo,tipo_geracao,quantidade,
+                 custo_total,modo,grupo_elite,cobertura_13,observacao)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (
+                lote_id, data_criacao, concurso, tipo, qtd,
+                int(qtd) * VALOR_APOSTA, "migrado", "[]", 0.0,
+                "Cabeçalho reconstruído pela migração de integridade",
+            ))
+        if lotes_orfaos:
+            print("  [✓] {} cabeçalhos de lote reconstruídos".format(
+                len(lotes_orfaos)))
+    except sqlite3.Error as exc:
+        print("  [!] Reparação de lotes: {}".format(exc))
 
     # ── Índices ───────────────────────────────────────────────
     try:
