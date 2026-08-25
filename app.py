@@ -522,6 +522,30 @@ def ia_auditoria():
     return redirect(url_for("cerebro_page"), code=303)
 
 
+@app.route("/fisica")
+def fisica_page():
+    """Página de gerenciamento da física do sorteio."""
+    from core.fisica_sorteio import CORES_RGB
+    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
+    status_sistema["total_concursos"] = db.get_total_concursos() or 0
+    status_sistema["ia_treinada"] = magna.treinado
+
+    # Status da física
+    fisica_status = magna.fisica.get_status()
+    status_com_fisica = dict(status_sistema)
+    status_com_fisica["fisica"] = fisica_status
+
+    return render_template(
+        "fisica.html",
+        status=status_com_fisica,
+        pesos_fontes=magna.pesos_fontes_magna,
+        bolas=magna.fisica.get_bolas(),
+        ambientes=magna.fisica.get_ambientes(20),
+        vetor_fisico=magna.fisica.score_fisico().tolist(),
+        cores_rgb=CORES_RGB,
+    )
+
+
 @app.route("/singularidade")
 def singularidade_page():
     """A interpretação cética foi assimilada pela decisão Magna."""

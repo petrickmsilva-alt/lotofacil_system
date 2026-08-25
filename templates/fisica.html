@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+{% block title %}Física do Sorteio — Gerenciamento{% endblock %}
+{% block page_title %}<i class="fas fa-basketball"></i> Física do Sorteio{% endblock %}
+
+{% block content %}
+<section class="fisica-header">
+    <div>
+        <h2>Perfil Físico das Bolas e Ambiente</h2>
+        <p>Gerencie as propriedades mecânicas individuais das 25 bolas e as condições ambientais de cada sorteio. Esses dados alimentam a fonte física da Inteligência Magna.</p>
+    </div>
+    <div class="fisica-status-badge {{ 'ativa' if status.fisica.tem_dados_reais else 'neutra' }}">
+        <i class="fas {{ 'fa-check-circle' if status.fisica.tem_dados_reais else 'fa-minus-circle' }}"></i>
+        <span>{{ status.fisica.estado }}</span>
+    </div>
+</section>
+
+<div class="fisica-grid">
+    <!-- Painel de Status -->
+    <section class="fisica-panel">
+        <h3><i class="fas fa-chart-bar"></i> Status Atual</h3>
+        <div class="fisica-stats">
+            <div class="fisica-stat">
+                <strong>{{ status.fisica.bolas_registradas }}</strong>
+                <span>Bolas registradas</span>
+            </div>
+            <div class="fisica-stat">
+                <strong>{{ status.fisica.ambientes_registrados }}</strong>
+                <span>Ambientes registrados</span>
+            </div>
+            <div class="fisica-stat">
+                <strong>{{ "%.1f"|format(pesos_fontes.fisica * 100) }}%</strong>
+                <span>Peso na Magna</span>
+            </div>
+        </div>
+        <div class="fisica-info">
+            <p><strong>Estado:</strong> {{ status.fisica.estado }}</p>
+            <p><strong>Fonte:</strong> Perfil físico e ambiente</p>
+            <p><strong>Impacto:</strong> {% if status.fisica.tem_dados_reais %}Diferenciação física ativa{% else %}Neutra (sem medições){% endif %}</p>
+        </div>
+    </section>
+
+    <!-- Formulário de Ambiente -->
+    <section class="fisica-panel">
+        <h3><i class="fas fa-thermometer-half"></i> Registrar Ambiente</h3>
+        <form id="ambiente-form" class="fisica-form">
+            <div class="form-row">
+                <label>
+                    Concurso (opcional)
+                    <input type="number" name="concurso" placeholder="Ex: 3771">
+                </label>
+                <label>
+                    Máquina
+                    <input type="text" name="maquina" value="Padrao Caixa SP" required>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Conjunto de Bolas
+                    <select name="conjunto_bolas">
+                        <option value="A">A (Principal)</option>
+                        <option value="B">B (Reserva)</option>
+                        <option value="C">C (Treino)</option>
+                    </select>
+                </label>
+                <label>
+                    Temperatura (°C)
+                    <input type="number" name="temperatura_C" value="21.5" step="0.1" required>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Pressão (atm)
+                    <input type="number" name="pressao_atm" value="0.92" step="0.01" required>
+                </label>
+                <label>
+                    Umidade (%)
+                    <input type="number" name="umidade_pct" value="55" step="1" required>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Velocidade Rotação (rpm)
+                    <input type="number" name="velocidade_rotacao" value="30" step="0.1">
+                </label>
+                <label>
+                    Duração Mistura (s)
+                    <input type="number" name="duracao_mistura" value="60" step="1">
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    Data Última Manutenção
+                    <input type="date" name="data_ultima_manutencao" value="2026-01-15">
+                </label>
+                <div></div>
+            </div>
+            <button type="submit" class="btn-primary">
+                <i class="fas fa-save"></i> Registrar Ambiente
+            </button>
+        </form>
+        <div id="ambiente-resultado" class="fisica-resultado" hidden></div>
+    </section>
+</div>
+
+<!-- Tabela de Bolas -->
+<section class="fisica-table-section">
+    <h3><i class="fas fa-basketball-ball"></i> Perfis das 25 Bolas</h3>
+    <div class="table-container">
+        <table class="table fisica-table">
+            <thead>
+                <tr>
+                    <th>Nº</th>
+                    <th>Cor</th>
+                    <th>Massa (g)</th>
+                    <th>Diâmetro (mm)</th>
+                    <th>Circunf. (mm)</th>
+                    <th>Rugosidade</th>
+                    <th>Restituição</th>
+                    <th>Ciclos</th>
+                    <th>Desgaste</th>
+                    <th>Escore</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bola in bolas %}
+                <tr>
+                    <td><strong>{{ bola.numero }}</strong></td>
+                    <td>
+                        <span class="cor-badge" style="background: {{ cores_rgb[bola.cor] }}">
+                            {{ bola.cor }}
+                        </span>
+                    </td>
+                    <td>{{ bola.massa_g }}</td>
+                    <td>{{ bola.diametro_mm }}</td>
+                    <td>{{ bola.circunferencia_mm }}</td>
+                    <td>{{ "%.4f"|format(bola.rugosidade) }}</td>
+                    <td>{{ "%.4f"|format(bola.coef_restituicao) }}</td>
+                    <td>{{ bola.ciclos_uso }}</td>
+                    <td>
+                        <div class="desgaste-bar">
+                            <div class="desgaste-fill" style="width: {{ bola.indice_desgaste * 100 }}%"></div>
+                            <span>{{ "%.1f"|format(bola.indice_desgaste * 100) }}%</span>
+                        </div>
+                    </td>
+                    <td>{{ "%.6f"|format(vetor_fisico[bola.numero - 1]) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Histórico de Ambientes -->
+<section class="fisica-table-section">
+    <h3><i class="fas fa-history"></i> Histórico de Ambientes</h3>
+    {% if ambientes %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Concurso</th>
+                    <th>Máquina</th>
+                    <th>Conjunto</th>
+                    <th>Temp (°C)</th>
+                    <th>Pressão</th>
+                    <th>Umidade</th>
+                    <th>Rotação</th>
+                    <th>Data</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for amb in ambientes %}
+                <tr>
+                    <td>#{{ amb.id }}</td>
+                    <td>{{ amb.concurso or '—' }}</td>
+                    <td>{{ amb.maquina }}</td>
+                    <td>{{ amb.conjunto_bolas }}</td>
+                    <td>{{ "%.1f"|format(amb.temperatura_K - 273.15) }}</td>
+                    <td>{{ amb.pressao_atm }} atm</td>
+                    <td>{{ "%.0f"|format(amb.umidade * 100) }}%</td>
+                    <td>{{ amb.velocidade_rotacao }} rpm</td>
+                    <td>{{ amb.registrado_em }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="fisica-empty">
+        <i class="fas fa-thermometer-empty"></i>
+        <p>Nenhum ambiente registrado ainda.</p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="fisica-nota">
+    <i class="fas fa-info-circle"></i>
+    <div>
+        <p><strong>Aviso Importante:</strong> Sem medições reais de cada bola e de cada sorteio, desgaste, cor e ambiente são apenas valores simulados. A fonte física aparece como <strong>experimento</strong>, não como evidência preditiva comprovada.</p>
+        <p>Para obter medições reais, seria necessário equipamento de precisão para pesar cada bola individualmente e monitorar as condições ambientais durante cada sorteio.</p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('ambiente-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const btn = form.querySelector('button');
+    const resultado = document.getElementById('ambiente-resultado');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+    
+    const dados = {
+        concurso: form.concurso.value ? parseInt(form.concurso.value) : null,
+        maquina: form.maquina.value,
+        conjunto_bolas: form.conjunto_bolas.value,
+        temperatura_K: parseFloat(form.temperatura_C.value) + 273.15,
+        pressao_atm: parseFloat(form.pressao_atm.value),
+        umidade: parseFloat(form.umidade_pct.value) / 100,
+        velocidade_rotacao: parseFloat(form.velocidade_rotacao.value),
+        duracao_mistura: parseFloat(form.duracao_mistura.value),
+        data_ultima_manutencao: form.data_ultima_manutencao.value || null
+    };
+    
+    try {
+        const response = await fetch('/api/magna/fisica/ambiente', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(dados)
+        });
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            resultado.className = 'fisica-resultado sucesso';
+            resultado.innerHTML = '<i class="fas fa-check-circle"></i> Ambiente registrado com sucesso!';
+            resultado.hidden = false;
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            throw new Error(data.msg || 'Erro desconhecido');
+        }
+    } catch (err) {
+        resultado.className = 'fisica-resultado erro';
+        resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
+        resultado.hidden = false;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Registrar Ambiente';
+    }
+});
+</script>
+
+<style>
+.fisica-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #1a1b2e, #252640);
+    border-radius: 16px;
+    border: 1px solid var(--border, #2a2d42);
+}
+.fisica-header h2 {
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: 24px;
+}
+.fisica-header p {
+    margin: 0;
+    color: #8b8da3;
+    font-size: 14px;
+    max-width: 600px;
+}
+.fisica-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+}
+.fisica-status-badge.ativa {
+    background: rgba(0, 184, 148, 0.15);
+    color: #00b894;
+    border: 1px solid rgba(0, 184, 148, 0.3);
+}
+.fisica-status-badge.neutra {
+    background: rgba(255, 234, 167, 0.15);
+    color: #ffeaa7;
+    border: 1px solid rgba(255, 234, 167, 0.3);
+}
+.fisica-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+.fisica-panel {
+    background: #181925;
+    border: 1px solid var(--border, #2a2d42);
+    border-radius: 16px;
+    padding: 24px;
+}
+.fisica-panel h3 {
+    margin: 0 0 20px;
+    color: #fff;
+    font-size: 16px;
+}
+.fisica-panel h3 i {
+    color: #6c5ce7;
+    margin-right: 8px;
+}
+.fisica-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.fisica-stat {
+    background: #11121d;
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+}
+.fisica-stat strong {
+    display: block;
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 4px;
+}
+.fisica-stat span {
+    font-size: 11px;
+    color: #777990;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.fisica-info {
+    background: #11121d;
+    border-radius: 10px;
+    padding: 16px;
+}
+.fisica-info p {
+    margin: 8px 0;
+    color: #b8b9cf;
+    font-size: 13px;
+}
+.fisica-info strong {
+    color: #fff;
+}
+.fisica-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.fisica-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #b8b9cf;
+    font-size: 12px;
+    font-weight: 600;
+}
+.fisica-form input,
+.fisica-form select {
+    background: #11121d;
+    border: 1px solid #34364b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+}
+.fisica-form input:focus,
+.fisica-form select:focus {
+    border-color: #6c5ce7;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15);
+}
+.btn-primary {
+    background: linear-gradient(135deg, #6c5ce7, #8e77f3);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(108, 92, 231, 0.3);
+}
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+.fisica-resultado {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.fisica-resultado.sucesso {
+    background: rgba(0, 184, 148, 0.15);
+    color: #00b894;
+    border: 1px solid rgba(0, 184, 148, 0.3);
+}
+.fisica-resultado.erro {
+    background: rgba(255, 118, 117, 0.15);
+    color: #ff7675;
+    border: 1px solid rgba(255, 118, 117, 0.3);
+}
+.fisica-table-section {
+    background: #181925;
+    border: 1px solid var(--border, #2a2d42);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 20px;
+}
+.fisica-table-section h3 {
+    margin: 0 0 20px;
+    color: #fff;
+    font-size: 16px;
+}
+.fisica-table-section h3 i {
+    color: #6c5ce7;
+    margin-right: 8px;
+}
+.fisica-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.fisica-table th {
+    background: #11121d;
+    color: #777990;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #2a2d42;
+}
+.fisica-table td {
+    padding: 10px 12px;
+    color: #d5d5e2;
+    font-size: 13px;
+    border-bottom: 1px solid #1f2037;
+}
+.fisica-table tr:hover {
+    background: rgba(108, 92, 231, 0.05);
+}
+.cor-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.desgaste-bar {
+    position: relative;
+    width: 80px;
+    height: 20px;
+    background: #2a2d42;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.desgaste-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #00b894, #ffeaa7);
+    border-radius: 10px;
+    transition: width 0.3s;
+}
+.desgaste-bar span {
+    position: relative;
+    z-index: 1;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 20px;
+    margin-left: 8px;
+}
+.fisica-empty {
+    text-align: center;
+    padding: 40px;
+    color: #696b82;
+}
+.fisica-empty i {
+    font-size: 40px;
+    margin-bottom: 12px;
+    color: #6c5ce7;
+}
+.fisica-empty p {
+    margin: 0;
+    font-size: 14px;
+}
+.fisica-nota {
+    display: flex;
+    gap: 16px;
+    padding: 20px;
+    background: #11121d;
+    border-radius: 12px;
+    border-left: 4px solid #ffeaa7;
+}
+.fisica-nota i {
+    color: #ffeaa7;
+    font-size: 20px;
+    margin-top: 2px;
+}
+.fisica-nota p {
+    margin: 4px 0;
+    color: #8b8da3;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.fisica-nota strong {
+    color: #ffeaa7;
+}
+@media (max-width: 900px) {
+    .fisica-grid {
+        grid-template-columns: 1fr;
+    }
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    .fisica-stats {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
