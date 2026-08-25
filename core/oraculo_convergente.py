@@ -14,10 +14,10 @@ isso não é coincidência — é SINAL EMERGENTE.
 
 import time
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 from scipy import stats
 from scipy.fft import rfft
-from config import TOTAL_DEZENAS, DEZENAS_POR_JOGO
+from config import TOTAL_DEZENAS
 
 class OraculoConvergente:
     """
@@ -354,13 +354,16 @@ class OraculoConvergente:
     # CONSULTA COMPLETA
     # =========================================================
     def consultar_todos(self) -> Dict:
-            """Todos os 15 oráculos votam com Injeção de Entropia Dinâmica"""
-            
-            # Semente com ruído de tempo real (microsecond level)
-            # Impede que duas chamadas no mesmo dia com a mesma base retornem resultados idênticos
-            seed_entropia = int(time.time_ns() % 1_000_000)
-            np.random.seed(seed_entropia)
-    
+            """Todos os 15 oráculos votam com Injeção de Entropia Dinâmica.
+
+            Usa um RNG local (np.random.default_rng) em vez de np.random.seed
+            global, que antes contaminava a aleatoriedade de todos os outros
+            módulos do processo (bug de estado global).
+            """
+            # RNG local com entropia de tempo: impede que duas chamadas no
+            # mesmo dia, com a mesma base, retornem resultados idênticos.
+            rng = np.random.default_rng(int(time.time_ns() % 1_000_000))
+
             oraculos_map = {
                 "termodinamico":   self.oraculo_termodinamico,
                 "quantico":        self.oraculo_quantico,
@@ -384,7 +387,7 @@ class OraculoConvergente:
             detalhes = {}
     
             # Injeta ruidinho quântico suave nos pesos acumulados (flutuação de vácuo)
-            ruido_flutuacao = np.random.normal(0, 0.02, 25)
+            ruido_flutuacao = rng.normal(0, 0.02, 25)
     
             for nome, func in oraculos_map.items():
                 try:

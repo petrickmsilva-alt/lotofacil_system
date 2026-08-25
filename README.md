@@ -15,6 +15,14 @@ python app.py
 
 Acesse: `http://localhost:5000`
 
+## 🧪 Testes
+
+```bash
+pip install pytest
+pytest tests/          # suíte completa (22 testes)
+python tests/test_wheeling.py   # também rodam como scripts
+```
+
 ## 📋 Módulos
 
 - **Cérebro IA** — 14 motores (Markov, Verlet, Quantum, Bayes...)

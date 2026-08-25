@@ -6,7 +6,6 @@ SISTEMA LOTOFÁCIL — CÉREBRO IA v7.0
 """
 
 # ── Imports padrão ────────────────────────────────────────────
-import os
 import time
 import traceback
 import threading
@@ -24,7 +23,7 @@ except Exception as _e:
     print("[AVISO] Migração: {}".format(_e))
 
 # ── Flask ─────────────────────────────────────────────────────
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
@@ -59,6 +58,15 @@ class NumpyJSONProvider(DefaultJSONProvider):
 
 
 app.json = NumpyJSONProvider(app)
+
+
+@app.context_processor
+def inject_status():
+    """Disponibiliza `status` em TODOS os templates, inclusive nas páginas
+    que antes não o passavam (wheeling, singularidade, avaliacao etc.),
+    evitando que o indicador da sidebar mostrasse 'IA: Offline / 0 concursos'
+    só porque a rota esqueceu de passar a variável."""
+    return {"status": status_sistema}
 
 # ── Módulos ───────────────────────────────────────────────────
 from config import VALOR_APOSTA
@@ -447,13 +455,18 @@ def gerar():
 
 @app.route("/cartela_do_dia")
 def cartela_do_dia():
+    # A idempotência (uma cartela por concurso-alvo) é garantida dentro de
+    # cerebro.gerar_cartela_do_dia(): chamadas sucessivas reaproveitam a
+    # cartela já salva para o próximo concurso, sem gerar duplicatas a cada F5.
     resultado = cerebro.gerar_cartela_do_dia()
 
     if resultado.get("status") != "erro":
         try:
             proximo = (db.get_ultimo_concurso() or 0) + 1
             dez     = resultado["cartela"]
-            if len(dez) == 15:
+            # Só registra no lote de cartelas quando foi efetivamente gerada
+            # (não quando foi apenas reaproveitada).
+            if not resultado.get("reaproveitada") and len(dez) == 15:
                 cartela_fmt = {
                     "dezenas":     dez,
                     "bitmask":     int(resultado.get("bitmask", 0)),
@@ -472,7 +485,7 @@ def cartela_do_dia():
                     grupo_elite=[],
                     cobertura=float(resultado.get("consenso_forca", 0)),
                 )
-                resultado["salvo_concurso"] = proximo
+            resultado["salvo_concurso"] = proximo
         except Exception as e:
             resultado["erro_salvar"] = str(e)
             traceback.print_exc()
@@ -679,7 +692,8 @@ def api_singularidade_backtest():
         dados = request.get_json() or {}
         n_testes = int(dados.get("n_testes", 15))
         n_random = int(dados.get("n_random", 200))
-        return jsonify(cerebro.backtesting(n_testes=n_testes, n_cart=5))
+        return jsonify(cerebro.backtesting(
+            n_testes=n_testes, n_random=n_random))
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(e)})
@@ -720,7 +734,6 @@ def api_cerebro_wheeling():
         )
 
         salvos = 0
-        lote_id = None
         if salvar and res["n_cartelas"] > 0:
             concurso = (db.get_ultimo_concurso() or 0) + 1
             salvos = _salvar_cartelas_banco(
@@ -729,7 +742,6 @@ def api_cerebro_wheeling():
                 grupo_elite=res["pool"],
                 cobertura=100.0 * (res["analise"]["p_melhor_14_mais"]),
             )
-            lote_id = "wheeling_{}".format(concurso)
 
         return jsonify({
             "status": "ok",
@@ -1068,8 +1080,9 @@ def api_cerebro_backtesting():
     try:
         dados    = request.get_json() or {}
         n_testes = int(dados.get("n_testes",  20))
-        n_cart   = int(dados.get("n_cartelas", 5))
-        return jsonify(cerebro.backtesting(n_testes, n_cart))
+        n_random = int(dados.get("n_random", 200))
+        return jsonify(cerebro.backtesting(
+            n_testes=n_testes, n_random=n_random))
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
 
@@ -1134,9 +1147,15 @@ def _registrar_financeiro(resultado_conf):
 def api_conferir():
     try:
         resultados = conferencia.conferir_todas_pendentes()
+        total_cartelas = 0
         for r in resultados:
             _registrar_financeiro(r)
-        return jsonify({"status": "ok", "conferidas": len(resultados)})
+            total_cartelas += len(r.get("cartelas", []))
+        return jsonify({
+            "status": "ok",
+            "concursos": len(resultados),
+            "conferidas": total_cartelas,
+        })
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)})
 
