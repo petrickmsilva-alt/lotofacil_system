@@ -290,16 +290,29 @@ def cerebro_page():
     instrumentos analíticos são assimilados por `decidir_e_gerar()` e a página
     exibe somente a conclusão unificada e sua memória auditável.
     """
+    from core.fisica_sorteio import CORES_RGB
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
     status_sistema["total_concursos"] = db.get_total_concursos() or 0
     status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
     status_sistema["ia_treinada"] = magna.treinado
+    
+    # Calcular estatísticas de avaliação
+    historico = magna.get_historico_magna(50)
+    conferidas = [d for d in historico if d.get('status') == 'conferida']
+    media_acertos = sum(d.get('media_acertos', 0) for d in conferidas) / len(conferidas) if conferidas else 0
+    melhor_acertos = max((d.get('melhor_acertos', 0) for d in conferidas), default=0)
+    
     return render_template(
         "cerebro.html",
         status=status_sistema,
         magna_status=magna.get_status(),
-        historico_magna=magna.get_historico_magna(12),
+        historico_magna=historico,
         valor_aposta=VALOR_APOSTA,
+        pesos=magna.pesos_fontes_magna,
+        bolas=magna.fisica.get_bolas(),
+        cores_rgb=CORES_RGB,
+        media_acertos=round(media_acertos, 1),
+        melhor_acertos=melhor_acertos,
     )
 
 
@@ -339,6 +352,74 @@ def api_magna_decidir():
     """Única porta pública de análise, interpretação e criação de cartelas."""
     try:
         return jsonify(_responder_decisao_magna(request.get_json() or {}))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+# ============================================================
+# API — FÍSICA DO SORTEIO (Perfil das Bolas + Ambiente)
+# ============================================================
+
+@app.route("/api/magna/fisica")
+def api_magna_fisica():
+    """Retorna o estado atual da fonte física da Magna."""
+    try:
+        return jsonify({
+            "status": "ok",
+            "fisica": magna.fisica.get_status(),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/fisica/bola", methods=["POST"])
+def api_magna_fisica_bola():
+    """Registra ou atualiza o perfil físico de uma bola."""
+    try:
+        dados = request.get_json() or {}
+        numero = int(dados.get("numero", 0))
+        if not 1 <= numero <= 25:
+            return jsonify({"status": "erro", "msg": "numero deve estar entre 1 e 25"}), 400
+        resultado = magna.fisica.registrar_bola(
+            numero=numero,
+            massa_g=dados.get("massa_g"),
+            diametro_mm=dados.get("diametro_mm"),
+            cor=dados.get("cor"),
+            rugosidade=dados.get("rugosidade"),
+            coef_restituicao=dados.get("coef_restituicao"),
+            ciclos_uso=int(dados.get("ciclos_uso", 0)),
+        )
+        return jsonify({"status": "ok", "bola": resultado})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/fisica/ambiente", methods=["POST"])
+def api_magna_fisica_ambiente():
+    """Registra as condições ambientais de um sorteio."""
+    try:
+        dados = request.get_json() or {}
+        resultado = magna.fisica.registrar_ambiente(
+            concurso=dados.get("concurso"),
+            maquina=dados.get("maquina", "padrao"),
+            conjunto_bolas=dados.get("conjunto_bolas", "A"),
+            temperatura_K=dados.get("temperatura_K"),
+            pressao_atm=dados.get("pressao_atm"),
+            umidade=dados.get("umidade"),
+            densidade_ar=dados.get("densidade_ar"),
+            gravidade=dados.get("gravidade"),
+            velocidade_rotacao=dados.get("velocidade_rotacao", 30.0),
+            duracao_mistura=dados.get("duracao_mistura", 60.0),
+            data_ultima_manutencao=dados.get("data_ultima_manutencao"),
+        )
+        return jsonify({"status": "ok", "ambiente": resultado})
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro", "msg": str(exc)}), 400
     except Exception as exc:
@@ -451,6 +532,18 @@ def premios():
 @app.route("/ia_auditoria")
 def ia_auditoria():
     """A auditoria agora acompanha cada decisão no painel único."""
+    return redirect(url_for("cerebro_page"), code=303)
+
+
+@app.route("/fisica")
+def fisica_page():
+    """A física do sorteio foi integrada na Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
+
+
+@app.route("/avaliacao")
+def avaliacao_page():
+    """A avaliação foi integrada na Inteligência Magna."""
     return redirect(url_for("cerebro_page"), code=303)
 
 
@@ -602,11 +695,6 @@ def _criar_tabela_avaliacao():
     """)
     conn.commit()
     conn.close()
-
-
-@app.route("/avaliacao")
-def avaliacao_page():
-    return render_template("avaliacao.html", status=status_sistema)
 
 
 @app.route("/api/avaliacao", methods=["POST"])

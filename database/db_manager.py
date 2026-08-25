@@ -186,6 +186,42 @@ class DBManager:
             )
         """)
 
+        # ── Física das Bolas ─────────────────────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fisica_bolas (
+                numero INTEGER PRIMARY KEY,
+                massa_g REAL,
+                diametro_mm REAL,
+                circunferencia_mm REAL,
+                cor TEXT,
+                material TEXT,
+                rugosidade REAL,
+                coef_restituicao REAL,
+                ciclos_uso INTEGER DEFAULT 0,
+                indice_desgaste REAL DEFAULT 0,
+                atualizado_em TEXT
+            )
+        """)
+
+        # ── Ambiente do Sorteio ─────────────────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fisica_ambientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                concurso INTEGER,
+                maquina TEXT,
+                conjunto_bolas TEXT,
+                temperatura_K REAL,
+                pressao_atm REAL,
+                umidade REAL,
+                densidade_ar REAL,
+                gravidade REAL,
+                velocidade_rotacao REAL,
+                duracao_mistura REAL,
+                data_ultima_manutencao TEXT,
+                registrado_em TEXT
+            )
+        """)
+
         # ── Índices ───────────────────────────────────────────
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_resultados_concurso "
