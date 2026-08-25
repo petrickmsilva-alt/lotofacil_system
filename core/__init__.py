@@ -9,6 +9,7 @@ fluxo unificado.
 from .cerebro_ia import CerebroIA, InteligenciaMagna
 from .bitmatrix import BitMatrix
 from .data_loader import DataLoader
+from .caixa_client import CaixaClient, ErroFonteResultados
 from .conferencia import Conferencia
 from .financeiro import Financeiro
 from .wheeling import MotorWheeling
@@ -19,6 +20,8 @@ __all__ = [
     "CerebroIA",  # alias de compatibilidade para integrações antigas
     "BitMatrix",
     "DataLoader",
+    "CaixaClient",
+    "ErroFonteResultados",
     "Conferencia",
     "Financeiro",
     "MotorWheeling",

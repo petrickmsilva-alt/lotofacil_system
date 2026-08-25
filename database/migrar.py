@@ -299,6 +299,24 @@ def migrar():
         )
     """)
 
+    # ── Auditoria da sincronização de resultados ──────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_atualizacoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inicio TEXT NOT NULL,
+            fim TEXT NOT NULL,
+            status TEXT NOT NULL,
+            fonte TEXT,
+            ultimo_local_antes INTEGER DEFAULT 0,
+            ultimo_remoto INTEGER DEFAULT 0,
+            ultimo_local_depois INTEGER DEFAULT 0,
+            novos INTEGER DEFAULT 0,
+            recuperados INTEGER DEFAULT 0,
+            erros INTEGER DEFAULT 0,
+            detalhes TEXT
+        )
+    """)
+
     # ── Reparação de inteiros NumPy gravados como BLOB ────────
     # Builds antigos enviavam np.int64 diretamente ao sqlite3. O driver
     # persistia oito bytes little-endian e a conferência os lia como zero.

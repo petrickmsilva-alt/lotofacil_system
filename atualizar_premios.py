@@ -1,61 +1,27 @@
-"""
-Script independente para atualizar prêmios da Caixa.
-Rode: python atualizar_premios.py
-"""
-import time
-from database.db_manager import DBManager
+"""Atualiza os rateios dos 100 concursos mais recentes com diagnóstico."""
 from core.conferencia import Conferencia
+from database.db_manager import DBManager
 
 
 def atualizar_todos():
-    db          = DBManager()
+    db = DBManager()
     conferencia = Conferencia()
-
-    conn   = db.get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT concurso FROM resultados
-        ORDER BY concurso DESC LIMIT 100
-    """)
-    concursos = [r[0] for r in cursor.fetchall()]
+    conn = db.get_conn()
+    concursos = [r[0] for r in conn.execute("""
+        SELECT concurso FROM resultados ORDER BY concurso DESC LIMIT 100
+    """).fetchall()]
     conn.close()
 
-    print("Atualizando {} concursos...".format(len(concursos)))
-
-    atualizados = 0
-    erros       = 0
-
-    for i, c in enumerate(concursos, 1):
-        try:
-            print("[{}/{}] Concurso {}...".format(
-                i, len(concursos), c
-            ))
-
-            dados_caixa = conferencia.buscar_premios_caixa(c)
-            if dados_caixa:
-                conferencia._atualizar_premios_banco(c, dados_caixa)
-                atualizados += 1
-                premios = dados_caixa.get("premios", {})
-                print("  OK: 15pts=R${:.2f} | Ganhadores={}".format(
-                    premios.get(15, 0),
-                    dados_caixa.get("ganhadores", {}).get(15, 0)
-                ))
-            else:
-                erros += 1
-                print("  ERRO: sem resposta")
-
-            time.sleep(0.3)
-
-        except Exception as e:
-            print("  ERRO: {}".format(e))
-            erros += 1
-
-    print("\n" + "="*50)
-    print("CONCLUÍDO!")
-    print("Atualizados: {}".format(atualizados))
-    print("Erros:       {}".format(erros))
-    print("Total:       {}".format(len(concursos)))
-    print("="*50)
+    print("Atualizando rateios de {} concursos...".format(len(concursos)))
+    resultado = conferencia.atualizar_premios_concursos(concursos)
+    print("Status:       {}".format(resultado["status"]))
+    print("Atualizados:  {}".format(resultado["atualizados"]))
+    print("Erros:        {}".format(resultado["erros"]))
+    print("Fontes:       {}".format(", ".join(resultado["fontes"]) or "nenhuma"))
+    for falha in resultado["falhas"][:5]:
+        print("  - concurso {}: {}".format(
+            falha["concurso"], falha["diagnostico"]))
+    return resultado
 
 
 if __name__ == "__main__":

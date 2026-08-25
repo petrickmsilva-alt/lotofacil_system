@@ -162,15 +162,19 @@ document.getElementById('btn-atualizar-premios').addEventListener('click', funct
         btn.disabled  = false;
         btn.innerHTML = '<i class="fas fa-sync"></i> Buscar Prêmios Reais';
 
-        if (data.status === 'ok') {
+        if (data.status === 'ok' || data.status === 'parcial') {
+            var classe = data.status === 'ok' ? 'alert-success' : 'alert-warning';
             status.innerHTML =
-                '<p class="alert alert-success">' +
-                'OK! ' + data.atualizados + ' concursos atualizados.' +
-                ' (' + data.erros + ' erros)</p>';
-            setTimeout(function () { location.reload(); }, 2000);
+                '<p class="alert ' + classe + '">' +
+                data.atualizados + ' concursos atualizados; ' +
+                data.erros + ' sem rateio disponível. Fontes: ' +
+                ((data.fontes || []).join(', ') || 'nenhuma') + '</p>';
+            if (data.atualizados > 0) {
+                setTimeout(function () { location.reload(); }, 2000);
+            }
         } else {
             status.innerHTML =
-                '<p class="alert alert-danger">Erro: ' + data.msg + '</p>';
+                '<p class="alert alert-danger">Nenhuma fonte com rateio respondeu.</p>';
         }
     })
     .catch(function (err) {

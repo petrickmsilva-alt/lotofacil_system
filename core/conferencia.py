@@ -4,9 +4,9 @@ MÓDULO DE CONFERÊNCIA COMPLETO
 Protegido contra conversões de tipo (bytes/numpy/null)
 ============================================================
 """
-import requests
 from database.db_manager import DBManager
 from .bitmatrix import BitMatrix
+from .caixa_client import CaixaClient
 from datetime import datetime
 
 
@@ -47,87 +47,70 @@ class Conferencia:
 
     URL_API = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{}"
 
-    def __init__(self):
-        self.db        = DBManager()
+    def __init__(self, db_path=None, client=None):
+        self.db = DBManager(db_path)
         self.bitmatrix = BitMatrix()
+        self.client = client or CaixaClient()
 
     # =========================================================
     # BUSCAR PRÊMIOS DA CAIXA
     # =========================================================
 
     def buscar_premios_caixa(self, concurso):
-        MAPA_FAIXA_ACERTOS = {1: 15, 2: 14, 3: 13, 4: 12, 5: 11}
-        try:
-            url  = self.URL_API.format(concurso)
-            resp = requests.get(url, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer":    "https://loterias.caixa.gov.br/",
-            })
-            if resp.status_code != 200:
-                return None
-
-            data         = resp.json()
-            lista_rateio = data.get("listaRateioPremio", [])
-
-            premios = {
-                11: self.PREMIOS_FIXOS_OFICIAIS[11],
-                12: self.PREMIOS_FIXOS_OFICIAIS[12],
-                13: self.PREMIOS_FIXOS_OFICIAIS[13],
-                14: 0.0,
-                15: 0.0,
-            }
-            ganhadores = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
-
-            for item in lista_rateio:
-                faixa = item.get("faixa") or item.get("numeroAcertos") or 0
-                try:
-                    faixa = int(faixa)
-                except Exception:
-                    continue
-
-                acertos = MAPA_FAIXA_ACERTOS.get(faixa)
-                if acertos is None:
-                    continue
-
-                valor = item.get("valorPremio", 0)
-                if isinstance(valor, str):
-                    valor = valor.replace("R$", "").replace(".", "")
-                    valor = valor.replace(",", ".").strip()
-                    try:
-                        valor = float(valor)
-                    except Exception:
-                        valor = 0.0
-
-                try:
-                    valor = float(valor)
-                except Exception:
-                    valor = 0.0
-
-                qtd = item.get("numeroDeGanhadores", 0)
-                try:
-                    qtd = int(qtd)
-                except Exception:
-                    qtd = 0
-
-                if acertos in (11, 12, 13):
-                    if valor > 0:
-                        premios[acertos] = valor
-                else:
-                    premios[acertos] = valor
-
-                ganhadores[acertos] = qtd
-
-            return {
-                "premios":    premios,
-                "ganhadores": ganhadores,
-                "concurso":   concurso,
-            }
-
-        except Exception as e:
-            print("[CONF] buscar_premios_caixa erro concurso {}: {}".format(
-                concurso, e
-            ))
+        """Obtém rateio validado; contingência sem prêmios nunca zera o banco."""
+        data = self.client.buscar_concurso(concurso)
+        if not data or not data.get("_premios_disponiveis"):
             return None
+        premios = dict(self.PREMIOS_FIXOS_OFICIAIS)
+        premios.update({14: 0.0, 15: 0.0})
+        ganhadores = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
+        for item in data.get("listaRateioPremio", []):
+            acertos = _safe_int(item.get("numeroAcertos"))
+            if acertos not in premios:
+                continue
+            try:
+                valor = float(item.get("valorPremio", 0) or 0)
+            except (TypeError, ValueError):
+                valor = 0.0
+            if valor > 0 or acertos in (14, 15):
+                premios[acertos] = valor
+            ganhadores[acertos] = _safe_int(item.get("numeroDeGanhadores"))
+        return {
+            "premios": premios, "ganhadores": ganhadores,
+            "concurso": int(concurso), "fonte": data.get("_fonte"),
+        }
+
+    def atualizar_premios_concursos(self, concursos):
+        """Atualiza rateios sem apagar valores quando a fonte não os possui."""
+        atualizados = 0
+        falhas = []
+        fontes = set()
+        for concurso in concursos:
+            try:
+                dados = self.buscar_premios_caixa(int(concurso))
+                if not dados:
+                    falhas.append({
+                        "concurso": int(concurso),
+                        "diagnostico": self.client.diagnostico(),
+                    })
+                    continue
+                self._atualizar_premios_banco(int(concurso), dados)
+                fontes.add(dados.get("fonte"))
+                atualizados += 1
+            except Exception as exc:
+                falhas.append({
+                    "concurso": int(concurso), "erro": str(exc),
+                })
+        total = len(concursos)
+        return {
+            "status": ("ok" if not falhas else
+                       "parcial" if atualizados else "erro"),
+            "atualizados": atualizados,
+            "erros": len(falhas),
+            "total": total,
+            "fontes": sorted(f for f in fontes if f),
+            "falhas": falhas[:20],
+        }
 
     def get_premio(self, acertos, concurso=None):
         if acertos in self.PREMIOS_FIXOS_OFICIAIS:
@@ -138,10 +121,10 @@ class Conferencia:
             if row:
                 if acertos == 14:
                     v = row["premio_14"]
-                    return float(v) if v and float(v) > 0 else 1800.0
+                    return float(v) if v and float(v) > 0 else 0.0
                 if acertos == 15:
                     v = row["premio_15"]
-                    return float(v) if v and float(v) > 0 else 2500000.0
+                    return float(v) if v and float(v) > 0 else 0.0
 
         return 0.0
 
@@ -169,44 +152,32 @@ class Conferencia:
 
         if not resultado:
             try:
-                url  = self.URL_API.format(concurso)
-                resp = requests.get(url, timeout=15, headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Referer":    "https://loterias.caixa.gov.br/",
-                })
-                if resp.status_code != 200:
+                data_json = self.client.buscar_concurso(concurso)
+                if not data_json:
                     return {
-                        "status":         "erro",
-                        "msg":            "Concurso {} não disponível na Caixa.".format(concurso),
-                        "cartelas":       [],
-                        "total_cartelas":  0,
+                        "status": "erro",
+                        "msg": "Concurso {} indisponível. {}".format(
+                            concurso, self.client.diagnostico()),
+                        "cartelas": [], "total_cartelas": 0,
                         "total_premiadas": 0,
                     }
-
-                data_json     = resp.json()
-                dezenas_json  = data_json.get("listaDezenas", [])
-                dez_resultado = sorted([_safe_int(d) for d in dezenas_json])
-
-                if len(dez_resultado) != 15:
+                dez_resultado = sorted(
+                    _safe_int(d) for d in data_json.get("listaDezenas", []))
+                if (len(dez_resultado) != 15 or
+                        len(set(dez_resultado)) != 15 or
+                        any(d < 1 or d > 25 for d in dez_resultado)):
                     return {
-                        "status":         "erro",
-                        "msg":            "Resultado inválido.",
-                        "cartelas":       [],
-                        "total_cartelas":  0,
+                        "status": "erro", "msg": "Resultado inválido.",
+                        "cartelas": [], "total_cartelas": 0,
                         "total_premiadas": 0,
                     }
-
                 dados_caixa = self.buscar_premios_caixa(concurso)
                 self._salvar_resultado_no_banco(
-                    concurso, data_json, dez_resultado, dados_caixa
-                )
-
+                    concurso, data_json, dez_resultado, dados_caixa)
             except Exception as e:
                 return {
-                    "status":         "erro",
-                    "msg":            "Erro: {}".format(str(e)),
-                    "cartelas":       [],
-                    "total_cartelas":  0,
+                    "status": "erro", "msg": "Erro: {}".format(str(e)),
+                    "cartelas": [], "total_cartelas": 0,
                     "total_premiadas": 0,
                 }
         else:
@@ -330,25 +301,18 @@ class Conferencia:
         return mapa.get(acertos, "sem_premio")
 
     def _atualizar_premios_banco(self, concurso, dados_caixa):
+        premios = dados_caixa.get("premios", {})
+        ganhadores = dados_caixa.get("ganhadores", {})
+        conn = self.db.get_conn()
         try:
-            premios    = dados_caixa.get("premios", {})
-            ganhadores = dados_caixa.get("ganhadores", {})
-
-            conn   = self.db.get_conn()
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE resultados SET
-                    premio_11     = ?,
-                    premio_12     = ?,
-                    premio_13     = ?,
-                    premio_14     = ?,
-                    premio_15     = ?,
-                    ganhadores_11 = ?,
-                    ganhadores_12 = ?,
-                    ganhadores_13 = ?,
-                    ganhadores_14 = ?,
-                    ganhadores_15 = ?
-                WHERE concurso = ?
+                    premio_11=?, premio_12=?, premio_13=?,
+                    premio_14=?, premio_15=?,
+                    ganhadores_11=?, ganhadores_12=?, ganhadores_13=?,
+                    ganhadores_14=?, ganhadores_15=?
+                WHERE concurso=?
             """, (
                 float(premios.get(11, 7.0)),
                 float(premios.get(12, 14.0)),
@@ -362,10 +326,15 @@ class Conferencia:
                 int(ganhadores.get(15, 0)),
                 _safe_int(concurso),
             ))
+            if cursor.rowcount != 1:
+                raise ValueError("concurso {} não existe no banco".format(concurso))
             conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
             conn.close()
-        except Exception as e:
-            print("[CONF] Erro atualizar prêmios: {}".format(e))
 
     def _salvar_resultado_no_banco(self, concurso, data_json,
                                      dezenas, dados_caixa):

@@ -85,13 +85,27 @@ Não existe aprendizado oculto nem outro gerador paralelo.
 
 ```bash
 pip install pytest pip-audit bandit
-pytest -q                         # 41 testes
+pytest -q                         # 52 testes
 pip-audit -r requirements.txt    # nenhuma vulnerabilidade conhecida
 bandit -q -r app.py core database -x tests
 ```
 
 A migração corrige automaticamente dezenas NumPy antigas armazenadas como BLOB,
 recalcula suas conferências/finanças e reconstrói cabeçalhos de lote órfãos.
+
+### Sincronização do histórico
+
+O botão **Histórico → Verificar e atualizar** usa uma cadeia resiliente:
+
+1. API da Caixa (fonte primária);
+2. API de contingência brasileira;
+3. snapshot JSON diário no GitHub.
+
+Todo resultado passa por validação de concurso, data, 15 dezenas únicas e faixa
+1–25. Uma fonte atrasada ou divergente nunca sobrescreve a base local. Rateios já
+gravados são preservados quando a contingência fornece somente as dezenas. Cada
+execução fica auditada em `historico_atualizacoes`, com fonte, concursos antes e
+depois, recuperações e erros detalhados.
 
 ## Áreas do sistema
 

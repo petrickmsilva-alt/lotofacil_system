@@ -463,3 +463,62 @@ Depois da conferência, `aprender_resultado_magna()` mede cada top-15 em base
 A ressalva matemática permanece: unificar conhecimento melhora coerência,
 rastreabilidade e disciplina de decisão; não cria vantagem comprovada sobre um
 sorteio independente.
+
+---
+
+# 🔄 FASE 8 (2026-08-25) — Sincronização resiliente do histórico
+
+Foi auditado todo caminho que busca ou atualiza resultados/prêmios. O banco estava
+parado no concurso 3767, enquanto o último resultado confirmado era o 3770. No
+ambiente de auditoria, a API da Caixa encerrou o handshake TLS; o código antigo
+convertia isso em `None` e a interface não mostrava a causa real.
+
+## 28. Falhas corrigidas
+
+- botão **Atualizar** do Histórico chamava `atualizarDados()`, função inexistente;
+- cliente fazia uma tentativa sem retry, fallback ou diagnóstico;
+- Caixa, conferência e ciclo possuíam três implementações HTTP divergentes;
+- `DBManager.inserir_resultado()` engolia erro, mas o loader contava sucesso;
+- atualização contava concurso mesmo quando a gravação falhava;
+- validação aceitava 15 itens repetidos ou fora de 1–25;
+- fonte atrasada poderia regravar o último concurso;
+- contingência sem rateio podia zerar prêmios já oficiais;
+- flag `carregando` era ligada dentro da thread, permitindo duas cargas;
+- thread sem `finally` podia deixar o sistema eternamente “carregando”.
+
+## 29. Nova cadeia de fontes
+
+`core/caixa_client.py` centraliza todas as consultas:
+
+1. `caixa_oficial` — fonte primária;
+2. `api_guidi` — contingência com formato normalizado;
+3. `github_snapshot` — histórico diário para recuperar dezenas quando APIs
+   transacionais estão indisponíveis.
+
+Há retry com backoff para 429/5xx, timeouts separados, circuit breaker de cinco
+minutos, cache do snapshot e adaptação dos três formatos para o contrato oficial.
+Cada resposta exige concurso positivo, data e exatamente 15 dezenas únicas em
+1–25. Rateio só é considerado disponível quando as cinco faixas 11–15 existem.
+
+## 30. Integridade e rastreabilidade
+
+- conflito entre dezenas locais e remotas é rejeitado, nunca sobrescrito;
+- fonte remota atrasada gera `aviso` e mantém o banco intacto;
+- inserção SQLite confirma commit ou propaga a falha;
+- resultados sem rateio preservam prêmios/ganhadores existentes;
+- sincronização retorna `ok`, `parcial`, `aviso` ou `erro`, com falhas por
+  concurso;
+- nova tabela `historico_atualizacoes` registra fonte, limites antes/depois,
+  novos, recuperados, erros e diagnóstico;
+- atualização roda em background, impede concorrência e invalida o treino quando
+  a matriz muda;
+- página Histórico exibe integridade, fonte e status da última execução.
+
+## 31. Base atualizada e testes
+
+- concursos 3768, 3769 e 3770 inseridos após validação multifonte;
+- base atual: **1–3770, 3.770 registros distintos, zero lacunas**;
+- `PRAGMA integrity_check`: `ok`;
+- 51/52 testes passam, incluindo 10 regressões específicas de atualização;
+- pip-audit: nenhuma vulnerabilidade conhecida;
+- Bandit: zero achados altos ou médios.

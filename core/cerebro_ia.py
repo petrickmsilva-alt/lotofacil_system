@@ -14,7 +14,6 @@ import json
 import time
 import threading
 import itertools
-import requests
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -26,6 +25,7 @@ from config import (
 from database.db_manager import DBManager
 from .oraculo_convergente import OraculoConvergente
 from .wheeling import MotorWheeling
+from .caixa_client import CaixaClient
 
 
 def _popcount_uf(x: int) -> int:
@@ -101,8 +101,9 @@ class IngestorDados:
         "Accept": "application/json",
     }
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, client=None):
         self.db_path = db_path
+        self.client = client or CaixaClient()
 
     def carregar_matriz(self) -> Tuple[np.ndarray, list]:
         if not os.path.exists(self.db_path):
@@ -133,21 +134,10 @@ class IngestorDados:
             return np.zeros((1, 25), dtype=np.float32), []
 
     def buscar_ultimo_caixa(self) -> Optional[Dict]:
-        try:
-            r = requests.get(self.URL_BASE, headers=self.HEADERS, timeout=15)
-            return r.json() if r.status_code == 200 else None
-        except Exception:
-            return None
+        return self.client.buscar_ultimo()
 
     def buscar_concurso_caixa(self, numero: int) -> Optional[Dict]:
-        try:
-            r = requests.get(
-                self.URL_CONCURSO.format(numero),
-                headers=self.HEADERS, timeout=15
-            )
-            return r.json() if r.status_code == 200 else None
-        except Exception:
-            return None
+        return self.client.buscar_concurso(numero)
 
     def extrair_dezenas(self, data: Dict) -> List[int]:
         try:
@@ -702,7 +692,7 @@ class CerebroIA:
         "Accept":     "application/json",
     }
 
-    def __init__(self, db_path: str = None, n_cartelas: int = 10):
+    def __init__(self, db_path: str = None, n_cartelas: int = 10, client=None):
         self.db_path     = db_path or DATABASE_PATH
         self.db          = DBManager(self.db_path)
         self.n_cartelas  = n_cartelas
@@ -731,7 +721,7 @@ class CerebroIA:
         self.repulsao_vetorial = MotorRepulsaoVetorial(self.db)
 
         # Carregar dados
-        self._ingestor = IngestorDados(self.db_path)
+        self._ingestor = IngestorDados(self.db_path, client=client)
         self.matriz, self.raw = self._ingestor.carregar_matriz()
         self.n = len(self.matriz)
         self._log("INIT", "{} concursos carregados".format(self.n))

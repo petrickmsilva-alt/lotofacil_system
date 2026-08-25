@@ -12,8 +12,9 @@
 > preservar as evidências e entregar um plano de correção priorizado.
 
 > **Nota posterior:** a Fase 7 foi implementada após esta fotografia e resolveu
-> os bloqueadores de ciclo, indexação, BLOB, lotes, dependências, debug e
-> persistência descritos abaixo. Consulte `AUDITORIA.md` §§24–27 e o README para
+> os bloqueadores de ciclo, indexação, BLOB, lotes, dependências, debug,
+> persistência e sincronização do histórico descritos abaixo. Consulte
+> `AUDITORIA.md` §§24–31 e o README para
 > o estado atualizado da Inteligência Magna v9.0. Os achados permanecem aqui como
 > evidência e histórico de origem das correções.
 

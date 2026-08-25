@@ -7,7 +7,6 @@ Uma memória + uma análise + uma decisão auditável
 
 # ── Imports padrão ────────────────────────────────────────────
 import os
-import time
 import traceback
 import threading
 import json
@@ -69,14 +68,16 @@ from core.bitmatrix      import BitMatrix
 from core.conferencia    import Conferencia
 from core.financeiro     import Financeiro
 from core.cerebro_ia     import InteligenciaMagna
+from core.caixa_client    import CaixaClient
 
 # ── Instâncias globais ────────────────────────────────────────
-db          = DBManager()
-data_loader = DataLoader()
-bitmatrix   = BitMatrix()
-conferencia = Conferencia()
-financeiro  = Financeiro()
-magna       = InteligenciaMagna(n_cartelas=10)
+db           = DBManager()
+caixa_client = CaixaClient()
+data_loader  = DataLoader(client=caixa_client)
+bitmatrix    = BitMatrix()
+conferencia  = Conferencia(client=caixa_client)
+financeiro   = Financeiro()
+magna        = InteligenciaMagna(n_cartelas=10, client=caixa_client)
 # Compatibilidade interna temporária: rotas legadas passam a delegar à mesma
 # instância. Nenhum segundo cérebro é criado.
 cerebro     = magna
@@ -90,7 +91,10 @@ status_sistema = {
     "progresso":        "",
     "carregando":       False,
     "treinando":        False,
+    "ultima_atualizacao": None,
+    "erro_atualizacao": None,
 }
+historico_lock = threading.Lock()
 
 
 @app.context_processor
@@ -272,7 +276,10 @@ def historico():
             "ganhadores_15": int(ganhadores_15 or 0),
         })
     lista.reverse()
-    return render_template("historico.html", resultados=lista)
+    return render_template(
+        "historico.html", resultados=lista,
+        status_base=data_loader.get_status_base(),
+    )
 
 
 @app.route("/cerebro")
@@ -716,7 +723,12 @@ def api_avaliacao_listar():
 @app.route("/api/status")
 def api_status():
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
-    status_sistema["ia_treinada"]     = cerebro.treinado
+    status_sistema["total_concursos"] = db.get_total_concursos() or 0
+    status_sistema["ia_treinada"] = cerebro.treinado
+    if status_sistema["ultima_atualizacao"] is None:
+        status_sistema["ultima_atualizacao"] = (
+            data_loader.get_status_base().get("ultima_atualizacao")
+        )
     return jsonify(status_sistema)
 
 
@@ -725,36 +737,75 @@ def api_status_base():
     return jsonify(data_loader.get_status_base())
 
 
+def _iniciar_sincronizacao_historico(completo=False):
+    with historico_lock:
+        if status_sistema["carregando"]:
+            return False
+        # A flag é ligada antes da thread para impedir duas atualizações na
+        # janela entre a resposta HTTP e o início do trabalho.
+        status_sistema["carregando"] = True
+        status_sistema["erro_atualizacao"] = None
+        status_sistema["progresso"] = "Iniciando sincronização do histórico..."
+
+    def executar():
+        try:
+            def callback(concurso, carregados, total, mensagem):
+                status_sistema["progresso"] = mensagem
+
+            resultado = (
+                data_loader.carregar_historico_completo(callback)
+                if completo else data_loader.atualizar_diario()
+            )
+            status_sistema["ultima_atualizacao"] = resultado
+            status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
+            status_sistema["total_concursos"] = db.get_total_concursos() or 0
+            status_sistema["dados_carregados"] = (
+                status_sistema["total_concursos"] > 0
+            )
+            status_sistema["progresso"] = resultado.get(
+                "msg", "Sincronização concluída")
+            if resultado.get("status") in ("erro", "parcial"):
+                status_sistema["erro_atualizacao"] = resultado.get("msg")
+
+            # Troca a matriz de forma atômica em relação às decisões. Novos
+            # concursos invalidam o treino anterior e exigem nova assimilação.
+            with magna._magna_lock:
+                magna.matriz, magna.raw = magna._ingestor.carregar_matriz()
+                magna.n = len(magna.matriz)
+                if resultado.get("novos") or resultado.get("recuperados"):
+                    magna.treinado = False
+                    status_sistema["ia_treinada"] = False
+        except Exception as exc:
+            traceback.print_exc()
+            status_sistema["erro_atualizacao"] = str(exc)
+            status_sistema["progresso"] = "Erro ao atualizar: {}".format(exc)
+            status_sistema["ultima_atualizacao"] = {
+                "status": "erro", "msg": str(exc)
+            }
+        finally:
+            with historico_lock:
+                status_sistema["carregando"] = False
+
+    threading.Thread(target=executar, daemon=True).start()
+    return True
+
+
 @app.route("/api/carregar_dados", methods=["POST"])
 def api_carregar_dados():
-    if status_sistema["carregando"]:
-        return jsonify({"status": "info", "msg": "Já carregando..."})
-
-    def _carregar():
-        status_sistema["carregando"] = True
-        def cb(concurso, carregados, total, msg):
-            status_sistema["progresso"] = msg
-        resultado = data_loader.carregar_historico_completo(cb)
-        status_sistema["carregando"]       = False
-        status_sistema["dados_carregados"] = True
-        status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso()
-        status_sistema["progresso"] = "Completo! {} concursos.".format(
-            resultado.get("total_carregados", 0)
-        )
-        cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
-        cerebro.n = len(cerebro.matriz)
-
-    threading.Thread(target=_carregar, daemon=True).start()
-    return jsonify({"status": "ok", "msg": "Carregamento iniciado..."})
+    if not _iniciar_sincronizacao_historico(completo=True):
+        return jsonify({"status": "info", "msg": "Sincronização já em andamento"}), 409
+    return jsonify({
+        "status": "iniciado", "msg": "Carga e reparação do histórico iniciadas"
+    }), 202
 
 
 @app.route("/api/atualizar_dados", methods=["POST"])
 def api_atualizar_dados():
-    resultado = data_loader.atualizar_diario()
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
-    cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
-    cerebro.n = len(cerebro.matriz)
-    return jsonify(resultado)
+    if not _iniciar_sincronizacao_historico(completo=False):
+        return jsonify({"status": "info", "msg": "Sincronização já em andamento"}), 409
+    return jsonify({
+        "status": "iniciado", "msg": "Busca incremental iniciada"
+    }), 202
 
 
 # ============================================================
@@ -1089,44 +1140,20 @@ def api_premios_concurso(concurso):
 
 @app.route("/api/atualizar_premios_todos", methods=["POST"])
 def api_atualizar_premios_todos():
-    """Busca prêmios reais dos últimos 100 concursos da Caixa"""
+    """Atualiza rateios recentes sem zerar dados quando só há contingência."""
     try:
-        conn   = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
+        conn = db.get_conn()
+        concursos = [r[0] for r in conn.execute("""
             SELECT concurso FROM resultados
             ORDER BY concurso DESC LIMIT 100
-        """)
-        concursos = [r[0] for r in cursor.fetchall()]
+        """).fetchall()]
         conn.close()
-
-        atualizados = 0
-        erros       = 0
-
-        for c in concursos:
-            try:
-                dados_caixa = conferencia.buscar_premios_caixa(c)
-                if dados_caixa:
-                    conferencia._atualizar_premios_banco(c, dados_caixa)
-                    atualizados += 1
-                    print("[PREMIOS] {} atualizado".format(c))
-                else:
-                    erros += 1
-                time.sleep(0.3)
-            except Exception as e:
-                print("[PREMIOS] erro {}: {}".format(c, e))
-                erros += 1
-
-        return jsonify({
-            "status":      "ok",
-            "atualizados": atualizados,
-            "erros":       erros,
-            "total":       len(concursos),
-        })
-
-    except Exception as e:
+        resultado = conferencia.atualizar_premios_concursos(concursos)
+        codigo = 200 if resultado["status"] in ("ok", "parcial") else 503
+        return jsonify(resultado), codigo
+    except Exception as exc:
         traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 # ============================================================
