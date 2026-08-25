@@ -251,7 +251,6 @@ class MotorWheeling:
         pool = sorted(int(d) for d in pool)
         n = len(pool)
         t = int(garantia)
-        pool_mask = dezenas_para_mascara(pool)
         alpha = t + n - 30
         if alpha < 2:
             raise ValueError(

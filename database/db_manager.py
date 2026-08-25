@@ -5,14 +5,19 @@ Tabela de resultados com prêmios REAIS da Caixa
 ============================================================
 """
 import sqlite3
-import os
 from config import DATABASE_PATH
 
 
 class DBManager:
 
-    def __init__(self):
-        self.db_path = DATABASE_PATH
+    def __init__(self, db_path=None):
+        """Cria o repositório SQLite.
+
+        O caminho injetável mantém produção e testes separados. Antes, mesmo
+        `CerebroIA(db_path=...)` continuava escrevendo no banco global porque o
+        DBManager ignorava o caminho recebido pelo Cérebro.
+        """
+        self.db_path = db_path or DATABASE_PATH
         self.criar_tabelas()
 
     def get_conn(self):
@@ -163,6 +168,24 @@ class DBManager:
             )
         """)
 
+        # ── Auditoria de sincronização do histórico ───────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historico_atualizacoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                inicio TEXT NOT NULL,
+                fim TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fonte TEXT,
+                ultimo_local_antes INTEGER DEFAULT 0,
+                ultimo_remoto INTEGER DEFAULT 0,
+                ultimo_local_depois INTEGER DEFAULT 0,
+                novos INTEGER DEFAULT 0,
+                recuperados INTEGER DEFAULT 0,
+                erros INTEGER DEFAULT 0,
+                detalhes TEXT
+            )
+        """)
+
         # ── Índices ───────────────────────────────────────────
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_resultados_concurso "
@@ -180,10 +203,32 @@ class DBManager:
     # RESULTADOS
     # =========================================================
 
-    def inserir_resultado(self, dados):
-        conn   = self.get_conn()
-        cursor = conn.cursor()
+    def inserir_resultado(self, dados, preservar_premios=False):
+        """Insere/atualiza um concurso e propaga qualquer falha de persistência.
+
+        Fontes de contingência podem não possuir rateio. Nesse caso, os campos
+        financeiros já existentes são preservados em vez de serem zerados.
+        """
+        valores = list(dados)
+        if len(valores) != 36:
+            raise ValueError("resultado deve possuir 36 campos")
+
+        conn = self.get_conn()
         try:
+            cursor = conn.cursor()
+            if preservar_premios:
+                existente = cursor.execute(
+                    "SELECT * FROM resultados WHERE concurso=?",
+                    (int(valores[0]),),
+                ).fetchone()
+                if existente is not None:
+                    for offset, acertos in enumerate(range(11, 16)):
+                        valores[25 + offset] = float(
+                            existente["premio_{}".format(acertos)] or 0)
+                        valores[30 + offset] = int(
+                            existente["ganhadores_{}".format(acertos)] or 0)
+                    valores[35] = float(existente["arrecadacao"] or 0)
+
             cursor.execute("""
                 INSERT OR REPLACE INTO resultados (
                     concurso, data,
@@ -204,10 +249,12 @@ class DBManager:
                     ?,?,?,?,?,
                     ?
                 )
-            """, dados)
+            """, tuple(valores))
             conn.commit()
-        except Exception as e:
-            print(f"[DB] Erro inserir resultado: {e}")
+            return True
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
@@ -295,6 +342,29 @@ class DBManager:
         total = cursor.fetchone()[0]
         conn.close()
         return total
+
+    def registrar_atualizacao_historico(self, dados):
+        conn = self.get_conn()
+        try:
+            conn.execute("""
+                INSERT INTO historico_atualizacoes
+                (inicio,fim,status,fonte,ultimo_local_antes,ultimo_remoto,
+                 ultimo_local_depois,novos,recuperados,erros,detalhes)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """, dados)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_ultima_atualizacao_historico(self):
+        conn = self.get_conn()
+        try:
+            return conn.execute("""
+                SELECT * FROM historico_atualizacoes
+                ORDER BY id DESC LIMIT 1
+            """).fetchone()
+        finally:
+            conn.close()
 
     # =========================================================
     # CARTELAS

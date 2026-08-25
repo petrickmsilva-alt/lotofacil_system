@@ -1,12 +1,12 @@
 """
 ============================================================
-SISTEMA LOTOFÁCIL — CÉREBRO IA v7.0
-14 Motores + Oráculo Convergente + Sistema de LOTES
+SISTEMA LOTOFÁCIL — INTELIGÊNCIA MAGNA v9.0
+Uma memória + uma análise + uma decisão auditável
 ============================================================
 """
 
 # ── Imports padrão ────────────────────────────────────────────
-import time
+import os
 import traceback
 import threading
 import json
@@ -32,7 +32,6 @@ app = Flask(__name__)
 # ============================================================
 # CONVERSOR JSON UNIVERSAL — Trata NumPy, Bytes e Tipos Especiais
 # ============================================================
-import numpy as np
 from flask.json.provider import DefaultJSONProvider
 
 
@@ -68,17 +67,20 @@ from core.data_loader    import DataLoader
 from core.bitmatrix      import BitMatrix
 from core.conferencia    import Conferencia
 from core.financeiro     import Financeiro
-from core.ia_monitor     import IAMonitor
-from core.cerebro_ia     import CerebroIA
+from core.cerebro_ia     import InteligenciaMagna
+from core.caixa_client    import CaixaClient
 
 # ── Instâncias globais ────────────────────────────────────────
-db          = DBManager()
-data_loader = DataLoader()
-bitmatrix   = BitMatrix()
-conferencia = Conferencia()
-financeiro  = Financeiro()
-monitor     = IAMonitor()
-cerebro     = CerebroIA(n_cartelas=10)
+db           = DBManager()
+caixa_client = CaixaClient()
+data_loader  = DataLoader(client=caixa_client)
+bitmatrix    = BitMatrix()
+conferencia  = Conferencia(client=caixa_client)
+financeiro   = Financeiro()
+magna        = InteligenciaMagna(n_cartelas=10, client=caixa_client)
+# Compatibilidade interna temporária: rotas legadas passam a delegar à mesma
+# instância. Nenhum segundo cérebro é criado.
+cerebro     = magna
 
 # ── Status global ─────────────────────────────────────────────
 status_sistema = {
@@ -89,7 +91,10 @@ status_sistema = {
     "progresso":        "",
     "carregando":       False,
     "treinando":        False,
+    "ultima_atualizacao": None,
+    "erro_atualizacao": None,
 }
+historico_lock = threading.Lock()
 
 
 @app.context_processor
@@ -105,34 +110,62 @@ def inject_status():
 # HELPER: Salvar cartelas em LOTE
 # ============================================================
 
-def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
-                             modo="hibrido", grupo_elite=None, cobertura=0):
+def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="magna",
+                             modo="decisao_unica", grupo_elite=None,
+                             cobertura=0):
+    """Persiste um lote completo de forma atômica.
+
+    A Inteligência Magna entrega uma única decisão; portanto o cabeçalho e todas
+    as cartelas dessa decisão devem existir juntos. O fluxo antigo commitava o
+    lote e depois cada cartela em conexões diferentes, criando lotes parciais ou
+    órfãos quando qualquer INSERT falhava.
+    """
     if not cartelas:
         return 0
 
     def to_safe_int(val):
-        if hasattr(val, 'item'):
+        if hasattr(val, "item"):
             val = val.item()
-        if isinstance(val, (bytes, bytearray)):
+        if isinstance(val, (bytes, bytearray, memoryview)):
+            raw = bytes(val)
             try:
-                val = int(val)
-            except Exception:
-                val = int(val.decode('utf-8'))
+                return int(raw.decode("ascii"))
+            except (UnicodeDecodeError, ValueError):
+                if len(raw) in (1, 2, 4, 8):
+                    return int.from_bytes(raw, "little", signed=True)
+                raise ValueError("BLOB inteiro inválido")
         return int(val)
 
-    grupo_elite_limpo = []
-    if grupo_elite:
-        for g in grupo_elite:
-            grupo_elite_limpo.append(to_safe_int(g))
+    # Valida tudo antes de abrir a transação. Nenhuma dezena NumPy/BLOB volta a
+    # ser persistida como binário e nenhuma cartela inválida entra no lote.
+    cartelas_limpas = []
+    for cartela in cartelas:
+        try:
+            dezenas = sorted(to_safe_int(d) for d in cartela.get("dezenas", []))
+            if (len(dezenas) != 15 or len(set(dezenas)) != 15 or
+                    any(d < 1 or d > 25 for d in dezenas)):
+                continue
+            cartelas_limpas.append((cartela, dezenas))
+        except (TypeError, ValueError, OverflowError):
+            continue
 
-    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not cartelas_limpas:
+        return 0
+
+    grupo_elite_limpo = sorted({
+        to_safe_int(g) for g in (grupo_elite or [])
+        if 1 <= to_safe_int(g) <= 25
+    })
+    agora = datetime.now()
+    ts = agora.strftime("%Y%m%d_%H%M%S")
+    criado_em = agora.strftime("%Y-%m-%d %H:%M:%S")
     lote_id = "{}_{}_{}_{}".format(
         tipo, concurso_alvo, ts, str(uuid.uuid4())[:8]
     )
-    custo   = len(cartelas) * VALOR_APOSTA
+    custo = len(cartelas_limpas) * VALOR_APOSTA
 
+    conn = db.get_conn()
     try:
-        conn   = db.get_conn()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO lotes_cartelas
@@ -140,32 +173,15 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
              quantidade, custo_total, modo, grupo_elite, cobertura_13)
             VALUES (?,?,?,?,?,?,?,?,?)
         """, (
-            lote_id,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            to_safe_int(concurso_alvo),
-            str(tipo),
-            len(cartelas),
-            float(custo),
-            str(modo),
-            json.dumps(grupo_elite_limpo),
-            float(cobertura),
+            lote_id, criado_em, to_safe_int(concurso_alvo), str(tipo),
+            len(cartelas_limpas), float(custo), str(modo),
+            json.dumps(grupo_elite_limpo), float(cobertura),
         ))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print("[LOTE] {}".format(e))
 
-    salvos = 0
-    for c in cartelas:
-        try:
-            dez = c.get("dezenas", [])
-            dez_int = [to_safe_int(d) for d in dez]
-
-            if len(dez_int) != 15:
-                continue
-
-            conn   = db.get_conn()
-            cursor = conn.cursor()
+        for cartela, dezenas in cartelas_limpas:
+            scores = cartela.get("scores") or {}
+            bitmask_cartela = int(cartela.get("bitmask") or
+                                  bitmatrix.dezenas_para_bitmask(dezenas))
             cursor.execute("""
                 INSERT INTO cartelas
                 (data_geracao, concurso_alvo,
@@ -177,28 +193,27 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="multiplas",
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
                         ?,?,?,?,?,?,?,?)
             """, (
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                to_safe_int(concurso_alvo),
-                dez_int[0],  dez_int[1],  dez_int[2],  dez_int[3],  dez_int[4],
-                dez_int[5],  dez_int[6],  dez_int[7],  dez_int[8],  dez_int[9],
-                dez_int[10], dez_int[11], dez_int[12], dez_int[13], dez_int[14],
-                int(c.get("bitmask", 0)),
-                float(c.get("score_total", 0)),
-                float(c.get("scores", {}).get("markov",  0)),
-                float(c.get("scores", {}).get("verlet",  0)),
-                float(c.get("scores", {}).get("ev_prob", 0)),
-                float(c.get("score_total", 0)),
-                lote_id,
-                str(tipo),
+                criado_em, to_safe_int(concurso_alvo), *dezenas,
+                bitmask_cartela,
+                float(cartela.get("score_total", 0)),
+                float(scores.get("markov", 0)),
+                float(scores.get("verlet", 0)),
+                float(scores.get("ev_prob", 0)),
+                float(cartela.get("score_total", 0)),
+                lote_id, str(tipo),
             ))
-            conn.commit()
-            conn.close()
-            salvos += 1
-        except Exception as e:
-            print("[SALVAR] Erro: {}".format(e))
 
-    print("[LOTE] {} cartelas salvas no lote {}".format(salvos, lote_id))
-    return salvos
+        conn.commit()
+        salvos = len(cartelas_limpas)
+        print("[MAGNA] {} cartelas salvas atomicamente no lote {}".format(
+            salvos, lote_id))
+        return salvos
+    except Exception as exc:
+        conn.rollback()
+        print("[MAGNA] Falha ao salvar lote (rollback): {}".format(exc))
+        return 0
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -217,12 +232,11 @@ def index():
 
     cerebro_status = cerebro.get_status()
     ia_status = {
-        "versao":           cerebro_status.get("versao", "7.0"),
+        "versao":           cerebro_status.get("versao", "9.0"),
         "treinado":         cerebro_status.get("treinado", False),
         "concursos_treino": cerebro_status.get("total_concursos", 0),
-        "modulos_ativos":   14,
-        "oraculos_ativos":  15,
-        "pesos": cerebro_status.get("pesos_modulos", {}),
+        "fontes_assimiladas": len(magna.pesos_fontes_magna),
+        "pesos": dict(magna.pesos_fontes_magna),
     }
 
     conf_simples = {}
@@ -262,273 +276,92 @@ def historico():
             "ganhadores_15": int(ganhadores_15 or 0),
         })
     lista.reverse()
-    return render_template("historico.html", resultados=lista)
+    return render_template(
+        "historico.html", resultados=lista,
+        status_base=data_loader.get_status_base(),
+    )
 
 
 @app.route("/cerebro")
 def cerebro_page():
-    """Hub unificado: o Cérebro IA é a INTELIGÊNCIA MAGNA única. Todas as
-    áreas de geração/análise (cabine, gerar, cartela do dia, wheeling,
-    análise, singularidade, auditoria) são abas internas desta página."""
-    return render_template("cerebro.html", status=status_sistema)
+    """Painel único da Inteligência Magna.
+
+    Não há mais submódulos ou abas que tomam decisões próprias. Todos os
+    instrumentos analíticos são assimilados por `decidir_e_gerar()` e a página
+    exibe somente a conclusão unificada e sua memória auditável.
+    """
+    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
+    status_sistema["total_concursos"] = db.get_total_concursos() or 0
+    status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
+    status_sistema["ia_treinada"] = magna.treinado
+    return render_template(
+        "cerebro.html",
+        status=status_sistema,
+        magna_status=magna.get_status(),
+        historico_magna=magna.get_historico_magna(12),
+        valor_aposta=VALOR_APOSTA,
+    )
 
 
 @app.route("/cerebro/central", methods=["GET", "POST"])
 def cerebro_central():
-    """Fragmento da Cabine de Comando (treino, loop, geração clássica,
-    pesos, filtros, ciclos e log). Renderizado dentro do hub /cerebro."""
-    cartelas = []
-    msg      = ""
-    metricas = {}
+    """Compatibilidade: a antiga cabine foi absorvida pela Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
-    if request.method == "POST":
-        acao = request.form.get("acao", "gerar")
 
-        if acao == "gerar":
-            n_cartelas = int(request.form.get("n_cartelas", 10))
-            modo       = request.form.get("modo", "hibrido")
-            t0         = time.time()
-
-            try:
-                if cerebro.n < 50:
-                    msg = "Poucos dados ({}). Carregue o histórico.".format(
-                        cerebro.n
-                    )
-                else:
-                    proximo = (db.get_ultimo_concurso() or 0) + 1
-
-                    print("[CEREBRO_PAGE] Gerando {} cartelas para {}...".format(
-                        n_cartelas, proximo
-                    ))
-
-                    cartelas_geradas = cerebro.gerar_cartelas(
-                        quantidade=n_cartelas, modo=modo,
-                    )
-
-                    print("[CEREBRO_PAGE] Cartelas geradas: {}".format(
-                        len(cartelas_geradas) if cartelas_geradas else 0
-                    ))
-
-                    if cartelas_geradas:
-                        grupo_e = cerebro.decisoes.get("grupo_elite", [])
-                        grupo_e = [int(x) for x in grupo_e] if grupo_e else []
-
-                        cob = float(cerebro.metricas.get("cobertura_13", 0))
-
-                        print("[CEREBRO_PAGE] Salvando em lote...")
-
-                        salvos = _salvar_cartelas_banco(
-                            cartelas_geradas,
-                            proximo,
-                            tipo="multiplas",
-                            modo=modo,
-                            grupo_elite=grupo_e,
-                            cobertura=cob,
-                        )
-
-                        print("[CEREBRO_PAGE] Salvos: {}".format(salvos))
-
-                        cartelas = cartelas_geradas
-                        custo    = salvos * VALOR_APOSTA
-                        tempo    = time.time() - t0
-
-                        metricas = {
-                            "tempo":         round(tempo, 2),
-                            "modo":          modo,
-                            "grupo_elite":   grupo_e,
-                            "cobertura_13":  cob,
-                            "concurso_alvo": proximo,
-                            "salvos":        salvos,
-                            "custo":         custo,
-                        }
-
-                        msg = "OK {} cartelas para concurso {} em {:.1f}s | R$ {:.2f}".format(
-                            salvos, proximo, tempo, custo
-                        )
-                    else:
-                        msg = "Cérebro não gerou cartelas."
-            except Exception as e:
-                msg = "Erro: {}".format(str(e))
-                traceback.print_exc()
-
-    status  = cerebro.get_status()
-    hist    = cerebro.get_historico_ciclos(10)
-    modulos = cerebro.get_desempenho_modulos()
-    erros   = cerebro.get_memoria_erros()
-
-    # O POST/GET vem do formulário da aba (fetch com ?fragmento=1); mantém no hub.
-    return _render("_cerebro_central.html",
-        status    = status,
-        historico = hist,
-        modulos   = modulos,
-        erros     = erros,
-        cartelas  = cartelas,
-        msg       = msg,
-        metricas  = metricas,
+def _responder_decisao_magna(dados):
+    quantidade = int(dados.get("quantidade", dados.get("n", 1)))
+    salvar = bool(dados.get("salvar", True))
+    orcamento = dados.get("orcamento")
+    resultado = magna.decidir_e_gerar(
+        quantidade=quantidade,
+        orcamento=orcamento,
+        registrar=salvar,
     )
+    salvos = 0
+    if salvar and resultado["n_cartelas"] > 0:
+        salvos = _salvar_cartelas_banco(
+            resultado["cartelas"], resultado["concurso_alvo"],
+            tipo="inteligencia_magna", modo=resultado["estrategia"],
+            grupo_elite=resultado["pool_elite"],
+            cobertura=resultado["analise"]["p_melhor_14_mais"],
+        )
+    return {
+        "status": "ok",
+        "resultado": resultado,
+        "salvas": salvos,
+        "concurso": resultado["concurso_alvo"],
+    }
 
 
-def _render(template, **ctx):
-    """Renderiza um template. Dentro do hub unificado do Cérebro
-    (?fragmento=1), usa a casca mínima (só conteúdo + scripts); fora, usa
-    o layout completo. Permite unificar todas as áreas sob /cerebro sem
-    duplicar templates nem perder funcionalidade."""
-    base = "_fragmento.html" if request.args.get("fragmento") else "base.html"
-    ctx.setdefault("base_layout", base)
-    return render_template(template, **ctx)
+@app.route("/api/magna/decidir", methods=["POST"])
+def api_magna_decidir():
+    """Única porta pública de análise, interpretação e criação de cartelas."""
+    try:
+        return jsonify(_responder_decisao_magna(request.get_json() or {}))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 @app.route("/api/cerebro/otimas", methods=["POST"])
 def api_cerebro_otimas():
-    """A DECISÃO do Cérebro: análise completa → estratégia automática →
-    cartelas (1 = exaustão do universo; 2–7 = exaustão diversa;
-    ≥8 = wheeling com garantia 14) + contabilidade exata do lote."""
-    try:
-        dados = request.get_json() or {}
-        n = int(dados.get("n", 1))
-        salvar = bool(dados.get("salvar", False))
-        if not (1 <= n <= 100):
-            return jsonify({"status": "erro", "msg": "n entre 1 e 100"})
-        res = cerebro.gerar_otimas(n_cartelas=n)
-        salvos = 0
-        if salvar and res["n_cartelas"] > 0:
-            concurso = (db.get_ultimo_concurso() or 0) + 1
-            salvos = _salvar_cartelas_banco(
-                res["cartelas"], concurso,
-                tipo="cerebro_otimas", modo=res["estrategia"],
-                grupo_elite=res["pool_elite"],
-                cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
-            )
-        return jsonify({"status": "ok", "resultado": res, "salvas": salvos})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+    """Alias legado: delega à mesma e única Inteligência Magna."""
+    return api_magna_decidir()
 
 
 @app.route("/gerar", methods=["GET", "POST"])
 def gerar():
-    """Geração de cartelas pelo Cérebro (aba do hub /cerebro). Toda geração
-    passa por `cerebro` — este módulo é apenas a camada web.
-
-    GET sem ?fragmento=1 redireciona para a aba "Gerar Cartelas" do hub;
-    ?fragmento=1 devolve só o miolo para ser embutido via fetch.
-    """
-    if request.method == "GET" and not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-gerar"))
-    if request.method == "POST":
-        cartelas = []
-        metricas = {}
-        msg = ""
-        try:
-            quantidade = int(request.form.get("quantidade", 10))
-            modo = request.form.get("modo", "cerebro")
-            quantidade = max(1, min(50, quantidade))
-            t0 = time.time()
-            concurso = (db.get_ultimo_concurso() or 0) + 1
-
-            if modo == "cerebro":
-                # O CÉREBRO DECIDE: estratégia automática pela quantidade
-                res = cerebro.gerar_otimas(n_cartelas=quantidade)
-                salvos = _salvar_cartelas_banco(
-                    res["cartelas"], concurso,
-                    tipo="cerebro_otimas", modo=res["estrategia"],
-                    grupo_elite=res["pool_elite"],
-                    cobertura=100.0 * res["analise"]["p_melhor_14_mais"],
-                )
-                a = res["analise"]
-                extra = ""
-                if res["estrategia"] == "wheeling-garantia-14":
-                    extra = (" · garantia 14 se o pool capturar (1 em {:,})"
-                             .format(int(res["um_em_captura"]))
-                             .replace(",", "."))
-                msg = ("✅ Estratégia {} · {} cartela(s) salva(s) para o "
-                       "concurso {} · P(lote≥14) = {:.6f}%{} · EV R$ {:.2f}"
-                       .format(res["estrategia"], salvos, concurso,
-                               100 * a["p_melhor_14_mais"], extra,
-                               a["ev_lote"]))
-                metricas = {
-                    "tempo": res["tempo"],
-                    "salvos": salvos,
-                    "cobertura_13": a["p_melhor_14_mais"],
-                    "custo": res["custo"],
-                    "grupo_elite": res["pool_elite"],
-                }
-                cartelas = res["cartelas"]
-            else:
-                cartelas = cerebro.gerar_cartelas(
-                    quantidade=quantidade, modo=modo)
-                salvos = _salvar_cartelas_banco(
-                    cartelas, concurso, tipo="multiplas", modo=modo,
-                    grupo_elite=cerebro.decisoes.get("grupo_elite", []),
-                    cobertura=cerebro.metricas.get("cobertura_13", 0),
-                )
-                metricas = {
-                    "tempo": round(time.time() - t0, 1),
-                    "salvos": salvos,
-                    "cobertura_13": cerebro.metricas.get("cobertura_13", 0),
-                    "custo": round(salvos * VALOR_APOSTA, 2),
-                    "grupo_elite": cerebro.decisoes.get("grupo_elite", []),
-                }
-                msg = ("✅ {} cartela(s) gerada(s) e salva(s) para o concurso {}"
-                       .format(salvos, concurso))
-        except Exception as e:
-            traceback.print_exc()
-            msg = "Erro ao gerar: {}".format(e)
-
-        return _render(
-            "gerar.html", metricas=metricas, cartelas=cartelas, msg=msg,
-        )
-    return _render("gerar.html")
+    """A geração separada foi absorvida pela Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/cartela_do_dia")
 def cartela_do_dia():
-    """Cartela do Dia é aba do hub /cerebro. GET sem ?fragmento=1 redireciona
-    para a aba; ?fragmento=1 devolve o miolo."""
-    if not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-cartela_do_dia"))
-    # A idempotência (uma cartela por concurso-alvo) é garantida dentro de
-    # cerebro.gerar_cartela_do_dia(): chamadas sucessivas reaproveitam a
-    # cartela já salva para o próximo concurso, sem gerar duplicatas a cada F5.
-    resultado = cerebro.gerar_cartela_do_dia()
-
-    if resultado.get("status") != "erro":
-        try:
-            proximo = (db.get_ultimo_concurso() or 0) + 1
-            dez     = resultado["cartela"]
-            # Só registra no lote de cartelas quando foi efetivamente gerada
-            # (não quando foi apenas reaproveitada).
-            if not resultado.get("reaproveitada") and len(dez) == 15:
-                cartela_fmt = {
-                    "dezenas":     dez,
-                    "bitmask":     int(resultado.get("bitmask", 0)),
-                    "score_total": float(resultado.get("consenso_forca", 0)),
-                    "scores": {
-                        "markov":  0,
-                        "verlet":  0,
-                        "ev_prob": float(resultado.get("score_cerebro", 0)),
-                    },
-                }
-                _salvar_cartelas_banco(
-                    [cartela_fmt],
-                    proximo,
-                    tipo="cartela_do_dia",
-                    modo="oraculo_convergente",
-                    grupo_elite=[],
-                    cobertura=float(resultado.get("consenso_forca", 0)),
-                )
-            resultado["salvo_concurso"] = proximo
-        except Exception as e:
-            resultado["erro_salvar"] = str(e)
-            traceback.print_exc()
-
-    hist_cdd = cerebro.get_historico_cartelas_do_dia(10)
-
-    return _render(
-        "cartela_do_dia.html",
-        resultado    = resultado,
-        historico_cdd = hist_cdd,
-    )
+    """O consenso diário agora é uma fonte interna da decisão Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/conferencia")
@@ -556,50 +389,24 @@ def financeiro_page():
 
 @app.route("/api/analise/exaustao", methods=["POST"])
 def api_analise_exaustao():
-    """Exaustão do universo: pontua TODAS as 3.268.760 combinações contra
-    o vetor combinado dos motores (Motor Heavyweight revivido na Fase 3)."""
+    """Alias legado: exaustão também passa pela decisão integrada da Magna."""
     try:
-        from core.heavyweight_engine import MotorExaustaoUniverso
         dados = request.get_json() or {}
-        top_n = max(1, min(int(dados.get("top_n", 10)), 100))
-        if not cerebro.treinado:
-            cerebro.treinar()
-        vetor = cerebro._vetor_combinado()
-        motor = MotorExaustaoUniverso()
-        t0 = time.time()
-        top = motor.top_n(vetor, top_n)
-        return jsonify({
-            "status": "ok",
-            "total": len(motor.universo),
-            "tempo": round(time.time() - t0, 2),
-            "concursos": cerebro.n,
-            "top": top,
-        })
-    except Exception as e:
+        return jsonify(_responder_decisao_magna({
+            "quantidade": max(1, min(int(dados.get("top_n", 1)), 7)),
+            "salvar": False,
+        }))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
         traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 @app.route("/analise")
 def analise():
-    """Análise é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
-    if not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-analise"))
-    resultados = db.get_todos_resultados()
-    freq       = bitmatrix.heatmap_frequencia(resultados)
-    freq_rec   = bitmatrix.heatmap_frequencia(resultados, janela=50)
-    heatmap    = {
-        i + 1: {
-            "total":   round(float(freq[i]),     2),
-            "recente": round(float(freq_rec[i]), 2),
-        }
-        for i in range(25)
-    }
-    return _render(
-        "analise.html",
-        heatmap         = heatmap,
-        total_concursos = len(resultados),
-    )
+    """A análise histórica foi assimilada pela decisão Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/premios")
@@ -643,24 +450,14 @@ def premios():
 
 @app.route("/ia_auditoria")
 def ia_auditoria():
-    """Auditoria é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
-    if not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-auditoria"))
-    return _render(
-        "ia_auditoria.html",
-        stats           = monitor.get_dashboard_stats(),
-        ranking_modulos = monitor.get_ranking_modulos(),
-        sessoes         = monitor.get_ultimas_sessoes(10),
-        evolucao_pesos  = monitor.get_evolucao_pesos(20),
-    )
+    """A auditoria agora acompanha cada decisão no painel único."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/singularidade")
 def singularidade_page():
-    """Singularidade é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
-    if not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-singularidade"))
-    return _render("singularidade.html", status=status_sistema)
+    """A interpretação cética foi assimilada pela decisão Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 # ============================================================
@@ -746,56 +543,22 @@ def api_singularidade_backtest():
 
 @app.route("/wheeling")
 def wheeling_page():
-    """Wheeling é aba do hub /cerebro (sem ?fragmento=1 redireciona)."""
-    if not request.args.get("fragmento"):
-        return redirect(url_for("cerebro_page", _anchor="aba-wheeling"))
-    from core.wheeling import MotorWheeling
-    return _render(
-        "wheeling.html",
-        status=status_sistema,
-        menu=MotorWheeling.menu_exato(),
-    )
+    """O fechamento é escolhido internamente pela Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/api/cerebro/wheeling", methods=["POST"])
 def api_cerebro_wheeling():
-    """Pipeline completo: motores → pool → fechamento c/ garantia →
-    análise exata. Corpo: {n_pool, garantia, max_cartelas, orcamento,
-    salvar, limite_segundos}."""
+    """Alias legado: a Magna decide se o wheeling é a estratégia adequada."""
     try:
         dados = request.get_json() or {}
-        n_pool = int(dados.get("n_pool", 17))
-        garantia = dados.get("garantia", None)
-        max_cartelas = int(dados.get("max_cartelas", 40))
-        salvar = bool(dados.get("salvar", False))
-        limite = float(dados.get("limite_segundos", 25))
-
-        res = cerebro.pipeline_wheeling(
-            n_pool=n_pool, garantia=int(garantia) if garantia else None,
-            max_cartelas=max_cartelas,
-            orcamento=dados.get("orcamento", None),
-            limite_segundos=limite,
-        )
-
-        salvos = 0
-        if salvar and res["n_cartelas"] > 0:
-            concurso = (db.get_ultimo_concurso() or 0) + 1
-            salvos = _salvar_cartelas_banco(
-                res["cartelas"], concurso,
-                tipo="wheeling", modo=res["metodo"],
-                grupo_elite=res["pool"],
-                cobertura=100.0 * (res["analise"]["p_melhor_14_mais"]),
-            )
-
-        return jsonify({
-            "status": "ok",
-            "resultado": res,
-            "salvas": salvos,
-            "concurso": (db.get_ultimo_concurso() or 0) + 1,
-        })
-    except Exception as e:
+        dados["quantidade"] = int(dados.get("quantidade", 8))
+        return jsonify(_responder_decisao_magna(dados))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
         traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 @app.route("/api/cerebro/wheeling/backtest", methods=["POST"])
@@ -807,7 +570,8 @@ def api_cerebro_wheeling_backtest():
         n_pool = int(dados.get("n_pool", 17))
         if not (1 <= k <= 25):
             return jsonify({"status": "erro", "msg": "k entre 1 e 25"})
-        bt = cerebro.backtest_captura(k=k, n_pool=n_pool)
+        with magna._magna_lock:
+            bt = magna.backtest_captura(k=k, n_pool=n_pool)
         return jsonify({"status": "ok", "backtest": bt})
     except Exception as e:
         traceback.print_exc()
@@ -959,7 +723,12 @@ def api_avaliacao_listar():
 @app.route("/api/status")
 def api_status():
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
-    status_sistema["ia_treinada"]     = cerebro.treinado
+    status_sistema["total_concursos"] = db.get_total_concursos() or 0
+    status_sistema["ia_treinada"] = cerebro.treinado
+    if status_sistema["ultima_atualizacao"] is None:
+        status_sistema["ultima_atualizacao"] = (
+            data_loader.get_status_base().get("ultima_atualizacao")
+        )
     return jsonify(status_sistema)
 
 
@@ -968,36 +737,75 @@ def api_status_base():
     return jsonify(data_loader.get_status_base())
 
 
+def _iniciar_sincronizacao_historico(completo=False):
+    with historico_lock:
+        if status_sistema["carregando"]:
+            return False
+        # A flag é ligada antes da thread para impedir duas atualizações na
+        # janela entre a resposta HTTP e o início do trabalho.
+        status_sistema["carregando"] = True
+        status_sistema["erro_atualizacao"] = None
+        status_sistema["progresso"] = "Iniciando sincronização do histórico..."
+
+    def executar():
+        try:
+            def callback(concurso, carregados, total, mensagem):
+                status_sistema["progresso"] = mensagem
+
+            resultado = (
+                data_loader.carregar_historico_completo(callback)
+                if completo else data_loader.atualizar_diario()
+            )
+            status_sistema["ultima_atualizacao"] = resultado
+            status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
+            status_sistema["total_concursos"] = db.get_total_concursos() or 0
+            status_sistema["dados_carregados"] = (
+                status_sistema["total_concursos"] > 0
+            )
+            status_sistema["progresso"] = resultado.get(
+                "msg", "Sincronização concluída")
+            if resultado.get("status") in ("erro", "parcial"):
+                status_sistema["erro_atualizacao"] = resultado.get("msg")
+
+            # Troca a matriz de forma atômica em relação às decisões. Novos
+            # concursos invalidam o treino anterior e exigem nova assimilação.
+            with magna._magna_lock:
+                magna.matriz, magna.raw = magna._ingestor.carregar_matriz()
+                magna.n = len(magna.matriz)
+                if resultado.get("novos") or resultado.get("recuperados"):
+                    magna.treinado = False
+                    status_sistema["ia_treinada"] = False
+        except Exception as exc:
+            traceback.print_exc()
+            status_sistema["erro_atualizacao"] = str(exc)
+            status_sistema["progresso"] = "Erro ao atualizar: {}".format(exc)
+            status_sistema["ultima_atualizacao"] = {
+                "status": "erro", "msg": str(exc)
+            }
+        finally:
+            with historico_lock:
+                status_sistema["carregando"] = False
+
+    threading.Thread(target=executar, daemon=True).start()
+    return True
+
+
 @app.route("/api/carregar_dados", methods=["POST"])
 def api_carregar_dados():
-    if status_sistema["carregando"]:
-        return jsonify({"status": "info", "msg": "Já carregando..."})
-
-    def _carregar():
-        status_sistema["carregando"] = True
-        def cb(concurso, carregados, total, msg):
-            status_sistema["progresso"] = msg
-        resultado = data_loader.carregar_historico_completo(cb)
-        status_sistema["carregando"]       = False
-        status_sistema["dados_carregados"] = True
-        status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso()
-        status_sistema["progresso"] = "Completo! {} concursos.".format(
-            resultado.get("total_carregados", 0)
-        )
-        cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
-        cerebro.n = len(cerebro.matriz)
-
-    threading.Thread(target=_carregar, daemon=True).start()
-    return jsonify({"status": "ok", "msg": "Carregamento iniciado..."})
+    if not _iniciar_sincronizacao_historico(completo=True):
+        return jsonify({"status": "info", "msg": "Sincronização já em andamento"}), 409
+    return jsonify({
+        "status": "iniciado", "msg": "Carga e reparação do histórico iniciadas"
+    }), 202
 
 
 @app.route("/api/atualizar_dados", methods=["POST"])
 def api_atualizar_dados():
-    resultado = data_loader.atualizar_diario()
-    status_sistema["ultimo_concurso"] = db.get_ultimo_concurso()
-    cerebro.matriz, cerebro.raw = cerebro._ingestor.carregar_matriz()
-    cerebro.n = len(cerebro.matriz)
-    return jsonify(resultado)
+    if not _iniciar_sincronizacao_historico(completo=False):
+        return jsonify({"status": "info", "msg": "Sincronização já em andamento"}), 409
+    return jsonify({
+        "status": "iniciado", "msg": "Busca incremental iniciada"
+    }), 202
 
 
 # ============================================================
@@ -1015,11 +823,12 @@ def api_treinar_ia():
             def cb(msg):
                 status_sistema["progresso"] = msg
 
-            cerebro.treinar(callback=cb)
-            
+            with magna._magna_lock:
+                magna.treinar(callback=cb)
+
             # Atualiza flags de estado
             status_sistema["ia_treinada"] = True
-            status_sistema["progresso"]   = "✅ Cérebro treinado com sucesso!"
+            status_sistema["progresso"]   = "✅ Memória da Inteligência Magna assimilada com sucesso!"
         except Exception as e:
             status_sistema["progresso"] = "❌ Erro no treino: {}".format(str(e))
             traceback.print_exc()
@@ -1042,31 +851,16 @@ def api_cerebro_treinar():
 
 @app.route("/api/cerebro/gerar", methods=["POST"])
 def api_cerebro_gerar():
+    """Alias legado da decisão única da Inteligência Magna."""
     try:
-        dados      = request.get_json() or {}
-        quantidade = int(dados.get("quantidade", cerebro.n_cartelas))
-        modo       = dados.get("modo", "hibrido")
-        concurso   = int(dados.get("concurso", 0))
-        if quantidade < 1 or quantidade > 50:
-            return jsonify({"status": "erro", "msg": "Quantidade 1-50"})
-        if concurso < 1:
-            concurso = (db.get_ultimo_concurso() or 0) + 1
-        cartelas = cerebro.gerar_cartelas(quantidade=quantidade, modo=modo)
-        salvos   = _salvar_cartelas_banco(
-            cartelas, concurso,
-            tipo="multiplas", modo=modo,
-            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
-            cobertura=cerebro.metricas.get("cobertura_13", 0),
-        )
-        return jsonify({
-            "status": "ok", "cartelas": cartelas,
-            "salvas": salvos, "concurso": concurso,
-            "custo": round(salvos * VALOR_APOSTA, 2),
-            "metricas": cerebro.metricas,
-        })
-    except Exception as e:
+        dados = request.get_json() or {}
+        dados["quantidade"] = int(dados.get("quantidade", magna.n_cartelas))
+        return jsonify(_responder_decisao_magna(dados))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
         traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 @app.route("/api/cerebro/ciclo", methods=["POST"])
@@ -1138,7 +932,12 @@ def api_cerebro_log():
 
 @app.route("/api/cartela_do_dia")
 def api_cartela_do_dia():
-    return jsonify(cerebro.gerar_cartela_do_dia())
+    """Endpoint removido: nenhuma fonte interna pode gerar isoladamente."""
+    return jsonify({
+        "status": "substituido",
+        "msg": "Use POST /api/magna/decidir para a decisão única.",
+        "nova_rota": "/api/magna/decidir",
+    }), 410
 
 
 # ============================================================
@@ -1160,17 +959,18 @@ def _registrar_financeiro(resultado_conf):
             return None
         cartelas = resultado_conf.get("cartelas", [])
         concurso = int(resultado_conf.get("concurso", 0))
-        if not cartelas or concurso < 1:
+        if concurso < 1:
             return None
 
-        # evita duplicar registro no re-conferir do mesmo concurso
-        conn = db.get_conn()
-        ja_tem = conn.execute(
-            "SELECT COUNT(*) FROM financeiro WHERE concurso = ?",
-            (concurso,)
-        ).fetchone()[0]
-        conn.close()
-        if ja_tem:
+        # O resultado fecha a memória única antes da contabilização financeira.
+        # A operação é idempotente: apenas decisões `aguardando` são aprendidas.
+        dezenas_reais = resultado_conf.get("resultado", [])
+        if len(dezenas_reais) == 15:
+            aprendizado = magna.aprender_resultado_magna(
+                concurso, dezenas_reais)
+            resultado_conf["aprendizado_magna"] = aprendizado
+
+        if not cartelas:
             return None
 
         premios = resultado_conf.get("premios_oficiais") or {}
@@ -1312,26 +1112,13 @@ def api_apagar_cartelas():
 
 @app.route("/api/adicionar_cartelas_concurso", methods=["POST"])
 def api_adicionar_cartelas_concurso():
-    try:
-        dados    = request.get_json() or {}
-        concurso = int(dados.get("concurso", 0))
-        qtd      = int(dados.get("quantidade", 5))
-        if concurso < 1:
-            return jsonify({"status": "erro", "msg": "Inválido"})
-        if not (1 <= qtd <= 50):
-            return jsonify({"status": "erro", "msg": "Qtd inválida"})
-        novas       = cerebro.gerar_cartelas(quantidade=qtd)
-        adicionadas = _salvar_cartelas_banco(
-            novas, concurso,
-            tipo="multiplas", modo="hibrido",
-            grupo_elite=cerebro.decisoes.get("grupo_elite", []),
-            cobertura=cerebro.metricas.get("cobertura_13", 0),
-        )
-        return jsonify({"status": "ok", "adicionadas": adicionadas,
-                        "concurso": concurso})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+    """Bloqueia geração paralela fora da memória única."""
+    return jsonify({
+        "status": "substituido",
+        "msg": "Novas cartelas só podem ser decididas pela Inteligência Magna.",
+        "nova_rota": "/api/magna/decidir",
+    }), 410
+
 
 
 # ============================================================
@@ -1353,44 +1140,20 @@ def api_premios_concurso(concurso):
 
 @app.route("/api/atualizar_premios_todos", methods=["POST"])
 def api_atualizar_premios_todos():
-    """Busca prêmios reais dos últimos 100 concursos da Caixa"""
+    """Atualiza rateios recentes sem zerar dados quando só há contingência."""
     try:
-        conn   = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
+        conn = db.get_conn()
+        concursos = [r[0] for r in conn.execute("""
             SELECT concurso FROM resultados
             ORDER BY concurso DESC LIMIT 100
-        """)
-        concursos = [r[0] for r in cursor.fetchall()]
+        """).fetchall()]
         conn.close()
-
-        atualizados = 0
-        erros       = 0
-
-        for c in concursos:
-            try:
-                dados_caixa = conferencia.buscar_premios_caixa(c)
-                if dados_caixa:
-                    conferencia._atualizar_premios_banco(c, dados_caixa)
-                    atualizados += 1
-                    print("[PREMIOS] {} atualizado".format(c))
-                else:
-                    erros += 1
-                time.sleep(0.3)
-            except Exception as e:
-                print("[PREMIOS] erro {}: {}".format(c, e))
-                erros += 1
-
-        return jsonify({
-            "status":      "ok",
-            "atualizados": atualizados,
-            "erros":       erros,
-            "total":       len(concursos),
-        })
-
-    except Exception as e:
+        resultado = conferencia.atualizar_premios_concursos(concursos)
+        codigo = 200 if resultado["status"] in ("ok", "parcial") else 503
+        return jsonify(resultado), codigo
+    except Exception as exc:
         traceback.print_exc()
-        return jsonify({"status": "erro", "msg": str(e)})
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
 # ============================================================
@@ -1399,16 +1162,21 @@ def api_atualizar_premios_todos():
 
 @app.route("/api/ia_sessao/<int:sessao_id>")
 def api_ia_sessao(sessao_id):
-    return jsonify(monitor.get_relatorio_sessao(sessao_id))
+    return jsonify({
+        "status": "substituido",
+        "msg": "A auditoria agora pertence à decisão Magna.",
+        "decisao_id": sessao_id,
+    }), 410
 
 
 @app.route("/api/ia_log_tempo_real")
 def api_ia_log_tempo_real():
-    sessoes = monitor.get_ultimas_sessoes(1)
-    if not sessoes:
-        return jsonify({"logs": []})
-    rel = monitor.get_relatorio_sessao(sessoes[0]["id"])
-    return jsonify({"logs": rel.get("modulos", [])})
+    return jsonify({
+        "status": "substituido",
+        "msg": "Consulte a memória única em /cerebro.",
+        "logs": [],
+    }), 410
+
 
 
 # ============================================================
@@ -1418,9 +1186,9 @@ def api_ia_log_tempo_real():
 if __name__ == "__main__":
     print("""
 ╔══════════════════════════════════════════════════════╗
-║   SISTEMA LOTOFÁCIL — CÉREBRO IA v7.0              ║
-║   14 Motores + 15 Oráculos Convergentes             ║
-║   Sistema de LOTES independentes                    ║
+║   LOTOFÁCIL — INTELIGÊNCIA MAGNA v9.0              ║
+║   Uma memória + uma análise + uma decisão           ║
+║   Criação unificada e auditável                     ║
 ║   Acesse: http://localhost:5000                      ║
 ╚══════════════════════════════════════════════════════╝
     """)
@@ -1442,4 +1210,7 @@ if __name__ == "__main__":
 
     status_sistema["ia_treinada"] = cerebro.treinado
 
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    host = os.getenv("LOTOFACIL_HOST", "127.0.0.1")
+    port = int(os.getenv("LOTOFACIL_PORT", "5000"))
+    debug = os.getenv("LOTOFACIL_DEBUG", "0") == "1"
+    app.run(host=host, port=port, debug=debug, use_reloader=False)

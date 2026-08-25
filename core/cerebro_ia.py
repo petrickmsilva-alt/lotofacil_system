@@ -1,7 +1,7 @@
 """
 ============================================================
-CÉREBRO IA v8.0 — DISRUPTIVO & AUTÔNOMO
-Integração Total: 14 Motores + 15 Oráculos
+INTELIGÊNCIA MAGNA v9.0 — UNIFICADA & AUTÔNOMA
+Assimila motores, oráculos, análise, singularidade e wheeling
 + Repulsão Vetorial de Coulomb (Sem Repetições)
 + Deriva de Entropia Temporal Nanosegundo
 + Flutuação Caótica de Pesos via Atrator de Lorenz
@@ -14,7 +14,6 @@ import json
 import time
 import threading
 import itertools
-import requests
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -26,6 +25,7 @@ from config import (
 from database.db_manager import DBManager
 from .oraculo_convergente import OraculoConvergente
 from .wheeling import MotorWheeling
+from .caixa_client import CaixaClient
 
 
 def _popcount_uf(x: int) -> int:
@@ -101,8 +101,9 @@ class IngestorDados:
         "Accept": "application/json",
     }
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, client=None):
         self.db_path = db_path
+        self.client = client or CaixaClient()
 
     def carregar_matriz(self) -> Tuple[np.ndarray, list]:
         if not os.path.exists(self.db_path):
@@ -133,21 +134,10 @@ class IngestorDados:
             return np.zeros((1, 25), dtype=np.float32), []
 
     def buscar_ultimo_caixa(self) -> Optional[Dict]:
-        try:
-            r = requests.get(self.URL_BASE, headers=self.HEADERS, timeout=15)
-            return r.json() if r.status_code == 200 else None
-        except Exception:
-            return None
+        return self.client.buscar_ultimo()
 
     def buscar_concurso_caixa(self, numero: int) -> Optional[Dict]:
-        try:
-            r = requests.get(
-                self.URL_CONCURSO.format(numero),
-                headers=self.HEADERS, timeout=15
-            )
-            return r.json() if r.status_code == 200 else None
-        except Exception:
-            return None
+        return self.client.buscar_concurso(numero)
 
     def extrair_dezenas(self, data: Dict) -> List[int]:
         try:
@@ -563,7 +553,7 @@ class MotorGenetico(_Motor):
         rngs = [np.random.default_rng(i * 37 + seed_dyn) for i in range(self.n_ilhas)]
         ilhas = [[self._ind(rngs[k], cands) for _ in range(self.tam)] for k in range(self.n_ilhas)]
         fits = [[fn_fitness(ind) for ind in ilha] for ilha in ilhas]
-        melhor_f = -np.inf; melhor_i = []  # noqa: F841 (melhor_ind no fim)
+        melhor_f = -np.inf
         for g in range(self.geracoes):
             if time.time() - t0 > timeout: break
             for k in range(self.n_ilhas):
@@ -582,7 +572,7 @@ class MotorGenetico(_Motor):
                 fits[k] = [fn_fitness(ind) for ind in ilhas[k]]
                 idx_m = int(np.argmax(fits[k]))
                 if fits[k][idx_m] > melhor_f:
-                    melhor_f = fits[k][idx_m]; melhor_i = list(ilhas[k][idx_m])
+                    melhor_f = fits[k][idx_m]
             if (g+1) % 10 == 0:
                 for i in range(self.n_ilhas):
                     prox = (i+1) % self.n_ilhas
@@ -667,9 +657,17 @@ class OtimizadorSPSA:
 
 
 # ============================================================
-# BLOCO 4 — CÉREBRO IA v8.0 DISRUPTIVO (PROTAGONISTA ÚNICO)
+# BLOCO 4 — INTELIGÊNCIA MAGNA v9.0 (PROTAGONISTA ÚNICA)
 # ============================================================
 class CerebroIA:
+    _FONTES_MAGNA_DEFAULT = {
+        "motores": 0.45,
+        "oraculos": 0.25,
+        "espectral": 0.10,
+        "informacao": 0.10,
+        "recente": 0.10,
+    }
+
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
         "freq_recente": 0.07,
@@ -694,9 +692,9 @@ class CerebroIA:
         "Accept":     "application/json",
     }
 
-    def __init__(self, db_path: str = None, n_cartelas: int = 10):
+    def __init__(self, db_path: str = None, n_cartelas: int = 10, client=None):
         self.db_path     = db_path or DATABASE_PATH
-        self.db          = DBManager()
+        self.db          = DBManager(self.db_path)
         self.n_cartelas  = n_cartelas
         self.pesos       = dict(self._PESOS_DEFAULT)
         self.log: List[Dict] = []
@@ -705,6 +703,7 @@ class CerebroIA:
         self.decisoes    = {}
         self.ultima_exec = None
         self.treinado    = False
+        self._magna_lock = threading.RLock()
 
         # Ciclo autônomo
         self._rodando    = False
@@ -722,7 +721,7 @@ class CerebroIA:
         self.repulsao_vetorial = MotorRepulsaoVetorial(self.db)
 
         # Carregar dados
-        self._ingestor = IngestorDados(self.db_path)
+        self._ingestor = IngestorDados(self.db_path, client=client)
         self.matriz, self.raw = self._ingestor.carregar_matriz()
         self.n = len(self.matriz)
         self._log("INIT", "{} concursos carregados".format(self.n))
@@ -745,6 +744,7 @@ class CerebroIA:
         self._log("INIT", "Oráculo Convergente ativado (15 teorias + Entropia Nanossegundo)")
 
         self._criar_tabelas_ciclo()
+        self.pesos_fontes_magna = self._carregar_pesos_fontes_magna()
         self._ultimo_processado = self._get_ultimo_processado()
         self.estado = "pronto"
 
@@ -786,6 +786,50 @@ class CerebroIA:
                 score_cerebro REAL, aprovado_filtros INTEGER, votos_json TEXT,
                 acertos INTEGER DEFAULT 0, premio REAL DEFAULT 0, conferida INTEGER DEFAULT 0
             )
+        """)
+
+        # A Inteligência Magna mantém uma única trilha de decisão. Os antigos
+        # painéis (geração, oráculo, wheeling, análise, singularidade e
+        # auditoria) agora alimentam este mesmo registro e estes mesmos pesos.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_estado (
+                chave TEXT PRIMARY KEY,
+                valor TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_decisoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                concurso_alvo INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                quantidade INTEGER NOT NULL,
+                estrategia TEXT NOT NULL,
+                cartelas_json TEXT NOT NULL,
+                analise_json TEXT NOT NULL,
+                justificativa TEXT NOT NULL,
+                status TEXT DEFAULT 'aguardando',
+                resultado_json TEXT,
+                melhor_acertos INTEGER DEFAULT 0,
+                media_acertos REAL DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_aprendizado (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                decisao_id INTEGER NOT NULL,
+                concurso INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                fonte TEXT NOT NULL,
+                acertos INTEGER NOT NULL,
+                peso_antes REAL NOT NULL,
+                peso_depois REAL NOT NULL,
+                FOREIGN KEY (decisao_id) REFERENCES magna_decisoes(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_magna_concurso_status
+            ON magna_decisoes(concurso_alvo, status)
         """)
         conn.commit()
         conn.close()
@@ -1359,7 +1403,8 @@ class CerebroIA:
     # A DECISÃO DO CÉREBRO — gerar_otimas()
     # Análise completa → escolha automática de estratégia → cartelas
     # ============================================================
-    def gerar_otimas(self, n_cartelas=1, salvar=False, callback=None) -> Dict[str, Any]:
+    def gerar_otimas(self, n_cartelas=1, salvar=False, callback=None,
+                      vetor_override=None) -> Dict[str, Any]:
         """
         O Cérebro como motor único do sistema. Dado o número desejado de
         cartelas, ele próprio decide a estratégia ótima:
@@ -1509,6 +1554,417 @@ class CerebroIA:
             res["salvar"] = True  # a camada app persiste o lote
         return res
 
+    # ============================================================
+    # INTELIGÊNCIA MAGNA — UMA análise, UMA memória, UMA decisão
+    # ============================================================
+    @staticmethod
+    def _normalizar_vetor(vetor):
+        v = np.asarray(vetor, dtype=float)
+        if v.shape != (TOTAL_DEZENAS,):
+            return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+        v = np.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
+        v = np.clip(v, 0.0, None)
+        return (v / v.sum() if v.sum() > 0
+                else np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS)
+
+    @staticmethod
+    def _json_seguro(valor):
+        """Converte estruturas NumPy em JSON puro para a memória auditável."""
+        if isinstance(valor, np.ndarray):
+            return [CerebroIA._json_seguro(v) for v in valor.tolist()]
+        if isinstance(valor, np.generic):
+            return valor.item()
+        if isinstance(valor, dict):
+            return {str(k): CerebroIA._json_seguro(v)
+                    for k, v in valor.items()}
+        if isinstance(valor, (list, tuple, set)):
+            return [CerebroIA._json_seguro(v) for v in valor]
+        return valor
+
+    def _carregar_pesos_fontes_magna(self):
+        pesos = dict(self._FONTES_MAGNA_DEFAULT)
+        try:
+            conn = self.db.get_conn()
+            row = conn.execute(
+                "SELECT valor FROM magna_estado WHERE chave='pesos_fontes'"
+            ).fetchone()
+            conn.close()
+            if row:
+                gravados = json.loads(row[0])
+                if set(gravados) == set(pesos):
+                    pesos = {k: max(0.01, float(gravados[k])) for k in pesos}
+        except (ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
+            pass
+        total = sum(pesos.values())
+        return {k: round(v / total, 6) for k, v in pesos.items()}
+
+    def _salvar_pesos_fontes_magna(self, conn=None):
+        proprio = conn is None
+        conn = conn or self.db.get_conn()
+        conn.execute("""
+            INSERT INTO magna_estado (chave, valor, atualizado_em)
+            VALUES ('pesos_fontes', ?, ?)
+            ON CONFLICT(chave) DO UPDATE SET
+                valor=excluded.valor, atualizado_em=excluded.atualizado_em
+        """, (
+            json.dumps(self.pesos_fontes_magna, sort_keys=True),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+        if proprio:
+            conn.commit()
+            conn.close()
+
+    def _fontes_assimiladas_magna(self):
+        """Assimila todos os antigos painéis em um único vetor decisório.
+
+        Os nomes abaixo são fontes internas de evidência, não subsistemas que
+        geram cartelas. Somente o vetor final da Magna pode chegar à geração.
+        """
+        from .singularidade import EspectroTemporal, TeoriaDaInformacao
+
+        vetor_motores = self._normalizar_vetor(self._vetor_combinado())
+
+        consulta = self._oraculo.consultar_todos()
+        votos = np.asarray(consulta["votos"], dtype=float)
+        pesos_oraculo = np.asarray(consulta["pesos_acumulados"], dtype=float)
+        vetor_oraculos = self._normalizar_vetor(
+            0.55 * self._normalizar_vetor(pesos_oraculo)
+            + 0.45 * self._normalizar_vetor(votos)
+        )
+
+        espectro = EspectroTemporal(self.matriz)
+        vetor_espectral = self._normalizar_vetor(espectro.score_espectral_por_dezena())
+
+        informacao = TeoriaDaInformacao(self.matriz)
+        entropias = np.array([
+            informacao.entropia_permutacao(self.matriz[:, d])
+            for d in range(TOTAL_DEZENAS)
+        ], dtype=float)
+        vetor_informacao = self._normalizar_vetor(entropias)
+
+        janela = self.matriz[-min(50, self.n):]
+        vetor_recente = self._normalizar_vetor(np.sum(janela, axis=0))
+
+        fontes = {
+            "motores": vetor_motores,
+            "oraculos": vetor_oraculos,
+            "espectral": vetor_espectral,
+            "informacao": vetor_informacao,
+            "recente": vetor_recente,
+        }
+        return fontes, consulta, espectro, informacao, entropias
+
+    def decidir_e_gerar(self, quantidade=1, orcamento=None, callback=None,
+                         registrar=True, concurso_alvo=None):
+        """Serializa e executa a única decisão de criação do processo."""
+        with self._magna_lock:
+            return self._decidir_e_gerar_sem_lock(
+                quantidade=quantidade,
+                orcamento=orcamento,
+                callback=callback,
+                registrar=registrar,
+                concurso_alvo=concurso_alvo,
+            )
+
+    def _decidir_e_gerar_sem_lock(self, quantidade=1, orcamento=None,
+                                  callback=None, registrar=True,
+                                  concurso_alvo=None):
+        """Executa o único fluxo autorizado de criação de cartelas.
+
+        Tudo que antes aparecia como Gerar Cartelas, Cartela do Dia, Wheeling,
+        Análise, Singularidade e Auditoria é assimilado antes da decisão. Esses
+        componentes não entregam palpites próprios: produzem evidências para a
+        mesma memória, o mesmo vetor e a mesma resposta final.
+        """
+        from .singularidade import (
+            CoberturaSteiner, FiltrosAvancados, GestaoDeBanca,
+        )
+
+        quantidade = int(quantidade)
+        if not 1 <= quantidade <= 100:
+            raise ValueError("quantidade deve estar entre 1 e 100")
+        if orcamento not in (None, ""):
+            orcamento = float(orcamento)
+            if not np.isfinite(orcamento) or orcamento < VALOR_APOSTA:
+                raise ValueError("orçamento deve permitir ao menos uma cartela")
+            quantidade = min(quantidade, int(orcamento // VALOR_APOSTA))
+
+        def cb(msg):
+            self._log("MAGNA", msg)
+            if callback:
+                callback(msg)
+
+        if not self.treinado:
+            cb("Assimilando histórico e treinando a memória única...")
+            self.treinar(callback=callback)
+
+        cb("Unificando motores, oráculos, espectro, informação e análise recente...")
+        fontes, consulta, espectro, informacao, entropias = \
+            self._fontes_assimiladas_magna()
+
+        pesos = dict(self.pesos_fontes_magna)
+        vetor_final = np.zeros(TOTAL_DEZENAS, dtype=float)
+        for nome, vetor in fontes.items():
+            vetor_final += vetor * pesos[nome]
+        vetor_final = self._normalizar_vetor(vetor_final)
+
+        cb("Tomando uma decisão única para {} cartela(s)...".format(quantidade))
+        resultado = self.gerar_otimas(
+            n_cartelas=quantidade,
+            callback=callback,
+            vetor_override=vetor_final,
+        )
+
+        # Singularidade deixa de ser uma página separada: seus filtros passam a
+        # interpretar cada cartela da decisão final, sem quebrar uma garantia
+        # matemática já construída pelo wheeling.
+        filtros = FiltrosAvancados(self.matriz)
+        votos = np.asarray(consulta["votos"], dtype=int)
+        for cartela in resultado["cartelas"]:
+            dezenas = cartela["dezenas"]
+            relatorio = filtros.relatorio(dezenas)
+            contribuicoes = {
+                nome: round(float(sum(v[d - 1] for d in dezenas)), 6)
+                for nome, v in fontes.items()
+            }
+            cartela["interpretacao_magna"] = {
+                "filtros_avancados": relatorio,
+                "contribuicoes_fontes": contribuicoes,
+                "votos_oraculo": {str(d): int(votos[d - 1]) for d in dezenas},
+                "convergencia_media": round(
+                    float(np.mean([votos[d - 1] for d in dezenas])) / 15.0,
+                    4,
+                ),
+            }
+
+        hurst = [
+            round(float(espectro.expoente_hurst(self.matriz[:, d])), 4)
+            for d in range(TOTAL_DEZENAS)
+        ]
+        banca = GestaoDeBanca().relatorio()
+        cobertura = CoberturaSteiner().cota_total()
+        estrategia = resultado["estrategia"]
+        justificativas = {
+            "exaustao-unica": (
+                "Uma cartela: a Magna fundiu todas as evidências e examinou o "
+                "universo completo para uma única escolha auditável."
+            ),
+            "exaustao-diversa": (
+                "Poucas cartelas: a Magna preservou o consenso integrado e "
+                "reduziu sobreposição para ampliar diversidade."
+            ),
+            "wheeling-garantia-14": (
+                "Oito ou mais cartelas: a Magna escolheu um pool de 17 e o "
+                "fechamento de 8 jogos que garante 14 pontos somente se o pool "
+                "capturar as 15 dezenas."
+            ),
+        }
+        justificativa = justificativas.get(
+            estrategia, "Estratégia escolhida pela memória única."
+        )
+
+        top15_fontes = {
+            nome: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)]
+            for nome, v in fontes.items()
+        }
+        diagnostico = {
+            "concursos_assimilados": self.n,
+            "hurst_medio": round(float(np.mean(hurst)), 4),
+            "entropia_permutacao_media": round(float(np.mean(entropias)), 4),
+            "taxa_aprovacao_filtro": getattr(
+                self._gaussiano, "taxa_aprovacao_historica", None),
+            "valor_esperado_liquido_cartela": banca[
+                "valor_esperado_por_cartela_R$"],
+            "kelly": banca["fracao_kelly"],
+            "limites_cobertura": cobertura,
+            "interpretacao": (
+                "Os diagnósticos medem plausibilidade e risco; não demonstram "
+                "previsibilidade do sorteio. A decisão continua sujeita às "
+                "probabilidades hipergeométricas exibidas."
+            ),
+        }
+
+        resultado.update({
+            "status": "ok",
+            "identidade": "Inteligência Magna",
+            "decisao_unica": True,
+            "justificativa_magna": justificativa,
+            "fontes_assimiladas": [
+                "geração combinatória", "consenso dos oráculos",
+                "wheeling 14/15", "análise histórica e recente",
+                "singularidade e filtros avançados", "auditoria e aprendizado",
+            ],
+            "pesos_fontes": pesos,
+            "top15_magna": [
+                int(x) for x in (np.argsort(vetor_final)[::-1][:15] + 1)
+            ],
+            "votos_consenso": {
+                str(i + 1): int(votos[i]) for i in range(TOTAL_DEZENAS)
+            },
+            "diagnostico_magna": diagnostico,
+            "memoria_magna": {
+                "top15_fontes": top15_fontes,
+                "vetor_final": [round(float(x), 10) for x in vetor_final],
+                "pesos_fontes": pesos,
+            },
+            "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None
+                                else (self.db.get_ultimo_concurso() or 0) + 1),
+        })
+
+        resultado["decisao_id"] = (
+            self._registrar_decisao_magna(resultado) if registrar else None
+        )
+        self.decisoes["magna"] = {
+            "id": resultado["decisao_id"],
+            "estrategia": estrategia,
+            "quantidade": resultado["n_cartelas"],
+            "top15": resultado["top15_magna"],
+        }
+        cb("Decisão Magna concluída: {} · auditoria #{}".format(
+            estrategia, resultado["decisao_id"] or "não persistida"))
+        return self._json_seguro(resultado)
+
+    def _registrar_decisao_magna(self, resultado):
+        conn = self.db.get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO magna_decisoes
+                (concurso_alvo, timestamp, quantidade, estrategia,
+                 cartelas_json, analise_json, justificativa, status)
+                VALUES (?,?,?,?,?,?,?,'aguardando')
+            """, (
+                int(resultado["concurso_alvo"]),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                int(resultado["n_cartelas"]),
+                str(resultado["estrategia"]),
+                json.dumps(self._json_seguro(resultado["cartelas"])),
+                json.dumps(self._json_seguro({
+                    "memoria": resultado["memoria_magna"],
+                    "diagnostico": resultado["diagnostico_magna"],
+                    "analise_lote": resultado["analise"],
+                })),
+                str(resultado["justificativa_magna"]),
+            ))
+            decisao_id = cursor.lastrowid
+            conn.commit()
+            return decisao_id
+        finally:
+            conn.close()
+
+    def aprender_resultado_magna(self, concurso, dezenas_reais):
+        """Serializa o fechamento do ciclo na mesma memória da decisão."""
+        with self._magna_lock:
+            return self._aprender_resultado_magna_sem_lock(
+                concurso, dezenas_reais)
+
+    def _aprender_resultado_magna_sem_lock(self, concurso, dezenas_reais):
+        """Fecha o ciclo único e ajusta o peso de cada fonte assimilada.
+
+        O ajuste é deliberadamente pequeno e auditável. Ele mede top-15 contra o
+        resultado real, sempre em dezenas 1..25, e não transforma ruído em
+        promessa de previsão.
+        """
+        concurso = int(concurso)
+        real = {int(d) for d in dezenas_reais}
+        if len(real) != 15:
+            return {"status": "erro", "msg": "resultado deve ter 15 dezenas"}
+
+        conn = self.db.get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute("""
+                SELECT * FROM magna_decisoes
+                WHERE concurso_alvo=? AND status='aguardando'
+                ORDER BY id
+            """, (concurso,)).fetchall()
+            aprendidas = []
+            for row in rows:
+                analise = json.loads(row["analise_json"])
+                top_fontes = analise["memoria"]["top15_fontes"]
+                antes = dict(self.pesos_fontes_magna)
+                acertos_fontes = {
+                    nome: len(set(int(d) for d in dezenas) & real)
+                    for nome, dezenas in top_fontes.items()
+                }
+                ajustados = {
+                    nome: max(0.01, antes[nome] *
+                              (1.0 + 0.02 * (acertos_fontes[nome] - 9)))
+                    for nome in antes
+                }
+                total = sum(ajustados.values())
+                depois = {
+                    nome: round(valor / total, 6)
+                    for nome, valor in ajustados.items()
+                }
+                self.pesos_fontes_magna = depois
+
+                cartelas = json.loads(row["cartelas_json"])
+                acertos_cartelas = [
+                    len(set(int(d) for d in c["dezenas"]) & real)
+                    for c in cartelas
+                ]
+                melhor = max(acertos_cartelas, default=0)
+                media = (sum(acertos_cartelas) / len(acertos_cartelas)
+                         if acertos_cartelas else 0.0)
+                resultado_json = {
+                    "dezenas_reais": sorted(real),
+                    "acertos_cartelas": acertos_cartelas,
+                    "acertos_fontes": acertos_fontes,
+                }
+                conn.execute("""
+                    UPDATE magna_decisoes SET
+                        status='conferida', resultado_json=?,
+                        melhor_acertos=?, media_acertos=?
+                    WHERE id=?
+                """, (
+                    json.dumps(resultado_json), melhor, round(media, 4), row["id"]
+                ))
+                for nome, acertos in acertos_fontes.items():
+                    conn.execute("""
+                        INSERT INTO magna_aprendizado
+                        (decisao_id, concurso, timestamp, fonte, acertos,
+                         peso_antes, peso_depois)
+                        VALUES (?,?,?,?,?,?,?)
+                    """, (
+                        row["id"], concurso,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        nome, int(acertos), float(antes[nome]),
+                        float(depois[nome]),
+                    ))
+                aprendidas.append({
+                    "decisao_id": row["id"], "melhor_acertos": melhor,
+                    "media_acertos": round(media, 2),
+                    "acertos_fontes": acertos_fontes,
+                })
+
+            if aprendidas:
+                self._salvar_pesos_fontes_magna(conn)
+            conn.commit()
+            return {
+                "status": "ok", "concurso": concurso,
+                "decisoes_aprendidas": aprendidas,
+                "pesos_fontes": dict(self.pesos_fontes_magna),
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_historico_magna(self, limit=20):
+        try:
+            conn = self.db.get_conn()
+            rows = conn.execute("""
+                SELECT id, concurso_alvo, timestamp, quantidade, estrategia,
+                       justificativa, status, melhor_acertos, media_acertos
+                FROM magna_decisoes ORDER BY id DESC LIMIT ?
+            """, (max(1, min(int(limit), 100)),)).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except sqlite3.Error:
+            return []
+
     @staticmethod
     def _mask_de_dezenas(dezenas) -> int:
         m = 0
@@ -1531,6 +1987,24 @@ class CerebroIA:
 
 
     def backtest_captura(self, k=10, n_pool=17, callback=None) -> Dict[str, Any]:
+        """Executa o backtest isolado e sempre restaura a memória de produção."""
+        with self._magna_lock:
+            matriz_original = self.matriz.copy()
+            raw_original = list(self.raw)
+            try:
+                return self._backtest_captura_sem_lock(
+                    k=k, n_pool=n_pool, callback=callback)
+            finally:
+                self._rng_vetor = None
+                if (self.matriz.shape != matriz_original.shape or
+                        not np.array_equal(self.matriz, matriz_original)):
+                    self.treinar(
+                        matriz_override=matriz_original,
+                        raw_override=raw_original,
+                    )
+
+    def _backtest_captura_sem_lock(self, k=10, n_pool=17,
+                                   callback=None) -> Dict[str, Any]:
         """
         Para cada um dos últimos k concursos:
           1. Treina o Cérebro SEM aquele concurso (e sem os posteriores)
@@ -1669,6 +2143,11 @@ class CerebroIA:
         return res[:n]
 
     def executar_ciclo(self, concurso: int) -> Dict:
+        """Executa conferência, aprendizado e nova decisão sem concorrência."""
+        with self._magna_lock:
+            return self._executar_ciclo_sem_lock(concurso)
+
+    def _executar_ciclo_sem_lock(self, concurso: int) -> Dict:
         t0 = time.time()
         self._log("CICLO", "=== CICLO {} ===".format(concurso))
         pesos_antes = dict(self.pesos)
@@ -1701,11 +2180,16 @@ class CerebroIA:
             conf = self._conferir(concurso, dezenas_reais, premios_reais)
 
             # 3) Aprende com o resultado real (fora-da-amostra).
-            self._aprender(concurso, conf, dezenas_reais, [])
+            self._aprender(concurso, conf, dezenas_reais)
 
             # 4) Gera e enfileira novas apostas para o PRÓXIMO concurso.
             proximo = concurso + 1
-            cartelas = self.gerar_cartelas(self.n_cartelas)
+            decisao = self.decidir_e_gerar(
+                quantidade=self.n_cartelas,
+                registrar=True,
+                concurso_alvo=proximo,
+            )
+            cartelas = decisao["cartelas"]
             self._salvar_fila(proximo, cartelas)
 
             resultado["status"] = "completo"
@@ -1917,13 +2401,18 @@ class CerebroIA:
 
     def get_status(self) -> Dict:
         return {
-            "versao": "8.0-Disruptiva",
+            "versao": "9.0-Magna-Unificada",
             "estado": self.estado,
             "treinado": self.treinado,
             "total_concursos": self.n,
             "ultima_exec": self.ultima_exec,
             "metricas": self.metricas,
             "pesos_modulos": self.pesos,
+            "inteligencia_magna": {
+                "unificada": True,
+                "pesos_fontes": dict(self.pesos_fontes_magna),
+                "ultima_decisao": self.decisoes.get("magna"),
+            },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],
                 "pares": [self._gaussiano.PARES_MIN, self._gaussiano.PARES_MAX],
@@ -1981,4 +2470,10 @@ class CerebroIA:
             rows = cursor.fetchall()
             conn.close()
             return [dict(r) for r in rows]
-        except Exception: return []
+        except Exception:
+            return []
+
+
+# Nome público único. `CerebroIA` permanece como classe-base/alias histórico
+# para não quebrar integrações; toda a aplicação instancia InteligenciaMagna.
+InteligenciaMagna = CerebroIA

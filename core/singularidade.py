@@ -30,8 +30,8 @@ que diferencia ciência de superstição.
 """
 
 import numpy as np
-from math import comb, log, sqrt, factorial
-from typing import List, Dict, Optional, Tuple
+from math import comb, log, factorial
+from typing import List, Dict, Tuple
 from scipy import stats
 from scipy.fft import rfft
 
@@ -425,7 +425,7 @@ class CoberturaSteiner:
         Limite inferior de Schönheim para o número de blocos de um
         C(v,k,t). Recursivo e EXATO como cota mínima.
         """
-        v, k, t = self.v, self.k, t
+        v, k = self.v, self.k
         if t == 1:
             # cobrir todo elemento: ceil(v/k)
             return (v + k - 1) // k
@@ -451,7 +451,10 @@ class CoberturaSteiner:
             resultado[t] = {
                 "limite_inferior_schonheim": lb,
                 "estimativa_ingenuo": round(ing),
-                "custo_estimado_R$": round(ing * VALOR_APOSTA, 2),
+                # O custo deve usar a mesma cota mostrada como quantidade.
+                # Antes a UI exibia 58.887 cartelas, mas multiplicava uma razão
+                # ingênua menor (49.527), produzindo um custo incoerente.
+                "custo_estimado_R$": round(lb * VALOR_APOSTA, 2),
             }
         return resultado
 

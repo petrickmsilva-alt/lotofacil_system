@@ -90,7 +90,7 @@ function carregarDados() {
 }
 
 function treinarIA() {
-    if (!confirm('Iniciar treinamento dos 14 Módulos do Cérebro IA?')) { return; }
+    if (!confirm('Assimilar novamente todo o histórico na memória única da Inteligência Magna?')) { return; }
     
     var progressSection = document.getElementById('progress-section');
     if (progressSection) progressSection.style.display = 'block';
@@ -99,6 +99,58 @@ function treinarIA() {
     fetch('/api/treinar_ia', { method: 'POST' })
         .then(function (r) { return r.json(); })
         .then(function () { atualizarStatus(); });
+}
+
+
+
+/* ── Sincronizar histórico incremental ─────────────────────── */
+function atualizarDados() {
+    var botao = document.getElementById('btn-atualizar-historico');
+    var mensagem = document.getElementById('historico-update-status');
+    if (botao) { botao.disabled = true; }
+    if (mensagem) { mensagem.textContent = 'Consultando fontes de resultados…'; }
+
+    fetch('/api/atualizar_dados', { method: 'POST' })
+        .then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok && r.status !== 409) {
+                    throw new Error(data.msg || 'Falha ao iniciar atualização');
+                }
+                return data;
+            });
+        })
+        .then(function () { aguardarAtualizacaoHistorico(botao, mensagem); })
+        .catch(function (err) {
+            if (botao) { botao.disabled = false; }
+            if (mensagem) { mensagem.textContent = 'Erro: ' + err.message; }
+        });
+}
+
+function aguardarAtualizacaoHistorico(botao, mensagem) {
+    fetch('/api/status')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (mensagem) { mensagem.textContent = data.progresso || ''; }
+            if (data.carregando) {
+                setTimeout(function () {
+                    aguardarAtualizacaoHistorico(botao, mensagem);
+                }, 1200);
+                return;
+            }
+            if (data.erro_atualizacao) {
+                if (botao) { botao.disabled = false; }
+                if (mensagem) {
+                    mensagem.textContent = 'Atualização parcial/erro: ' +
+                        data.erro_atualizacao;
+                }
+                return;
+            }
+            window.location.reload();
+        })
+        .catch(function (err) {
+            if (botao) { botao.disabled = false; }
+            if (mensagem) { mensagem.textContent = 'Erro: ' + err.message; }
+        });
 }
 
 // Atualiza sozinho a cada 5 segundos

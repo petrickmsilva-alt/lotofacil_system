@@ -11,10 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import numpy as np
 
-from core.wheeling import MotorWheeling, dezenas_para_mascara, _popcount
-from itertools import combinations
+from core.wheeling import MotorWheeling
 
 
 w = MotorWheeling()

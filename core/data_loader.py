@@ -6,63 +6,35 @@ Busca valores de prêmios REAIS da Caixa Econômica Federal
 API Oficial: servicebus2.caixa.gov.br
 ============================================================
 """
-import requests
-import time
 import json
-from datetime import datetime, date
+import sqlite3
+import time
+from datetime import datetime
 from config import PRIMOS, FIBONACCI, BORDA
 from database.db_manager import DBManager
 from .bitmatrix import BitMatrix
+from .caixa_client import CaixaClient
 
 
 class DataLoader:
+    """Sincroniza e valida o histórico usado pela Inteligência Magna."""
 
-    # URL oficial da API da Caixa
-    URL_BASE      = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-    URL_RESULTADO = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{}"
-
-    HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept":          "application/json, text/plain, */*",
-        "Accept-Language": "pt-BR,pt;q=0.9",
-        "Origin":          "https://loterias.caixa.gov.br",
-        "Referer":         "https://loterias.caixa.gov.br/",
-    }
-
-    def __init__(self):
-        self.db         = DBManager()
-        self.bitmatrix  = BitMatrix()
-        self.session    = requests.Session()
-        self.session.headers.update(self.HEADERS)
+    def __init__(self, db_path=None, client=None):
+        self.db = DBManager(db_path)
+        self.bitmatrix = BitMatrix()
+        self.client = client or CaixaClient()
 
     # =========================================================
     # BUSCA DE RESULTADOS
     # =========================================================
 
     def buscar_ultimo_resultado(self):
-        """Busca o resultado mais recente (sem número = último)"""
-        try:
-            resp = self.session.get(self.URL_BASE, timeout=20)
-            if resp.status_code == 200:
-                return resp.json()
-        except Exception as e:
-            print(f"[ERRO] Último resultado: {e}")
-        return None
+        """Busca o último resultado com contingência e diagnóstico de fonte."""
+        return self.client.buscar_ultimo()
 
     def buscar_concurso(self, numero):
-        """Busca resultado de um concurso específico"""
-        try:
-            url  = self.URL_RESULTADO.format(numero)
-            resp = self.session.get(url, timeout=20)
-            if resp.status_code == 200:
-                return resp.json()
-        except Exception as e:
-            print(f"[ERRO] Concurso {numero}: {e}")
-        return None
+        """Busca um concurso específico com a mesma política de fontes."""
+        return self.client.buscar_concurso(numero)
 
     # =========================================================
     # EXTRAÇÃO DE PRÊMIOS REAIS
@@ -160,82 +132,73 @@ class DataLoader:
     # =========================================================
 
     def processar_e_salvar(self, data_json):
-        """Processa JSON da Caixa e salva no banco completo"""
+        """Valida integralmente um resultado e confirma a gravação no SQLite."""
         try:
-            concurso     = int(data_json.get("numero", 0))
-            data_sorteio = data_json.get("dataApuracao", "")
+            if not isinstance(data_json, dict):
+                raise ValueError("resultado deve ser um objeto JSON")
+            concurso = int(data_json.get("numero", 0))
+            if concurso < 1:
+                raise ValueError("número do concurso ausente ou inválido")
 
-            # Normalizar data
-            try:
-                dt = datetime.strptime(data_sorteio, "%d/%m/%Y")
-                data_sorteio = dt.strftime("%Y-%m-%d")
-            except Exception:
-                pass
+            data_sorteio = str(data_json.get("dataApuracao", "")).strip()
+            data_normalizada = None
+            for formato in ("%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    data_normalizada = datetime.strptime(
+                        data_sorteio, formato).strftime("%Y-%m-%d")
+                    break
+                except ValueError:
+                    continue
+            if data_normalizada is None:
+                raise ValueError("data de apuração inválida: {}".format(
+                    data_sorteio))
 
-            # Dezenas
-            dezenas_str = data_json.get("listaDezenas", [])
-            dezenas     = sorted([int(d) for d in dezenas_str])
+            dezenas = sorted(int(d) for d in data_json.get("listaDezenas", []))
+            if (len(dezenas) != 15 or len(set(dezenas)) != 15 or
+                    any(d < 1 or d > 25 for d in dezenas)):
+                raise ValueError("o resultado deve ter 15 dezenas únicas entre 1 e 25")
 
-            if len(dezenas) != 15:
-                return False
+            existente = self.db.get_resultado_concurso(concurso)
+            if existente is not None:
+                dezenas_locais = sorted(
+                    int(existente["d{}".format(i)]) for i in range(1, 16)
+                )
+                if dezenas_locais != dezenas:
+                    raise ValueError(
+                        "conflito no concurso {}: local={} fonte={}".format(
+                            concurso, dezenas_locais, dezenas)
+                    )
 
-            # Bitmask
             bitmask = self.bitmatrix.dezenas_para_bitmask(dezenas)
-
-            # Métricas
-            soma, pares, impares, primos_c, fib_c, borda_c, max_cons = \
-                self.calcular_metricas(dezenas)
-
-            # Prêmios REAIS
-            premios    = self.extrair_premios(data_json)
+            metricas = self.calcular_metricas(dezenas)
+            soma, pares, impares, primos_c, fib_c, borda_c, max_cons = metricas
+            premios = self.extrair_premios(data_json)
             ganhadores = self.extrair_ganhadores(data_json)
 
-            # Acumulado
-            acumulado = data_json.get("valorArrecadado", 0) or 0
-            if isinstance(acumulado, str):
-                try:
-                    acumulado = float(
-                        acumulado.replace("R$","")
-                                 .replace(".","")
-                                 .replace(",",".")
-                                 .strip()
-                    )
-                except Exception:
-                    acumulado = 0.0
+            arrecadacao = data_json.get("valorArrecadado", 0) or 0
+            if isinstance(arrecadacao, str):
+                arrecadacao = CaixaClient._valor_monetario(arrecadacao)
 
             dados = (
-                concurso,
-                data_sorteio,
-                *dezenas,                    # d1..d15
-                bitmask,
-                soma,
-                pares,
-                impares,
-                primos_c,
-                fib_c,
-                borda_c,
+                concurso, data_normalizada, *dezenas,
+                bitmask, soma, pares, impares, primos_c, fib_c, borda_c,
                 max_cons,
-                # Prêmios reais
-                float(premios[11]),
-                float(premios[12]),
-                float(premios[13]),
-                float(premios[14]),
+                float(premios[11]), float(premios[12]),
+                float(premios[13]), float(premios[14]),
                 float(premios[15]),
-                # Ganhadores
-                int(ganhadores[11]),
-                int(ganhadores[12]),
-                int(ganhadores[13]),
-                int(ganhadores[14]),
-                int(ganhadores[15]),
-                # Arrecadação
-                float(acumulado),
+                int(ganhadores[11]), int(ganhadores[12]),
+                int(ganhadores[13]), int(ganhadores[14]),
+                int(ganhadores[15]), float(arrecadacao),
             )
-
-            self.db.inserir_resultado(dados)
+            preservar_premios = not bool(
+                data_json.get("_premios_disponiveis", bool(
+                    data_json.get("listaRateioPremio")))
+            )
+            self.db.inserir_resultado(
+                dados, preservar_premios=preservar_premios)
             return True
-
-        except Exception as e:
-            print(f"[ERRO] Processar concurso: {e}")
+        except (TypeError, ValueError, OverflowError, OSError, sqlite3.Error) as exc:
+            print("[HISTÓRICO] Concurso rejeitado: {}".format(exc))
             return False
 
     # =========================================================
@@ -243,72 +206,138 @@ class DataLoader:
     # =========================================================
 
     def carregar_historico_completo(self, callback=None):
-        """
-        Carrega TODOS os resultados desde o concurso 1.
-        Usa busca binária para localizar o primeiro concurso.
-        """
+        """Preenche todos os concursos ausentes até a última fonte disponível."""
+        return self._sincronizar_historico(callback=callback, completo=True)
 
+    def _registrar_sincronizacao(self, inicio, resultado):
+        try:
+            self.db.registrar_atualizacao_historico((
+                inicio,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                resultado.get("status", "erro"),
+                resultado.get("fonte"),
+                int(resultado.get("ultimo_banco_antes", 0)),
+                int(resultado.get("ultimo_remoto", 0)),
+                int(resultado.get("ultimo_banco_depois", 0)),
+                int(resultado.get("novos", 0)),
+                int(resultado.get("recuperados", 0)),
+                int(resultado.get("erros", 0)),
+                json.dumps({
+                    "msg": resultado.get("msg"),
+                    "falhas": resultado.get("falhas", []),
+                    "diagnostico": resultado.get("diagnostico", {}),
+                }, ensure_ascii=False),
+            ))
+        except Exception as exc:
+            print("[HISTÓRICO] Falha ao gravar auditoria: {}".format(exc))
+
+    def _sincronizar_historico(self, callback=None, completo=False):
+        inicio = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ultimo_antes = self.db.get_ultimo_concurso() or 0
+        resultado_base = {
+            "status": "erro", "fonte": None,
+            "ultimo_banco_antes": ultimo_antes,
+            "ultimo_remoto": 0, "ultimo_banco_depois": ultimo_antes,
+            "novos": 0, "recuperados": 0, "erros": 0, "falhas": [],
+        }
         if callback:
-            callback(0, 0, 1, "Buscando último concurso...")
+            callback(0, 0, 1, "Consultando resultado mais recente...")
 
-        # Buscar último concurso
         ultimo_data = self.buscar_ultimo_resultado()
+        diagnostico = self.client.diagnostico()
+        resultado_base["diagnostico"] = diagnostico
         if not ultimo_data:
-            return {
-                "status": "erro",
-                "msg": "Não foi possível acessar a API da Caixa"
-            }
+            resultado_base.update({
+                "msg": "Nenhuma fonte de resultados respondeu. "
+                       "Consulte o diagnóstico da atualização.",
+                "erros": 1,
+            })
+            self._registrar_sincronizacao(inicio, resultado_base)
+            return resultado_base
 
-        ultimo_concurso = int(ultimo_data.get("numero", 0))
-        self.processar_e_salvar(ultimo_data)
+        try:
+            ultimo_remoto = int(ultimo_data.get("numero", 0))
+        except (TypeError, ValueError):
+            ultimo_remoto = 0
+        fonte = ultimo_data.get("_fonte") or diagnostico.get("fonte")
+        resultado_base.update({"fonte": fonte, "ultimo_remoto": ultimo_remoto})
+        if ultimo_remoto < 1:
+            resultado_base.update({"msg": "Fonte retornou concurso inválido", "erros": 1})
+            self._registrar_sincronizacao(inicio, resultado_base)
+            return resultado_base
 
-        if callback:
-            callback(ultimo_concurso, 1, ultimo_concurso,
-                     f"Último concurso: {ultimo_concurso}")
+        if ultimo_remoto < ultimo_antes:
+            resultado_base.update({
+                "status": "aviso",
+                "msg": (
+                    "A fonte {} está atrás do banco local ({} < {}). "
+                    "Nenhum dado foi sobrescrito."
+                ).format(fonte, ultimo_remoto, ultimo_antes),
+            })
+            self._registrar_sincronizacao(inicio, resultado_base)
+            return resultado_base
 
-        # Descobrir quais concursos faltam
-        concursos_faltantes = self._descobrir_faltantes(ultimo_concurso)
+        faltantes = self._descobrir_faltantes(ultimo_remoto)
+        # Atualiza rateio/metadados do último mesmo quando ele já existe.
+        if ultimo_remoto not in faltantes:
+            if not self.processar_e_salvar(ultimo_data):
+                resultado_base["erros"] += 1
+                resultado_base["falhas"].append({
+                    "concurso": ultimo_remoto,
+                    "erro": "último concurso não passou na validação",
+                })
 
-        total      = len(concursos_faltantes)
-        carregados = 0
-        erros      = 0
-
+        alvos = faltantes if completo else faltantes
+        total = len(alvos)
         if callback:
             callback(0, 0, total,
-                     f"Baixando {total} concursos faltantes...")
+                     "Sincronizando {} concurso(s) ausente(s)...".format(total))
 
-        for idx, concurso in enumerate(concursos_faltantes):
-            try:
-                data = self.buscar_concurso(concurso)
-                if data:
-                    ok = self.processar_e_salvar(data)
-                    if ok:
-                        carregados += 1
-                    else:
-                        erros += 1
+        for indice, concurso in enumerate(alvos, 1):
+            dados = (ultimo_data if concurso == ultimo_remoto
+                     else self.buscar_concurso(concurso))
+            if not dados:
+                resultado_base["erros"] += 1
+                resultado_base["falhas"].append({
+                    "concurso": concurso,
+                    "erro": self.client.diagnostico(),
+                })
+            elif self.processar_e_salvar(dados):
+                if concurso > ultimo_antes:
+                    resultado_base["novos"] += 1
                 else:
-                    erros += 1
+                    resultado_base["recuperados"] += 1
+            else:
+                resultado_base["erros"] += 1
+                resultado_base["falhas"].append({
+                    "concurso": concurso,
+                    "erro": "resultado rejeitado pela validação",
+                })
 
-                # Respeitar rate limit da Caixa
-                time.sleep(0.25)
+            if dados and dados.get("_fonte") != "github_snapshot":
+                time.sleep(0.08)
+            if callback and (indice == total or indice % 10 == 0):
+                callback(concurso, indice - resultado_base["erros"], total,
+                         "Concurso {} ({}/{})".format(concurso, indice, total))
 
-                if callback and (idx % 10 == 0 or idx == total - 1):
-                    callback(
-                        concurso, carregados, total,
-                        f"Concurso {concurso} ({carregados}/{total})"
-                    )
-
-            except Exception as e:
-                erros += 1
-                print(f"[ERRO] Concurso {concurso}: {e}")
-
-        return {
-            "status":          "ok",
-            "ultimo_concurso": ultimo_concurso,
-            "total_carregados": carregados,
-            "erros":           erros,
-            "total_no_banco":  self.db.get_ultimo_concurso(),
-        }
+        ultimo_depois = self.db.get_ultimo_concurso() or 0
+        restantes = self._descobrir_faltantes(max(ultimo_remoto, ultimo_depois))
+        resultado_base["ultimo_banco_depois"] = ultimo_depois
+        resultado_base["faltantes_restantes"] = restantes[:100]
+        if resultado_base["erros"]:
+            resultado_base["status"] = "parcial" if ultimo_depois >= ultimo_antes else "erro"
+        else:
+            resultado_base["status"] = "ok"
+        resultado_base["msg"] = (
+            "Histórico sincronizado pela fonte {}: banco {} → {}; "
+            "{} novo(s), {} recuperado(s), {} erro(s)."
+        ).format(
+            fonte, ultimo_antes, ultimo_depois,
+            resultado_base["novos"], resultado_base["recuperados"],
+            resultado_base["erros"],
+        )
+        self._registrar_sincronizacao(inicio, resultado_base)
+        return resultado_base
 
     def _descobrir_faltantes(self, ultimo_concurso):
         """Descobre quais concursos não estão no banco"""
@@ -329,56 +358,8 @@ class DataLoader:
     # =========================================================
 
     def atualizar_diario(self):
-        """
-        Atualização diária automática.
-        Verifica se há novos concursos e baixa apenas os novos.
-        Também atualiza os prêmios do último concurso (rateio).
-        """
-        ultimo_no_banco = self.db.get_ultimo_concurso() or 0
-
-        # Buscar último da Caixa
-        ultimo_data = self.buscar_ultimo_resultado()
-        if not ultimo_data:
-            return {
-                "status": "erro",
-                "msg":    "Sem conexão com a Caixa"
-            }
-
-        ultimo_caixa = int(ultimo_data.get("numero", 0))
-
-        # Sempre re-salvar o último (pode ter rateio atualizado)
-        self.processar_e_salvar(ultimo_data)
-
-        novos = 0
-        if ultimo_caixa > ultimo_no_banco:
-            for c in range(ultimo_no_banco + 1, ultimo_caixa + 1):
-                data = self.buscar_concurso(c)
-                if data:
-                    self.processar_e_salvar(data)
-                    novos += 1
-                time.sleep(0.3)
-
-        # Verificar faltantes antigos
-        faltantes = self._descobrir_faltantes(ultimo_caixa)
-        recuperados = 0
-        for c in faltantes[:20]:   # no máximo 20 por vez
-            data = self.buscar_concurso(c)
-            if data:
-                self.processar_e_salvar(data)
-                recuperados += 1
-            time.sleep(0.3)
-
-        return {
-            "status":          "ok",
-            "ultimo_caixa":    ultimo_caixa,
-            "ultimo_banco":    ultimo_no_banco,
-            "novos":           novos,
-            "recuperados":     recuperados,
-            "msg": (
-                f"Atualizado até concurso {ultimo_caixa}. "
-                f"{novos} novos, {recuperados} recuperados."
-            ),
-        }
+        """Sincronização incremental validada, com recuperação de lacunas."""
+        return self._sincronizar_historico(callback=None, completo=False)
 
     # =========================================================
     # BUSCAR PRÊMIOS AO VIVO DO PRÓXIMO SORTEIO
@@ -432,17 +413,20 @@ class DataLoader:
         return self.db.get_premios_concurso(concurso)
 
     def get_status_base(self):
-        """Status completo da base de dados"""
+        """Integridade local, última execução e diagnóstico das fontes."""
         ultimo = self.db.get_ultimo_concurso() or 0
-        conn   = self.db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM resultados")
-        total = cursor.fetchone()[0]
+        conn = self.db.get_conn()
+        total = conn.execute("SELECT COUNT(*) FROM resultados").fetchone()[0]
         conn.close()
-
+        ultima = self.db.get_ultima_atualizacao_historico()
+        faltantes = self._descobrir_faltantes(ultimo) if ultimo else []
         return {
             "ultimo_concurso": ultimo,
             "total_concursos": total,
-            "cobertura":       f"{total}/{ultimo}" if ultimo else "0/0",
-            "atualizado_em":   datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "cobertura": f"{total}/{ultimo}" if ultimo else "0/0",
+            "faltantes": faltantes,
+            "base_integra": not faltantes and total == ultimo,
+            "ultima_atualizacao": dict(ultima) if ultima else None,
+            "diagnostico_fonte": self.client.diagnostico(),
+            "consultado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }

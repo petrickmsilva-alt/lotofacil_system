@@ -6,6 +6,7 @@ Roda como:
     python tests/test_otimas.py
 """
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,8 +17,11 @@ from core.cerebro_ia import CerebroIA
 
 
 @pytest.fixture(scope="module")
-def cerebro():
-    c = CerebroIA()
+def cerebro(tmp_path_factory):
+    from config import DATABASE_PATH
+    caminho = tmp_path_factory.mktemp("otimas") / "teste.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    c = CerebroIA(db_path=str(caminho))
     c.treinar()
     return c
 

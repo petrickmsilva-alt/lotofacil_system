@@ -4,7 +4,7 @@ MÓDULO FINANCEIRO
 Calcula custos, prêmios e lucros
 ============================================================
 """
-from config import VALOR_APOSTA, PREMIOS_FIXOS, PREMIOS_RATEADOS_MEDIA
+from config import VALOR_APOSTA, PREMIOS_FIXOS
 from database.db_manager import DBManager
 from datetime import datetime
 
@@ -23,9 +23,10 @@ class Financeiro:
         if acertos in PREMIOS_FIXOS:
             return PREMIOS_FIXOS[acertos]
         elif acertos == 14:
-            return valor_rateio_14 or PREMIOS_RATEADOS_MEDIA[14]
+            # Financeiro realizado não pode transformar média em prêmio real.
+            return float(valor_rateio_14 or 0.0)
         elif acertos == 15:
-            return valor_rateio_15 or PREMIOS_RATEADOS_MEDIA[15]
+            return float(valor_rateio_15 or 0.0)
         return 0
 
     def registrar_resultado_financeiro(self, concurso, cartelas_conferidas,
@@ -59,7 +60,26 @@ class Financeiro:
             premio_total, lucro
         )
 
-        self.db.inserir_financeiro(dados)
+        # Reconciliação idempotente: uma nova conferência substitui o resumo
+        # do concurso inteiro. Assim, cartelas adicionadas depois e migrações de
+        # BLOB não deixam o financeiro congelado no primeiro cálculo.
+        conn = self.db.get_conn()
+        try:
+            conn.execute("DELETE FROM financeiro WHERE concurso = ?", (concurso,))
+            conn.execute("""
+                INSERT INTO financeiro (
+                    concurso, data, qtd_cartelas, custo_total,
+                    acertos_11, acertos_12, acertos_13, acertos_14, acertos_15,
+                    premio_11, premio_12, premio_13, premio_14, premio_15,
+                    premio_total, lucro_liquido
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, dados)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
         return {
             'concurso': concurso,

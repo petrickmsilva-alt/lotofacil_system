@@ -1,26 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Histórico - LotoFácil IA{% endblock %}
+{% block title %}Histórico - Inteligência Magna{% endblock %}
 {% block page_title %}<i class="fas fa-database"></i> Histórico de Resultados{% endblock %}
 
 {% block content %}
+<div class="cards-grid" style="margin-bottom:16px;">
+    <div class="card card-primary">
+        <div class="card-icon"><i class="fas fa-database"></i></div>
+        <div class="card-info"><h3>{{ status_base.ultimo_concurso }}</h3><p>Último concurso local</p></div>
+    </div>
+    <div class="card {{ 'card-success' if status_base.base_integra else 'card-warning' }}">
+        <div class="card-icon"><i class="fas fa-shield-check"></i></div>
+        <div class="card-info">
+            <h3>{{ 'Íntegra' if status_base.base_integra else 'Com lacunas' }}</h3>
+            <p>{{ status_base.cobertura }} concursos · {{ status_base.faltantes|length }} faltante(s)</p>
+        </div>
+    </div>
+    <div class="card card-info">
+        <div class="card-icon"><i class="fas fa-satellite-dish"></i></div>
+        <div class="card-info">
+            {% if status_base.ultima_atualizacao %}
+            <h3>{{ status_base.ultima_atualizacao.fonte or 'sem fonte' }}</h3>
+            <p>Última tentativa: {{ status_base.ultima_atualizacao.fim }}</p>
+            {% else %}
+            <h3>Não testada</h3><p>Nenhuma sincronização auditada</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <div class="section">
     <div class="section-header">
-        <h2>Últimos 100 Concursos</h2>
-        <button onclick="atualizarDados()" class="btn btn-sm btn-primary">
-            <i class="fas fa-sync"></i> Atualizar
+        <div>
+            <h2>Últimos 100 Concursos</h2>
+            <small id="historico-update-status" style="color:var(--text-muted);">
+                {% if status_base.ultima_atualizacao %}
+                    {{ status_base.ultima_atualizacao.status }} · banco {{ status_base.ultima_atualizacao.ultimo_local_depois }}
+                {% else %}
+                    Pronto para verificar novos resultados
+                {% endif %}
+            </small>
+        </div>
+        <button id="btn-atualizar-historico" onclick="atualizarDados()"
+                class="btn btn-sm btn-primary">
+            <i class="fas fa-sync"></i> Verificar e atualizar
         </button>
     </div>
 
     <div class="table-container">
         <table class="table">
             <thead>
-                <tr>
-                    <th>Concurso</th>
-                    <th>Data</th>
-                    <th>Dezenas</th>
-                    <th>Soma</th>
-                    <th>Par/Ímpar</th>
-                </tr>
+                <tr><th>Concurso</th><th>Data</th><th>Dezenas</th><th>Soma</th><th>Par/Ímpar</th></tr>
             </thead>
             <tbody>
                 {% for r in resultados %}
@@ -28,9 +57,7 @@
                     <td><strong>{{ r.concurso }}</strong></td>
                     <td>{{ r.data }}</td>
                     <td class="dezenas-cell">
-                        {% for d in r.dezenas %}
-                        <span class="bola-mini">{{ "%02d"|format(d) }}</span>
-                        {% endfor %}
+                        {% for d in r.dezenas %}<span class="bola-mini">{{ "%02d"|format(d) }}</span>{% endfor %}
                     </td>
                     <td>{{ r.soma }}</td>
                     <td>{{ r.pares }}P / {{ 15 - r.pares }}I</td>
