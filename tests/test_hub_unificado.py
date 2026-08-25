@@ -58,9 +58,17 @@ def test_paginas_antigas_redirecionam_para_magna(client, rota):
 def test_menus_do_sistema_continuam_independentes(client):
     for rota in (
         "/conferencia", "/financeiro_page", "/historico", "/premios",
-        "/",
     ):
         assert client.get(rota).status_code == 200, rota
+    home = client.get("/")
+    assert home.status_code in (301, 302, 303, 307, 308)
+    assert home.headers["Location"].endswith("/cerebro")
+
+
+def test_dashboard_saiu_do_menu(client):
+    body = client.get("/cerebro").data.decode("utf-8")
+    assert "> Dashboard<" not in body
+    assert "Inteligência Magna" in body
 
 
 def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):

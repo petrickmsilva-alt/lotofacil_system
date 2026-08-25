@@ -1446,7 +1446,8 @@ class CerebroIA:
             cb("Treinando os 14 motores...")
             self.treinar(callback=callback)
 
-        vf = self._vetor_combinado()
+        vf = (self._normalizar_vetor(vetor_override)
+              if vetor_override is not None else self._vetor_combinado())
         pool_elite = sorted(int(d) for d in self._selecionar_elite(vf, 17))
         cb("Vetor combinado pronto · pool elite: {}".format(pool_elite))
 
@@ -1820,6 +1821,8 @@ class CerebroIA:
                                 else (self.db.get_ultimo_concurso() or 0) + 1),
         })
 
+        resultado["agentes_magna"] = self._agentes_autonomos_refinar(
+            resultado, vetor_final, fontes)
         resultado["decisao_id"] = (
             self._registrar_decisao_magna(resultado) if registrar else None
         )
@@ -1960,6 +1963,111 @@ class CerebroIA:
             raise
         finally:
             conn.close()
+
+    def ciclo_pos_sorteio_caixa(self, callback=None) -> Dict[str, Any]:
+        """Após um sorteio da Caixa: treina, confere, aprende e planeja.
+
+        Substitui o botão 'Treinar IA' do Dashboard. O ciclo é idempotente
+        sobre decisões já conferidas e sempre reassimila a matriz atual.
+        """
+        with self._magna_lock:
+            def cb(msg):
+                self._log("POS-SORTEIO", msg)
+                if callback:
+                    callback(msg)
+
+            cb("Recarregando histórico oficial...")
+            self.matriz, self.raw = self._ingestor.carregar_matriz()
+            self.n = len(self.matriz)
+            treino = self.treinar(callback=callback)
+
+            ultimo = int(self.db.get_ultimo_concurso() or 0)
+            aprendizado = {"status": "ok", "decisoes_aprendidas": []}
+            if ultimo:
+                row = self.db.get_resultado_concurso(ultimo)
+                if row:
+                    dezenas = [int(row["d{}".format(i)]) for i in range(1, 16)]
+                    aprendizado = self._aprender_resultado_magna_sem_lock(
+                        ultimo, dezenas)
+                    try:
+                        self._aprender(
+                            ultimo,
+                            {"melhor_acertos": aprendizado.get(
+                                "decisoes_aprendidas", [{}])[0].get(
+                                "melhor_acertos", 0)
+                             if aprendizado.get("decisoes_aprendidas") else 0},
+                            dezenas,
+                        )
+                    except Exception as exc:
+                        self._log("AVISO", "Ajuste de motores: {}".format(exc))
+
+            plano = self._planejar_alvo_13_14_15()
+            critica = self._autocriticar_memoria()
+            cb("Ciclo pós-sorteio concluído · concurso {}".format(ultimo))
+            return {
+                "status": "ok",
+                "concurso": ultimo,
+                "treino": treino,
+                "aprendizado": aprendizado,
+                "plano": plano,
+                "autocritica": critica,
+                "msg": "Magna assimilou o concurso {} e reajustou a memória"
+                       .format(ultimo),
+            }
+
+    def _planejar_alvo_13_14_15(self) -> Dict[str, Any]:
+        """Escolhe o modo que maximiza cobertura de 13+ sem mudar o pipeline."""
+        n = max(1, int(self.n_cartelas))
+        if n >= 8:
+            modo = "wheeling-garantia-14"
+            motivo = "lote grande: garantia condicional de 14 no pool de 17"
+        elif n >= 2:
+            modo = "exaustao-diversa"
+            motivo = "diversidade para elevar a chance de 13 no lote"
+        else:
+            modo = "exaustao-unica"
+            motivo = "uma cartela: melhor ranking do universo unificado"
+        return {"modo_recomendado": modo, "n_cartelas": n, "motivo": motivo}
+
+    def _autocriticar_memoria(self) -> Dict[str, Any]:
+        historico = self.get_historico_magna(30)
+        conferidas = [d for d in historico if d.get("status") == "conferida"]
+        if not conferidas:
+            return {"veredito": "sem amostra", "media": 0.0, "esforco": False}
+        medias = [float(d.get("media_acertos") or 0) for d in conferidas]
+        media = sum(medias) / len(medias)
+        esforco = media < 11.0
+        return {
+            "veredito": ("abaixo do esperado: reforçar diversidade e wheeling"
+                         if esforco else "desempenho estável na faixa típica"),
+            "media": round(media, 3),
+            "n": len(conferidas),
+            "esforco": esforco,
+        }
+
+    def _agentes_autonomos_refinar(self, resultado, vetor_final, fontes):
+        """Agentes internos: monitoram, criticam e priorizam 13/14/15."""
+        analise = resultado.get("analise") or {}
+        p14 = float(analise.get("p_melhor_14_mais") or 0)
+        p13 = float(analise.get("p_melhor_13_mais") or
+                    analise.get("p_melhor_13") or 0)
+        critica = self._autocriticar_memoria()
+        plano = self._planejar_alvo_13_14_15()
+        alerta = []
+        if critica.get("esforco"):
+            alerta.append("aprendizado por esforço: média histórica < 11")
+        if resultado.get("estrategia") != plano["modo_recomendado"]:
+            alerta.append("estratégia alinhada ao orçamento informado")
+        return {
+            "monitor": {"p_lote_14_mais": p14, "p_lote_13_ref": p13},
+            "plano": plano,
+            "autocritica": critica,
+            "alertas": alerta,
+            "raciocinio": (
+                "Fontes fundidas no vetor único; ranking favorece 13+ "
+                "via diversidade/wheeling sem alterar a estrutura."
+            ),
+        }
 
     def get_historico_magna(self, limit=20):
         try:

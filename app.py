@@ -222,36 +222,8 @@ def _salvar_cartelas_banco(cartelas, concurso_alvo, tipo="magna",
 
 @app.route("/")
 def index():
-    status_sistema["ultimo_concurso"]  = db.get_ultimo_concurso() or 0
-    status_sistema["total_concursos"]  = db.get_total_concursos() or 0
-    status_sistema["dados_carregados"] = status_sistema["ultimo_concurso"] > 0
-    status_sistema["ia_treinada"]      = cerebro.treinado
-
-    resumo_fin  = financeiro.get_resumo_geral()
-    resumo_conf = conferencia.resumo_conferencia()
-
-    cerebro_status = cerebro.get_status()
-    ia_status = {
-        "versao":           cerebro_status.get("versao", "9.0"),
-        "treinado":         cerebro_status.get("treinado", False),
-        "concursos_treino": cerebro_status.get("total_concursos", 0),
-        "fontes_assimiladas": len(magna.pesos_fontes_magna),
-        "pesos": dict(magna.pesos_fontes_magna),
-    }
-
-    conf_simples = {}
-    for pts, dados in resumo_conf.items():
-        conf_simples[pts] = dados.get("qtd", 0) \
-            if isinstance(dados, dict) else dados
-
-    return render_template(
-        "index.html",
-        status       = status_sistema,
-        financeiro   = resumo_fin,
-        conferencia  = conf_simples,
-        ia_status    = ia_status,
-        valor_aposta = VALOR_APOSTA,
-    )
+    """O Dashboard foi absorvido: a entrada do sistema é a Inteligência Magna."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/historico")
@@ -1297,6 +1269,13 @@ if __name__ == "__main__":
         print("[AVISO] Carregue o histórico primeiro")
 
     status_sistema["ia_treinada"] = cerebro.treinado
+
+    # Monitora a Caixa em segundo plano: novo sorteio → treino + aprendizado.
+    try:
+        cerebro.iniciar_loop(int(os.getenv("LOTOFACIL_LOOP_SEG", "1800")))
+        print("[MAGNA] Loop autônomo de monitoramento da Caixa iniciado")
+    except Exception as exc:
+        print("[AVISO] Loop Magna: {}".format(exc))
 
     host = os.getenv("LOTOFACIL_HOST", "127.0.0.1")
     port = int(os.getenv("LOTOFACIL_PORT", "5000"))
