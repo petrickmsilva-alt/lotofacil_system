@@ -2230,7 +2230,15 @@ class CerebroIA:
         }
 
     def decidir_ancoradas_01_02_03(self, registrar=True, concurso_alvo=None):
-        """Opção extra: 3 cartelas começando em 01, 02 e 03 + 14 da Magna."""
+        """Opção extra: 3 cartelas âncora exclusivas + 14 dezenas da Magna.
+
+        Regras de composição (exigência do usuário):
+        - Cartela 1: começa com a dezena 01 + 14 dezenas do ranking Magna.
+        - Cartela 2: começa com a dezena 02 + 14 dezenas, SEM a dezena 01.
+        - Cartela 3: começa com a dezena 03 + 14 dezenas, SEM as dezenas
+          01 e 02.
+        Assim, ordenadas, as cartelas sempre iniciam em 01, 02 e 03.
+        """
         with self._magna_lock:
             if not self.treinado:
                 self.treinar()
@@ -2244,12 +2252,16 @@ class CerebroIA:
             ranking = [int(x) for x in (np.argsort(vetor)[::-1] + 1)]
             bloqueadas = self._carregar_episodios("repulsao", 150)
             sets_ruins = [set(e["dezenas"]) for e in bloqueadas]
+            # Exclusividade das âncoras: a cartela do 02 não pode conter o 01
+            # e a cartela do 03 não pode conter 01 nem 02.
+            excluidas_por_ancora = {1: set(), 2: {1}, 3: {1, 2}}
             cartelas = []
             usadas = []
             for ancora in (1, 2, 3):
+                excluidas = excluidas_por_ancora[ancora]
                 escolhidas = [ancora]
                 for d in ranking:
-                    if d in escolhidas:
+                    if d in escolhidas or d in excluidas:
                         continue
                     cand = escolhidas + [d]
                     if len(cand) < 15:
@@ -2258,14 +2270,14 @@ class CerebroIA:
                     s = set(cand)
                     if any(len(s & r) >= 14 for r in sets_ruins):
                         continue
-                    if any(len(s & set(u)) >= 13 for u in usadas):
+                    if any(len(s & set(u)) >= 14 for u in usadas):
                         continue
                     escolhidas.append(d)
                     if len(escolhidas) >= 15:
                         break
                 while len(escolhidas) < 15:
                     for d in ranking:
-                        if d not in escolhidas:
+                        if d not in escolhidas and d not in excluidas:
                             escolhidas.append(d)
                             break
                 dez = sorted(escolhidas[:15])
@@ -2274,6 +2286,7 @@ class CerebroIA:
                 cartelas.append({
                     "dezenas": dez,
                     "ancora": ancora,
+                    "dezenas_excluidas": sorted(excluidas),
                     "bitmask": self._mask_de_dezenas(dez),
                     "score_total": round(float(sum(vetor[d - 1] for d in dez)), 6),
                     "soma": det.get("soma"), "pares": det.get("pares"),
@@ -2302,9 +2315,24 @@ class CerebroIA:
                 "custo": round(3 * VALOR_APOSTA, 2),
                 "analise": analise,
                 "justificativa_magna": (
-                    "Opção extra: três cartelas da memória unificada, "
-                    "fixando 01, 02 e 03 e completando 14 dezenas pelo ranking Magna."
+                    "Opção extra: três cartelas âncora exclusivas da memória "
+                    "unificada. Cartela 1 = 01 + 14 dezenas Magna; Cartela 2 "
+                    "= 02 + 14 dezenas (sem a 01); Cartela 3 = 03 + 14 "
+                    "dezenas (sem 01 e 02). Ordenadas, as cartelas começam "
+                    "obrigatoriamente em 01, 02 e 03."
                 ),
+                "validacao_ancoras": {
+                    "cartela_1_inicia_em_01": cartelas[0]["dezenas"][0] == 1,
+                    "cartela_2_inicia_em_02_sem_01": (
+                        cartelas[1]["dezenas"][0] == 2
+                        and 1 not in cartelas[1]["dezenas"]
+                    ),
+                    "cartela_3_inicia_em_03_sem_01_02": (
+                        cartelas[2]["dezenas"][0] == 3
+                        and 1 not in cartelas[2]["dezenas"]
+                        and 2 not in cartelas[2]["dezenas"]
+                    ),
+                },
                 "fontes_assimiladas": [
                     "geração combinatória", "consenso dos oráculos",
                     "wheeling 14/15", "análise histórica e recente",

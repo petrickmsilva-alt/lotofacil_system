@@ -155,13 +155,21 @@ def test_ancoras_01_02_03_usam_memoria_unica(magna_decisao):
     r = magna.decidir_ancoradas_01_02_03(registrar=False, concurso_alvo=10001)
     assert r["n_cartelas"] == 3
     assert r["estrategia"] == "ancoradas-01-02-03"
-    assert r["cartelas"][0]["dezenas"][0] == 1 or 1 in r["cartelas"][0]["dezenas"]
-    assert 1 in r["cartelas"][0]["dezenas"]
-    assert 2 in r["cartelas"][1]["dezenas"]
-    assert 3 in r["cartelas"][2]["dezenas"]
+    c1, c2, c3 = (c["dezenas"] for c in r["cartelas"])
+    # Cartela 1 começa com a dezena 01.
+    assert c1[0] == 1
+    # Cartela 2 começa com a dezena 02 e NÃO contém a dezena 01.
+    assert c2[0] == 2
+    assert 1 not in c2
+    # Cartela 3 começa com a dezena 03 e NÃO contém as dezenas 01 e 02.
+    assert c3[0] == 3
+    assert 1 not in c3
+    assert 2 not in c3
     for c in r["cartelas"]:
         assert len(c["dezenas"]) == 15
         assert len(set(c["dezenas"])) == 15
+        assert all(1 <= d <= 25 for d in c["dezenas"])
+    assert all(r["validacao_ancoras"].values())
 
 
 def test_aprendizado_grava_episodio_de_retencao(magna_decisao):
@@ -169,3 +177,29 @@ def test_aprendizado_grava_episodio_de_retencao(magna_decisao):
     ret = magna.get_retencao()
     assert "metricas" in ret
     assert "prototipos" in ret
+
+
+def test_estimativa_proximo_concurso_usa_fallback_do_banco(tmp_path, monkeypatch):
+    """O box 'Próximo Concurso' não pode ficar zerado quando a fonte falha."""
+    from core.data_loader import DataLoader
+    caminho = tmp_path / "estimativa.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    loader = DataLoader(db_path=str(caminho))
+    ultimo_local = loader.db.get_ultimo_concurso()
+    assert ultimo_local > 0
+
+    # Fonte externa totalmente indisponível → banco local responde.
+    monkeypatch.setattr(loader, "buscar_ultimo_resultado", lambda: None)
+    est = loader.buscar_estimativa_premio()
+    assert est is not None
+    assert est["proximo_concurso"] == ultimo_local + 1
+    assert est["fonte_estimativa"] == "banco_local"
+
+    # Fonte devolve resultado sem 'proximoConcurso' → deriva de numero + 1.
+    monkeypatch.setattr(
+        loader, "buscar_ultimo_resultado",
+        lambda: {"numero": 4000, "listaDezenas": [], "proximoConcurso": 0},
+    )
+    est = loader.buscar_estimativa_premio()
+    assert est["proximo_concurso"] == 4001
+    assert est["fonte_estimativa"] == "derivado_ultimo_resultado"

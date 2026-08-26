@@ -3,6 +3,21 @@
 {% block page_title %}<i class="fas fa-dollar-sign"></i> Painel Financeiro{% endblock %}
 
 {% block content %}
+<div class="section" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+        <h2 style="margin:0;"><i class="fas fa-broom"></i> Manutenção</h2>
+        <p style="margin:4px 0 0;color:var(--text-muted,#9aa4b2);">
+            O botão Clear apaga todos os resultados financeiros já registrados
+            (histórico de concursos e cartelas não são afetados).
+        </p>
+    </div>
+    <button id="btn-limpar-financeiro" class="btn btn-sm btn-outline" type="button"
+            style="border-color:#e74c3c;color:#e74c3c;">
+        <i class="fas fa-trash-alt"></i> Clear — Limpar Resultados
+    </button>
+    <div id="status-limpar" style="flex-basis:100%;"></div>
+</div>
+
 <div class="cards-grid">
     <div class="card card-danger">
         <div class="card-icon"><i class="fas fa-arrow-down"></i></div>
@@ -64,4 +79,33 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const btn = document.getElementById('btn-limpar-financeiro');
+    const status = document.getElementById('status-limpar');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+        if (!confirm('Tem certeza? Todos os resultados financeiros registrados serão apagados. Esta ação não pode ser desfeita.')) {
+            return;
+        }
+        btn.disabled = true;
+        status.textContent = 'Limpando resultados financeiros...';
+        try {
+            const response = await fetch('/api/financeiro/limpar', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'ok') {
+                throw new Error(data.msg || 'Falha ao limpar o financeiro');
+            }
+            status.textContent = '✅ ' + data.removidos + ' registro(s) removido(s). Atualizando painel...';
+            setTimeout(() => window.location.reload(), 800);
+        } catch (err) {
+            status.textContent = '❌ Erro: ' + err.message;
+            btn.disabled = false;
+        }
+    });
+})();
+</script>
 {% endblock %}

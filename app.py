@@ -470,6 +470,21 @@ def financeiro_page():
     )
 
 
+@app.route("/api/financeiro/limpar", methods=["POST"])
+def api_financeiro_limpar():
+    """Botão Clear do módulo financeiro: apaga os resultados registrados."""
+    try:
+        removidos = financeiro.limpar()
+        return jsonify({
+            "status": "ok",
+            "removidos": removidos,
+            "resumo": financeiro.get_resumo_geral(),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/analise/exaustao", methods=["POST"])
 def api_analise_exaustao():
     """Alias legado: exaustão também passa pela decisão integrada da Magna."""

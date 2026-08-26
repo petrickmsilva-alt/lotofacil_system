@@ -91,6 +91,14 @@ class Financeiro:
             'lucro': lucro,
         }
 
+    def limpar(self):
+        """Apaga todos os resultados financeiros já registrados (botão Clear).
+
+        Retorna quantos registros foram removidos. O histórico de concursos
+        e as cartelas permanecem intactos — só o consolidado financeiro zera.
+        """
+        return self.db.limpar_financeiro()
+
     def get_resumo_geral(self):
         """Retorna resumo financeiro geral"""
         dados = self.db.get_financeiro_total()

@@ -112,3 +112,20 @@ def test_cartela_do_dia_isolada_foi_desativada(client):
     response = client.get("/api/cartela_do_dia")
     assert response.status_code == 410
     assert response.get_json()["nova_rota"] == "/api/magna/decidir"
+
+
+def test_financeiro_tem_botao_clear(client):
+    body = client.get("/financeiro_page").data.decode("utf-8")
+    assert 'id="btn-limpar-financeiro"' in body
+    assert "/api/financeiro/limpar" in body
+
+
+def test_api_financeiro_limpar_existe(client, app_module, monkeypatch):
+    # Não toca no banco real: apenas valida contrato da rota.
+    monkeypatch.setattr(app_module.financeiro, "limpar", lambda: 3)
+    response = client.post("/api/financeiro/limpar")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "ok"
+    assert data["removidos"] == 3
+    assert "resumo" in data
