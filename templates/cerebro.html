@@ -51,6 +51,20 @@
                 <div class="magna-money"><span>R$</span><input id="magna-orcamento" type="number" min="{{ valor_aposta }}" step="0.50" placeholder="sem limite adicional"></div>
                 <small>A Magna nunca ultrapassa o menor limite informado.</small>
             </label>
+            <label>
+                Alvo de prêmio (escada de captura)
+                <select id="magna-alvo">
+                    <option value="">Automático (decisão da Magna)</option>
+                    <option value="13">13 pontos · captura até 1:843 (pool 19)</option>
+                    <option value="14">14 pontos · captura 1:24.032 (pool 17)</option>
+                    <option value="15">15 pontos · captura 1:204.297 (pool 16)</option>
+                </select>
+                <small>Garantia condicional: exige que o pool capture as 15 sorteadas.</small>
+            </label>
+            <label class="magna-check">
+                <input id="magna-forja" type="checkbox">
+                <span>Forja espacial: otimizar a união exata dos leques de 13/14 pontos (recocido + geometria de Johnson)</span>
+            </label>
             <label class="magna-check">
                 <input id="magna-salvar" type="checkbox" checked>
                 <span>Salvar a decisão para conferência e aprendizado posterior</span>
@@ -119,6 +133,7 @@
         <div><span>Concurso-alvo</span><strong id="m-concurso">—</strong></div>
         <div><span>Cartelas</span><strong id="m-cartelas">—</strong></div>
         <div><span>Custo</span><strong id="m-custo">—</strong></div>
+        <div><span>P(lote ≥13)</span><strong id="m-p13">—</strong></div>
         <div><span>P(lote ≥14)</span><strong id="m-p14">—</strong></div>
         <div><span>EV do lote</span><strong id="m-ev">—</strong></div>
     </div>
@@ -149,6 +164,36 @@
     <div class="magna-truth">
         <i class="fas fa-scale-balanced"></i>
         <p id="magna-truth-text"></p>
+    </div>
+</section>
+
+<!-- Seção de Engenharia Espacial (escada de captura + forja) -->
+<section class="magna-history" id="forja-section">
+    <div class="magna-section-title">
+        <div><span>ENGENHARIA ESPACIAL DE LOTES</span><h3>Escada de captura 13 · 14 · 15</h3></div>
+        <small id="forja-status">probabilidades exatas sobre o universo 3.268.760</small>
+    </div>
+    <div class="forja-grid">
+        <div class="magna-panel">
+            <h3><i class="fas fa-stairs"></i> Menu de captura condicional</h3>
+            <div class="table-container">
+                <table class="table" id="forja-menu">
+                    <thead><tr><th>Alvo</th><th>Pool</th><th>Método</th><th>Cartelas</th><th>Custo</th><th>Captura</th></tr></thead>
+                    <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
+                </table>
+            </div>
+            <p>A garantia é condicional: vale somente se o pool contiver as 15 dezenas sorteadas. Cada degrau acima multiplica a captura por ~8,4×.</p>
+        </div>
+        <div class="magna-panel">
+            <h3><i class="fas fa-satellite"></i> Mapa informacional (MDS da co-ocorrência)</h3>
+            <canvas id="forja-mapa" width="340" height="300"></canvas>
+            <p id="forja-leitura">A constelação em destaque é o lote decidido; a nuvem cinza é a geografia estatística das 25 dezenas.</p>
+        </div>
+        <div class="magna-panel">
+            <h3><i class="fas fa-wave-square"></i> Espectro de Johnson do lote</h3>
+            <div id="forja-espectro" class="forja-espectro">—</div>
+            <p id="forja-geometria">O espectro mostra as interseções par a par das cartelas — a formação da esquadrilha no espaço J(25,15).</p>
+        </div>
     </div>
 </section>
 
@@ -310,6 +355,105 @@
     function bolas(dezenas) {
         return (dezenas || []).map(d => '<span>' + String(d).padStart(2, '0') + '</span>').join('');
     }
+
+    /* ── Engenharia Espacial: menu da escada, mapa e espectro ── */
+    let mapaDezenas = null;   // coordenadas MDS vindas da forja (25×2)
+    let loteAtual = null;     // cartelas da última decisão
+
+    function carregarMenuForja() {
+        fetch('/api/magna/forja/menu')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'ok') return;
+                const tb = document.querySelector('#forja-menu tbody');
+                tb.innerHTML = (data.menu || []).map(l => {
+                    const custo = l.custo_teorico ? brl(l.custo_teorico) : 'dinâmico';
+                    return '<tr><td><strong>' + l.alvo + ' pts</strong></td>' +
+                        '<td>' + l.n_pool + ' dezenas</td>' +
+                        '<td>' + l.metodo + '</td>' +
+                        '<td>' + (l.cartelas_teoricas || '≈') + '</td>' +
+                        '<td>' + custo + '</td>' +
+                        '<td>1 em ' + Number(l.um_em_captura).toLocaleString('pt-BR') + '</td></tr>';
+                }).join('');
+            })
+            .catch(() => { });
+    }
+
+    function desenharMapa() {
+        const cv = document.getElementById('forja-mapa');
+        if (!cv) return;
+        const ctx = cv.getContext('2d');
+        const W = cv.width, H = cv.height, pad = 24;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#11121d';
+        ctx.fillRect(0, 0, W, H);
+        if (!mapaDezenas || !mapaDezenas.length) {
+            ctx.fillStyle = '#777990';
+            ctx.font = '11px Inter, sans-serif';
+            ctx.fillText('Faça uma decisão com a Forja Espacial ativa', 40, H / 2);
+            return;
+        }
+        const xs = mapaDezenas.map(p => p[0]), ys = mapaDezenas.map(p => p[1]);
+        const minx = Math.min(...xs), maxx = Math.max(...xs);
+        const miny = Math.min(...ys), maxy = Math.max(...ys);
+        const sx = v => pad + (v - minx) / (maxx - minx + 1e-9) * (W - 2 * pad);
+        const sy = v => H - pad - (v - miny) / (maxy - miny + 1e-9) * (H - 2 * pad);
+        const noLote = new Set((loteAtual || []).flat());
+        mapaDezenas.forEach((p, i) => {
+            const d = i + 1;
+            ctx.beginPath();
+            ctx.arc(sx(p[0]), sy(p[1]), noLote.has(d) ? 8 : 4, 0, Math.PI * 2);
+            if (noLote.has(d)) {
+                ctx.fillStyle = '#8e7cf2';
+                ctx.shadowColor = '#8e7cf2'; ctx.shadowBlur = 12;
+                ctx.fill(); ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 9px Inter, sans-serif';
+                ctx.fillText(String(d), sx(p[0]) - 3, sy(p[1]) + 3);
+            } else {
+                ctx.fillStyle = '#4a4c63';
+                ctx.fill();
+                ctx.fillStyle = '#6f7188';
+                ctx.font = '8px Inter, sans-serif';
+                ctx.fillText(String(d), sx(p[0]) - 2, sy(p[1]) - 6);
+            }
+        });
+    }
+
+    function renderizarForja(r) {
+        const g = r.geometria_johnson;
+        if (r.mapa_dezenas) { mapaDezenas = r.mapa_dezenas; }
+        loteAtual = (r.cartelas || []).map(c => c.dezenas || c);
+        if (g) {
+            const esp = g.espectro_intersecoes || {};
+            const max = Math.max(1, ...Object.values(esp));
+            document.getElementById('forja-espectro').innerHTML =
+                Object.entries(esp).map(([k, n]) =>
+                    '<div class="forja-bar"><span>' + k + ' em comum</span>' +
+                    '<i style="width:' + Math.round(100 * n / max) + '%"></i>' +
+                    '<b>' + n + '</b></div>').join('');
+            document.getElementById('forja-geometria').textContent =
+                g.leitura + ' · interseção média ' + g.intersecao_media +
+                ' (acaso ' + g.intersecao_media_acaso + ') · leque 13 do lote: ' +
+                Number(g.leque_13_total).toLocaleString('pt-BR') +
+                ' sorteios (' + g.amplificacao_leque + '× uma cartela)';
+        }
+        if (r.forja) {
+            document.getElementById('forja-status').textContent =
+                'forja: ' + r.forja.moves + ' movimentos · ' + r.forja.k_robusto +
+                ' vetores Dirichlet · P(melhor ≥ ' + r.forja.alvo + ') = 1 em ' +
+                Number(r.forja.um_em_exata).toLocaleString('pt-BR');
+        } else if (r.garantia) {
+            document.getElementById('forja-status').textContent =
+                'garantia condicional ' + r.garantia + ' pontos · captura do pool 1 em ' +
+                Number(r.um_em_captura).toLocaleString('pt-BR');
+        }
+        desenharMapa();
+    }
+
+    carregarMenuForja();
+    desenharMapa();
+
     function iniciarProcessamento() {
         let i = 0;
         processing.hidden = false;
@@ -336,6 +480,7 @@
         document.getElementById('m-concurso').textContent = r.concurso_alvo;
         document.getElementById('m-cartelas').textContent = r.n_cartelas;
         document.getElementById('m-custo').textContent = brl(r.custo);
+        document.getElementById('m-p13').textContent = pct(a.p_melhor_13_mais, 6);
         document.getElementById('m-p14').textContent = pct(a.p_melhor_14_mais, 6);
         document.getElementById('m-ev').textContent = brl(a.ev_lote);
         document.getElementById('magna-top15').innerHTML = bolas(r.top15_magna);
@@ -345,6 +490,7 @@
         document.getElementById('m-kelly').textContent = d.kelly + ' · não apostar por EV';
         document.getElementById('magna-saved').textContent = payload.salvas + ' cartela(s) salva(s) atomicamente';
         document.getElementById('magna-truth-text').textContent = r.verdade_honesta;
+        renderizarForja(r);
 
         const cards = document.getElementById('magna-cartelas');
         cards.innerHTML = '';
@@ -399,11 +545,13 @@
             const response = await fetch('/api/magna/decidir', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    quantidade: Number(document.getElementById('magna-quantidade').value),
-                    orcamento: orc === '' ? null : Number(orc),
-                    salvar: document.getElementById('magna-salvar').checked
-                })
+                    body: JSON.stringify({
+                        quantidade: Number(document.getElementById('magna-quantidade').value),
+                        orcamento: orc === '' ? null : Number(orc),
+                        alvo: document.getElementById('magna-alvo').value || null,
+                        modo: document.getElementById('magna-forja').checked ? 'forja' : 'auto',
+                        salvar: document.getElementById('magna-salvar').checked
+                    })
             });
             const data = await response.json();
             if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na decisão');
@@ -581,5 +729,17 @@
 .magna-resultado.sucesso{background:rgba(0,184,148,.15);color:#00b894}
 .magna-resultado.erro{background:rgba(255,118,117,.15);color:#ff7675}
 .magna-avaliacao-actions{display:flex;gap:10px;margin-top:16px}
+.forja-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.forja-grid .magna-panel{display:flex;flex-direction:column}
+.forja-grid table.table{font-size:10px}
+.forja-grid table.table td,.forja-grid table.table th{padding:6px 8px}
+.forja-espectro{display:flex;flex-direction:column;gap:6px}
+.forja-bar{display:grid;grid-template-columns:80px 1fr 28px;align-items:center;gap:8px;font-size:10px;color:#9fa1b6}
+.forja-bar i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,#6c5ce7,#a892ff);min-width:4px}
+.forja-bar b{color:#d5d1fa;text-align:right}
+#magna-alvo,#forja-mapa{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d;color:#fff;padding:12px;font-size:13px;outline:none}
+#magna-alvo:focus{border-color:#786ae4;box-shadow:0 0 0 3px rgba(108,92,231,.14)}
+#magna-alvo option{background:#11121d}
+@media(max-width:900px){.forja-grid{grid-template-columns:1fr}}
 </style>
 {% endblock %}
