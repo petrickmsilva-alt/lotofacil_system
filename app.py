@@ -299,10 +299,20 @@ def _responder_decisao_magna(dados):
     quantidade = int(dados.get("quantidade", dados.get("n", 1)))
     salvar = bool(dados.get("salvar", True))
     orcamento = dados.get("orcamento")
+    alvo = dados.get("alvo")
+    if alvo not in (None, "", 13, 14, 15, "13", "14", "15"):
+        raise ValueError("alvo deve ser 13, 14 ou 15 (ou ausente)")
+    alvo = int(alvo) if alvo not in (None, "") else None
+    modo = dados.get("modo")
+    if modo not in (None, "", "auto", "forja"):
+        raise ValueError("modo deve ser 'auto' ou 'forja'")
+    modo = modo or None
     resultado = magna.decidir_e_gerar(
         quantidade=quantidade,
         orcamento=orcamento,
         registrar=salvar,
+        alvo=alvo,
+        modo=modo,
     )
     salvos = 0
     if salvar and resultado["n_cartelas"] > 0:
@@ -322,11 +332,36 @@ def _responder_decisao_magna(dados):
 
 @app.route("/api/magna/decidir", methods=["POST"])
 def api_magna_decidir():
-    """Única porta pública de análise, interpretação e criação de cartelas."""
+    """Única porta pública de análise, interpretação e criação de cartelas.
+
+    Campos opcionais do corpo:
+      alvo: 13 | 14 | 15 — escada de captura condicional;
+      modo: "forja" — forja espacial de lotes (união exata dos leques).
+    """
     try:
         return jsonify(_responder_decisao_magna(request.get_json() or {}))
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/forja/menu")
+def api_magna_forja_menu():
+    """Menu exato da escada de captura 13 × 14 × 15 (probabilidades/custos)."""
+    try:
+        from core.forja_lotes import menu_captura
+        return jsonify({
+            "status": "ok",
+            "menu": menu_captura(orcamento=None),
+            "verdade_honesta": (
+                "A garantia é condicional: só vale se o pool capturar as 15 "
+                "dezenas sorteadas. Cada degrau da escada multiplica a "
+                "probabilidade de captura por ~8,4 e reduz os pontos "
+                "garantidos em 1."
+            ),
+        })
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500

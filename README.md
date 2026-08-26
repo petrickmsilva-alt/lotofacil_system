@@ -85,7 +85,7 @@ Não existe aprendizado oculto nem outro gerador paralelo.
 
 ```bash
 pip install pytest pip-audit bandit
-pytest -q                         # 52 testes
+pytest -q                         # 76 testes
 pip-audit -r requirements.txt    # nenhuma vulnerabilidade conhecida
 bandit -q -r app.py core database -x tests
 ```
@@ -106,6 +106,38 @@ Todo resultado passa por validação de concurso, data, 15 dezenas únicas e fai
 gravados são preservados quando a contingência fornece somente as dezenas. Cada
 execução fica auditada em `historico_atualizacoes`, com fonte, concursos antes e
 depois, recuperações e erros detalhados.
+
+## Escada de captura 13 · 14 · 15 e Forja Espacial
+
+A Magna decide agora também pelo **alvo de prêmio** (`alvo`: 13, 14 ou 15)
+e pelo **modo de construção** (`modo: "forja"`):
+
+| Alvo | Pool | Método | Cartelas | Custo | Captura (condição da garantia) |
+|------|------|--------|----------|-------|-------------------------------|
+| 15 | 16 | família exata | 16 | R$ 56,00 | 1 em 204.297 |
+| 14 | 17 | família exata | 8 | R$ 28,00 | 1 em 24.035 |
+| 13 | 18 | família exata | 6 | R$ 21,00 | 1 em 4.006 |
+| 13 | 19 | fechamento dual | 13 | R$ 45,50 | 1 em 843 |
+
+Cada degrau acima multiplica a probabilidade de captura por ~8,4× e reduz
+em 1 o número de pontos garantidos. A garantia permanece condicional: vale
+somente se o pool contiver as 15 dezenas sorteadas.
+
+A **Forja Espacial** (`core/forja_lotes.py`) é o novo instrumento para
+lotes livres: como o leque de alto acerto de uma cartela é minúsculo
+(4.876 sorteios para 13 pontos, 151 para 14), a união EXATA de todo o
+lote é otimizável por recocido simulado com pesos de plausibilidade da
+Magna — em três instrumentos:
+
+1. **Leques exatos:** `P(melhor do lote ≥ t) = |∪ R_t| / 3.268.760`, sem simulação;
+2. **Fechamento dual:** a cobertura no espaço dos complementos
+   (`|c∩d| ≥ t ⟺ |c̄∩d̄| ≥ t+N−30`) viabiliza garantias de 13 com pool 19/20;
+3. **Geometria:** espectro de Johnson (interseções par a par) e mapa
+   informacional (MDS da co-ocorrência) com constelação do lote na interface.
+
+Honestidade mantida: a forja maximiza a estrutura do lote sob o modelo da
+Magna — ganho combinatório, nunca preditivo. A probabilidade exata
+não-pesada acompanha sempre o relatório.
 
 ## Áreas do sistema
 

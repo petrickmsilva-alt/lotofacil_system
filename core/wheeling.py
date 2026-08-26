@@ -419,6 +419,7 @@ class MotorWheeling:
                 soma_premio_chunk += premios[hits]
             dist_melhor += np.bincount(melhor, minlength=16)
             premio_total += float(soma_premio_chunk.sum())
+
             if pool_mask is not None:
                 dentro = _popcount(chunk & pool_mask) == 15
                 n_dentro += int(dentro.sum())
@@ -438,6 +439,7 @@ class MotorWheeling:
             "ev_lote": round(premio_total / total - custo, 4),
             "retorno_pct": round(100 * (premio_total / total) / custo, 2)
                            if custo > 0 else 0.0,
+            "p_melhor_13_mais": float(probs[13:].sum()),
             "p_melhor_14_mais": float(probs[14:].sum()),
             "p_melhor_15": float(probs[15]),
             "p_captura_exata": p_captura,

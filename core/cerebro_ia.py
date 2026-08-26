@@ -1429,12 +1429,12 @@ class CerebroIA:
     # Análise completa → escolha automática de estratégia → cartelas
     # ============================================================
     def gerar_otimas(self, n_cartelas=1, salvar=False, callback=None,
-                      vetor_override=None) -> Dict[str, Any]:
+                      vetor_override=None, alvo=None, modo=None) -> Dict[str, Any]:
         """
         O Cérebro como motor único do sistema. Dado o número desejado de
         cartelas, ele próprio decide a estratégia ótima:
 
-        ── n = 1 ─────────────────────────────────────────────────
+        ── n = 1 (ou alvo=15 com pouco orçamento) ────────────────
         EXAUSTÃO DO UNIVERSO: pontua TODAS as 3.268.760 combinações
         contra o vetor combinado dos 14 motores e entrega a MELHOR
         cartela única que existe (respeitando o filtro gaussiano).
@@ -1449,6 +1449,25 @@ class CerebroIA:
         fechado em 8 cartelas que GARANTEM 14 pontos se as 15
         sorteadas caírem no pool (ótimo provado, ver wheeling.py);
         cartelas excedentes preenchidas pela exaustão com diversidade.
+
+        ── alvo=13 ────────────────────────────────────────────────
+        ESCADA DE CAPTURA 13: pools maiores com garantia condicional
+        de 13 pontos — pool 18 família exata (6 cartelas, captura
+        1:4.006) ou pool 19 FECHAMENTO DUAL (13 cartelas, 1:843).
+        A captura de pool-18 é ~6× mais provável que a de pool-17;
+        a de pool-19, ~28×. É a rota racional para caçar 13 pontos.
+
+        ── alvo=15 ────────────────────────────────────────────────
+        ESCADA DE CAPTURA 15: pool 16 fechado em 16 cartelas (família
+        exata) que GARANTEM 15 pontos se as 15 sorteadas caírem no
+        pool (captura 1:204.297 — a garantia máxima que existe).
+
+        ── modo="forja" ───────────────────────────────────────────
+        FORJA ESPACIAL: recocido simulado sobre a união EXATA dos
+        leques de alto acerto (R_t) com pesos de plausibilidade da
+        Magna — maximiza diretamente P(melhor do lote ≥ alvo) sob o
+        modelo de amostragem sucessiva, com relatório de geometria
+        de Johnson. Ver core/forja_lotes.py.
 
         Toda saída traz a contabilidade EXATA do lote sobre o
         universo completo (probabilidades, prêmio esperado, EV).
@@ -1476,8 +1495,82 @@ class CerebroIA:
 
         cartelas = []
         estrategia = None
+        garantia = None
+        info_extra: Dict[str, Any] = {}
 
-        if n == 1:
+        # ---------- FORJA ESPACIAL (modo explícito) ----------
+        if modo == "forja":
+            from .forja_lotes import (
+                ForjaDeLotes, GeometriaJohnson, MapaInformacional,
+            )
+            alvo_forja = int(alvo) if int(alvo or 0) in (13, 14) else 13
+            estrategia = "forja-espacial-{}".format(alvo_forja)
+            cb("Forjando lote exato: maximizando P(melhor ≥ {}) sobre o "
+               "universo completo...".format(alvo_forja))
+            mapa = MapaInformacional(self.matriz).coordenadas()
+            forja = ForjaDeLotes().forjar(
+                vf, n, alvo=alvo_forja, segundos=10.0,
+                k_robusto=3, semente=None, mapa=mapa)
+            cartelas = forja.pop("cartelas")
+            garantia = None
+            geo = GeometriaJohnson().relatorio(cartelas)
+            info_extra = {
+                "forja": forja,
+                "geometria_johnson": geo,
+                "constelacoes": [
+                    MapaInformacional.constelacao(mapa, c) for c in cartelas[:8]
+                ],
+                "mapa_dezenas": [[round(float(x), 4) for x in pt]
+                                 for pt in mapa[:, :2]],
+            }
+            cb("Forja concluída: {} movimentos · P(melhor ≥ {}) exata = "
+               "1 em {}".format(forja["moves"], alvo_forja,
+                                forja["um_em_exata"]))
+
+        # ---------- ESCADA DE CAPTURA (alvo explícito) ----------
+        elif int(alvo or 0) == 15 and n >= 16:
+            estrategia = "wheeling-garantia-15"
+            pool15 = sorted(int(d) for d in self._selecionar_elite(vf, 16))
+            cb("Escada 15: pool de 16 dezenas → 16 cartelas garantem o "
+               "prêmio máximo SE o pool capturar (1:204.297)")
+            res_w = self.wheeling.gerar(pool15, garantia=15, max_cartelas=16)
+            cartelas = [c["dezenas"] for c in res_w["cartelas"]]
+            pool_elite = pool15
+            garantia = 15
+            info_extra["wheeling"] = {
+                "metodo": res_w["metodo"],
+                "garantia_verificada": res_w["garantia_verificada"],
+            }
+
+        elif int(alvo or 0) == 13 and n >= 6:
+            estrategia = "wheeling-garantia-13"
+            if n >= 13:
+                pool13 = sorted(int(d) for d in self._selecionar_elite(vf, 19))
+                cb("Escada 13: pool de 19 → fechamento DUAL no espaço dos "
+                   "complementos (captura 1:843)...")
+                from .forja_lotes import FechamentoDual
+                res_d = FechamentoDual().fechar(pool13, t=13,
+                                                limite_segundos=20.0)
+                cartelas = res_d["cartelas"]
+                metodo = res_d["metodo"]
+                verificada = res_d["garantia_verificada"]
+            else:
+                pool13 = sorted(int(d) for d in self._selecionar_elite(vf, 18))
+                cb("Escada 13: pool de 18 → família exata de 6 cartelas "
+                   "(captura 1:4.006, ~6× o pool-17)...")
+                res_w = self.wheeling.gerar(pool13, garantia=13,
+                                            max_cartelas=6)
+                cartelas = [c["dezenas"] for c in res_w["cartelas"]]
+                metodo = res_w["metodo"]
+                verificada = res_w["garantia_verificada"]
+            pool_elite = pool13
+            garantia = 13
+            info_extra["wheeling"] = {
+                "metodo": metodo,
+                "garantia_verificada": bool(verificada),
+            }
+
+        elif n == 1:
             estrategia = "exaustao-unica"
             idx, sc = heavy.avaliar_universo_completo(vf)
             # anda do topo para baixo até aprovada no filtro gaussiano
@@ -1510,6 +1603,7 @@ class CerebroIA:
                 escolhidas_masks.append(m)
         else:
             estrategia = "wheeling-garantia-14"
+            garantia = 14
             res_w = self.wheeling.gerar(pool_elite, garantia=14,
                                         max_cartelas=8)
             cartelas = [c["dezenas"] for c in res_w["cartelas"]]
@@ -1545,15 +1639,20 @@ class CerebroIA:
                 "Probabilidade por cartela (hipergeométrica, imutável por "
                 "qualquer análise): 14 pontos 1 em 21.800 · 15 pontos 1 em "
                 "3.268.760. A decisão do Cérebro ordena o universo pelos "
-                "critérios dos motores; com n≥8 adiciona a garantia "
-                "condicional do wheeling (14 se o pool capturar, 1 em 24.035)."
+                "critérios dos motores; com garantias, 14/15 só valem se o "
+                "pool capturar o sorteio (1:24.035 para pool 17 · 1:204.297 "
+                "para pool 16). A forja maximiza a estrutura do lote sob o "
+                "modelo da Magna — ganho combinatório, nunca preditivo."
             ),
         }
-        if estrategia == "wheeling-garantia-14":
-            res["garantia"] = 14
+        if garantia is not None:
+            res["garantia"] = garantia
             res["garantia_verificada"] = True
-            res["p_captura"] = self.wheeling.prob_captura(17)
-            res["um_em_captura"] = round(1 / self.wheeling.prob_captura(17), 1)
+            res["p_captura"] = self.wheeling.prob_captura(len(pool_elite))
+            res["um_em_captura"] = round(
+                1 / self.wheeling.prob_captura(len(pool_elite)), 1)
+        if info_extra:
+            res.update(info_extra)
 
         # formato compatível com gerar.html/_salvar_cartelas_banco
         for c in cartelas:
@@ -1685,8 +1784,13 @@ class CerebroIA:
         return fontes, consulta, espectro, informacao, entropias
 
     def decidir_e_gerar(self, quantidade=1, orcamento=None, callback=None,
-                         registrar=True, concurso_alvo=None):
-        """Serializa e executa a única decisão de criação do processo."""
+                         registrar=True, concurso_alvo=None, alvo=None,
+                         modo=None):
+        """Serializa e executa a única decisão de criação do processo.
+
+        alvo: None (automático) | 13 | 14 | 15 — escada de captura.
+        modo: None/"auto" | "forja" — forja espacial de lotes.
+        """
         with self._magna_lock:
             return self._decidir_e_gerar_sem_lock(
                 quantidade=quantidade,
@@ -1694,11 +1798,14 @@ class CerebroIA:
                 callback=callback,
                 registrar=registrar,
                 concurso_alvo=concurso_alvo,
+                alvo=alvo,
+                modo=modo,
             )
 
     def _decidir_e_gerar_sem_lock(self, quantidade=1, orcamento=None,
                                   callback=None, registrar=True,
-                                  concurso_alvo=None):
+                                  concurso_alvo=None, alvo=None,
+                                  modo=None):
         """Executa o único fluxo autorizado de criação de cartelas.
 
         Tudo que antes aparecia como Gerar Cartelas, Cartela do Dia, Wheeling,
@@ -1713,6 +1820,12 @@ class CerebroIA:
         quantidade = int(quantidade)
         if not 1 <= quantidade <= 100:
             raise ValueError("quantidade deve estar entre 1 e 100")
+        if alvo not in (None, "", 13, 14, 15, "13", "14", "15"):
+            raise ValueError("alvo deve ser 13, 14 ou 15")
+        alvo = int(alvo) if alvo not in (None, "") else None
+        if modo not in (None, "", "auto", "forja"):
+            raise ValueError("modo deve ser \"auto\" ou \"forja\"")
+        modo = modo or None
         if orcamento not in (None, ""):
             orcamento = float(orcamento)
             if not np.isfinite(orcamento) or orcamento < VALOR_APOSTA:
@@ -1744,6 +1857,8 @@ class CerebroIA:
             n_cartelas=quantidade,
             callback=callback,
             vetor_override=vetor_final,
+            alvo=alvo,
+            modo=modo,
         )
 
         # Singularidade deixa de ser uma página separada: seus filtros passam a
@@ -1789,10 +1904,31 @@ class CerebroIA:
                 "fechamento de 8 jogos que garante 14 pontos somente se o pool "
                 "capturar as 15 dezenas."
             ),
+            "wheeling-garantia-13": (
+                "Rota 13 pontos: pool de 18/19 dezenas fechado com garantia "
+                "condicional de 13. A captura do pool-18 é ~6× e a do "
+                "pool-19 ~28× mais provável que a do pool-17 — a escada de "
+                "captura troca pontos garantidos por probabilidade."
+            ),
+            "wheeling-garantia-15": (
+                "Rota 15 pontos: pool de 16 dezenas fechado em 16 cartelas "
+                "que contêm o prêmio máximo inteiro se o pool capturar "
+                "(1 em 204.297) — a garantia máxima que a combinatoria oferece."
+            ),
         }
         justificativa = justificativas.get(
-            estrategia, "Estratégia escolhida pela memória única."
-        )
+            estrategia, None)
+        if justificativa is None:
+            if estrategia and estrategia.startswith("forja-espacial"):
+                justificativa = (
+                    "Forja espacial: o recocido simulado moveu dezenas sobre a "
+                    "união EXATA dos leques de {} pontos — maximizando a "
+                    "probabilidade modelada de o melhor bilhete do lote "
+                    "alcançar o alvo, com espectro de Johnson auditável."
+                    .format(estrategia.rsplit("-", 1)[-1])
+                )
+            else:
+                justificativa = "Estratégia escolhida pela memória única."
 
         top15_fontes = {
             nome: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)]
