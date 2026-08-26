@@ -368,29 +368,78 @@ class DataLoader:
     def buscar_estimativa_premio(self):
         """
         Busca estimativa de prêmio para o próximo concurso.
+
+        Correção: as fontes de contingência (e alguns espelhos da fonte
+        oficial) não informam `proximoConcurso`, então o painel de prêmios
+        ficava eternamente zerado. Agora, quando a fonte externa não traz o
+        dado, o próximo concurso é derivado do último resultado conhecido
+        (número + 1) ou do banco local, e a estimativa cai para a média
+        histórica de 15 pontos.
         """
         try:
-            ultimo = self.buscar_ultimo_resultado()
-            if not ultimo:
-                return None
+            ultimo = None
+            try:
+                ultimo = self.buscar_ultimo_resultado()
+            except Exception as exc:
+                print(f"[AVISO] Estimativa sem fonte externa: {exc}")
 
-            proximo   = int(ultimo.get("proximoConcurso", 0))
-            estimativa = ultimo.get("valorEstimadoProximoConcurso", 0)
+            proximo = 0
+            estimativa = 0.0
+            data_prox = ""
+            fonte = "indisponivel"
 
-            if isinstance(estimativa, str):
-                estimativa = float(
-                    estimativa.replace("R$","")
-                              .replace(".","")
-                              .replace(",",".")
-                              .strip()
-                )
+            if ultimo:
+                try:
+                    proximo = int(ultimo.get("proximoConcurso") or 0)
+                except (TypeError, ValueError):
+                    proximo = 0
+                if proximo > 0:
+                    fonte = "caixa"
+                else:
+                    # Fonte não informou: deriva do último sorteio apurado.
+                    try:
+                        numero = int(ultimo.get("numero") or 0)
+                    except (TypeError, ValueError):
+                        numero = 0
+                    if numero > 0:
+                        proximo = numero + 1
+                        fonte = "derivado_ultimo_resultado"
 
-            data_prox = ultimo.get("dataProximoConcurso", "")
+                bruta = ultimo.get("valorEstimadoProximoConcurso", 0)
+                if isinstance(bruta, str):
+                    try:
+                        bruta = float(
+                            bruta.replace("R$", "")
+                                 .replace(".", "")
+                                 .replace(",", ".")
+                                 .strip()
+                        )
+                    except ValueError:
+                        bruta = 0
+                estimativa = float(bruta or 0)
+                data_prox = ultimo.get("dataProximoConcurso", "") or ""
+
+            if proximo <= 0:
+                # Último recurso: banco local (sempre disponível offline).
+                ultimo_local = int(self.db.get_ultimo_concurso() or 0)
+                if ultimo_local > 0:
+                    proximo = ultimo_local + 1
+                    fonte = "banco_local"
+
+            if estimativa <= 0:
+                # Sem valor oficial: usa a média histórica de 15 pontos.
+                try:
+                    medias = self.db.get_media_premios()
+                    if medias and medias["media_15"]:
+                        estimativa = round(float(medias["media_15"]), 2)
+                except Exception:
+                    pass
 
             return {
                 "proximo_concurso": proximo,
                 "estimativa_15":    float(estimativa or 0),
                 "data_proximo":     data_prox,
+                "fonte_estimativa": fonte,
             }
         except Exception as e:
             print(f"[ERRO] Estimativa: {e}")

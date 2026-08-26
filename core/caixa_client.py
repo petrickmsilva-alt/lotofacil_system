@@ -167,6 +167,16 @@ class CaixaClient:
                 "dataApuracao": data,
                 "listaDezenas": dezenas,
                 "listaRateioPremio": rateio,
+                # Dados do próximo sorteio: alguns espelhos da fonte oficial
+                # omitem essas chaves e o painel de prêmios ficava zerado.
+                "proximoConcurso": cls._inteiro(
+                    bruto.get("proximoConcurso",
+                              bruto.get("numeroConcursoProximo", 0)), 0
+                ),
+                "dataProximoConcurso": bruto.get("dataProximoConcurso", ""),
+                "valorEstimadoProximoConcurso": bruto.get(
+                    "valorEstimadoProximoConcurso", 0
+                ),
             })
         else:
             concurso = cls._inteiro(bruto.get("concurso"), 0)

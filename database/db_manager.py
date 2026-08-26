@@ -474,6 +474,21 @@ class DBManager:
         conn.commit()
         conn.close()
 
+    def limpar_financeiro(self):
+        """Apaga todos os resultados financeiros registrados.
+
+        Retorna a quantidade de registros removidos. Não toca em
+        resultados, cartelas ou aprendizado — apenas o módulo financeiro.
+        """
+        conn   = self.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM financeiro")
+        removidos = cursor.fetchone()[0]
+        cursor.execute("DELETE FROM financeiro")
+        conn.commit()
+        conn.close()
+        return removidos
+
     def get_financeiro_total(self):
         conn   = self.get_conn()
         cursor = conn.cursor()
