@@ -27,6 +27,13 @@ from .oraculo_convergente import OraculoConvergente
 from .wheeling import MotorWheeling
 from .caixa_client import CaixaClient
 from .fisica_sorteio import MotorFisicaSorteio
+
+# v11.2 — Clima do sorteio (temperatura × pressão × umidade)
+try:
+    from .clima_lotofacil import MotorClima
+except Exception as _e_clima:
+    print(f"[AVISO] clima_lotofacil import: {_e_clima}")
+    MotorClima = None
 # Forja v2 extraordinária + Suprema v10
 try:
     from .forja_lotes import MotorGrafos, melhor_rota_por_orcamento, ForjaDeLotes, GeometriaJohnson, MapaInformacional
@@ -704,19 +711,24 @@ class OtimizadorSPSA:
 # BLOCO 4 — INTELIGÊNCIA MAGNA v9.0 (PROTAGONISTA ÚNICA)
 # ============================================================
 class CerebroIA:
+    # v11.2 — nova fonte "clima" (temperatura/pressão/umidade) com
+    # shrinkage interna e auto-auditoria walk-forward. Os pesos são
+    # re-normalizados em _carregar_pesos_fontes_magna e reajustados a
+    # cada sorteio pelo aprendizado bayesiano das fontes.
     _FONTES_MAGNA_DEFAULT = {
-        "motores": 0.40,
-        "oraculos": 0.22,
+        "motores": 0.37,
+        "oraculos": 0.19,
         "espectral": 0.10,
         "informacao": 0.10,
         "recente": 0.10,
         "fisica": 0.08,
+        "clima": 0.06,
     }
 
     # v9.2 extraordinária: pool elite força máxima + forja força máxima
     VERSAO_MAGNA = "11.0-Magna-Suprema-Unica-Pessoal-Evoluida"
     VERSAO_SUPREMA = "11.0"
-    VERSAO_EVOLUCAO = "v11-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest"
+    VERSAO_EVOLUCAO = "v11.2-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico"
 
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
@@ -772,6 +784,35 @@ class CerebroIA:
 
         # Motor de Física do Sorteio (perfil das bolas + ambiente)
         self.fisica = MotorFisicaSorteio(self.db_path)
+
+        # v11.2 — Motor de Clima do Sorteio (fonte física-estatística)
+        if MotorClima is not None:
+            self.clima = MotorClima()
+        else:  # pragma: no cover — fallback neutro
+            class _ClimaNeutro:
+                n_registros = 0
+
+                def vetor_clima(self, *a, **k):
+                    return np.ones(TOTAL_DEZENAS)
+
+                def clima_previsto(self):
+                    return {"temperatura": 21.5, "pressao": 0.915,
+                            "umidade": 50.0, "fonte": "neutro"}
+
+                def testes_fisicos(self):
+                    return {"aplicavel": False,
+                            "motivo": "motor de clima indisponível"}
+
+                def auto_ponderacao(self, *a, **k):
+                    return {"aplicavel": False, "fator_confianca": 1.0}
+
+                def aprender(self, *a, **k):
+                    return {"status": "erro",
+                            "msg": "motor de clima indisponível"}
+
+            self.clima = _ClimaNeutro()
+        self._log("INIT", "Clima v11.2: {} registros, auto-auditoria ativa".format(
+            self.clima.n_registros))
 
         # Carregar dados
         self._ingestor = IngestorDados(self.db_path, client=client)
@@ -1844,6 +1885,23 @@ class CerebroIA:
         # Fonte física: perfil individual das bolas + ambiente do sorteio
         vetor_fisica = self._normalizar_vetor(self.fisica.score_fisico())
 
+        # v11.2 — Fonte de clima: temperatura × pressão × umidade do
+        # sorteio, com shrinkage 50/50, teto ±10% e auto-auditoria.
+        # O clima inclina o vetor; o consenso decide.
+        try:
+            # fator_confianca em [0.5, 1.0] (auto-auditoria walk-forward):
+            # mistura o vetor de clima com o uniforme na medida em que o
+            # histórico NÃO justifica confiança — a fonte nunca é zerada.
+            fator = float(
+                self.clima.auto_ponderacao().get("fator_confianca", 1.0))
+            v_clima = self.clima.vetor_clima()
+            uniforme = np.ones(TOTAL_DEZENAS, dtype=float)
+            v_atenuado = (1.0 - fator) * uniforme + fator * v_clima
+            vetor_clima = self._normalizar_vetor(v_atenuado)
+        except Exception:
+            vetor_clima = self._normalizar_vetor(
+                np.ones(TOTAL_DEZENAS, dtype=float))
+
         fontes = {
             "motores": vetor_motores,
             "oraculos": vetor_oraculos,
@@ -1851,6 +1909,7 @@ class CerebroIA:
             "informacao": vetor_informacao,
             "recente": vetor_recente,
             "fisica": vetor_fisica,
+            "clima": vetor_clima,
         }
         return fontes, consulta, espectro, informacao, entropias
 
@@ -3342,7 +3401,7 @@ class CerebroIA:
                 "status": "ok",
                 "identidade": "Inteligência Magna Suprema v11 — Única Pessoal",
                 "versao_suprema": "11.0",
-                "versao_evolucao": "v11-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest",
+                "versao_evolucao": "v11.2-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico",
                 "decisao_unica": True,
                 "potencia_maxima": True,
                 "uso_pessoal": True,
@@ -3357,7 +3416,7 @@ class CerebroIA:
                     f"utilidade esperada EV real R${resultado.get('utilidade_esperada',{}).get('ev_real_premios_medios')} ROI {resultado.get('utilidade_esperada',{}).get('roi')}%, "
                     f"verificação exaustiva P≥13={resultado.get('verificacao_exaustiva',{}).get('p13_exata')} — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -3707,6 +3766,18 @@ class CerebroIA:
                 "bolas_registradas": fisica_status["bolas_medidas"],
                 "ambientes_registrados": fisica_status["ambientes_registrados"],
                 "tem_dados_reais": fisica_status["tem_dados_reais"],
+            },
+            "clima": {
+                "registros": self.clima.n_registros,
+                "limiar_pressao": (
+                    round(self.clima._limiar_pressao(), 4)
+                    if self.clima.n_registros else None),
+                "limiar_temperatura": (
+                    round(self.clima._limiar_temperatura(), 2)
+                    if self.clima.n_registros else None),
+                "top5_previsto": (
+                    self.clima.top5_clima(usar_web=False)
+                    if self.clima.n_registros else None),
             },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],
