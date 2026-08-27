@@ -475,8 +475,7 @@ class MotorGaussiano(_Motor):
         self.PRIMOS_MIN, self.PRIMOS_MAX = pct(primos_l) if primos_l else (3, 7)
         self.FIB_MIN, self.FIB_MAX = pct(fib_l) if fib_l else (2, 6)
         self.BORDA_MIN, self.BORDA_MAX = pct(borda_l) if borda_l else (7, 11)
-        self.CONSEC_MAX = 8  # maior sequência real observada no histórico: 14
-                              # → nunca rejeinar por consecutivos típicos
+        self.CONSEC_MAX = 14  # maior sequência real observada no histórico
 
         # Métrica honesta: % dos sorteios reais que passariam no filtro
         aprov = 0
@@ -882,6 +881,7 @@ class CerebroIA:
         else:
             self.matriz, self.raw = self._ingestor.carregar_matriz()
         self.n = len(self.matriz)
+        self._cache_mascaras_15 = None
 
         def cb(msg):
             self._log("TREINO", msg)
@@ -987,7 +987,13 @@ class CerebroIA:
         denom = max(centro - self._gaussiano.SOMA_MIN, 1)
         sg = max(0.0, 1.0 - abs(soma - centro) / denom)
 
-        return (ev*0.25 + div*0.20 + kl*0.12 + mk*0.15 + vl*0.10 + sg*0.06 + 0.12)
+        ok_filtro, _ = self._gaussiano.filtrar(dez)
+        filtro = 1.0 if ok_filtro else 0.55
+        ja_15 = 0.0 if self._cartela_ja_foi_15(dez) else 1.0
+        return (
+            ev * 0.22 + div * 0.16 + kl * 0.12 + mk * 0.14 + vl * 0.10
+            + sg * 0.08 + filtro * 0.10 + ja_15 * 0.08
+        )
 
     def gerar_cartela_do_dia(self, reaproveitar: bool = True) -> Dict:
         """
@@ -1226,6 +1232,9 @@ class CerebroIA:
             ok, det = self._gaussiano.filtrar(dez)
             if not ok:
                 reprov_gauss += 1
+                continue
+            if self._cartela_ja_foi_15(dez):
+                bloqueadas.add(key)
                 continue
 
             # Repulsão forte (≥13 dezenas iguais a um jogo recente) → adia
@@ -2525,6 +2534,97 @@ class CerebroIA:
             m |= 1 << (int(d) - 1)
         return m
 
+    def _mascaras_sorteios_15(self):
+        """Conjunto de bitmasks oficiais: cada um já foi 15 pontos uma vez."""
+        cache = getattr(self, "_cache_mascaras_15", None)
+        if cache is not None and len(cache) == self.n:
+            return cache
+        masks = set()
+        for i in range(self.n):
+            dez = np.where(self.matriz[i] == 1)[0]
+            m = 0
+            for d in dez:
+                m |= 1 << int(d)
+            masks.add(int(m))
+        self._cache_mascaras_15 = masks
+        return masks
+
+    def _cartela_ja_foi_15(self, dezenas) -> bool:
+        """True se a combinação já saiu no histórico oficial (15 pontos)."""
+        if not dezenas or len(dezenas) != 15:
+            return False
+        return self._mask_de_dezenas(dezenas) in self._mascaras_sorteios_15()
+
+    def _substituir_cartelas_ja_sorteadas_15(self, cartelas, vf):
+        """Nunca reemite uma combinação que já foi contemplada com 15 pontos."""
+        from .heavyweight_engine import MotorExaustaoUniverso
+        usadas = {self._mask_de_dezenas(c) for c in cartelas}
+        oficiais = self._mascaras_sorteios_15()
+        out = []
+        for c in cartelas:
+            m = self._mask_de_dezenas(c)
+            if m not in oficiais:
+                out.append(c)
+                continue
+            self._log(
+                "BLOQUEIO-15",
+                "Cartela {} já foi 15 pontos no histórico — descartada".format(
+                    sorted(int(d) for d in c)))
+            substituta = None
+            heavy = MotorExaustaoUniverso()
+            idx, _ = heavy.avaliar_universo_completo(vf)
+            for i in range(min(4000, len(idx))):
+                cand = heavy.obter_dezenas_por_indice(idx[i])
+                cm = self._mask_de_dezenas(cand)
+                if cm in oficiais or cm in usadas:
+                    continue
+                ok, _ = self._gaussiano.filtrar(cand)
+                if not ok:
+                    continue
+                substituta = cand
+                break
+            if substituta is None:
+                continue
+            usadas.add(self._mask_de_dezenas(substituta))
+            out.append(substituta)
+        return out
+
+    def diagnostico_aprendizado(self) -> Dict[str, Any]:
+        """O que a Magna já aprendeu, como aprende e o que ainda falta."""
+        ret = self.get_retencao(20)
+        pesos = dict(self.pesos_fontes_magna)
+        historico = self.get_historico_magna(50)
+        conferidas = [d for d in historico if d.get("status") == "conferida"]
+        n_15_hist = len(self._mascaras_sorteios_15())
+        return {
+            "o_que_aprende": [
+                "pesos das 6 fontes (motores, oráculos, espectro, "
+                "informação, recente, física) via top-15 vs resultado real",
+                "pesos dos 14 módulos via mediana de acertos fora da amostra",
+                "episódios protótipo (≥12) e repulsão (≤9)",
+                "checkpoint/rollback se a média de 10 decisões cair",
+                "combinações oficiais de 15 pontos — nunca reemitidas",
+                "cartelas conferidas arquivadas em memoria_cartelas_aprendidas",
+            ],
+            "como_aprende": (
+                "Após cada conferência oficial, fecha magna_decisoes, "
+                "grava magna_aprendizado, ajusta pesos suavemente (±2% por "
+                "fonte) e persiste episódios. Exclusão da tela não apaga "
+                "a memória de aprendizado."
+            ),
+            "o_que_falta": [
+                "amostra maior de decisões conferidas (n={})".format(
+                    len(conferidas)),
+                "calibração física com medidas reais das bolas"
+                if not self.fisica.get_status().get("tem_dados_reais")
+                else "física já com dados reais",
+            ],
+            "pesos_fontes": pesos,
+            "pesos_modulos": dict(self.pesos),
+            "n_sorteios_15_bloqueados": n_15_hist,
+            "retencao": ret,
+        }
+
     @staticmethod
     def _max_consecutivos(dezenas) -> int:
         """Maior sequência de dezenas consecutivas numa cartela."""
@@ -2955,7 +3055,7 @@ class CerebroIA:
     def get_status(self) -> Dict:
         fisica_status = self.fisica.get_status()
         return {
-            "versao": "9.0-Magna-Unificada",
+            "versao": "9.1-Magna-Memoria-15",
             "estado": self.estado,
             "treinado": self.treinado,
             "total_concursos": self.n,

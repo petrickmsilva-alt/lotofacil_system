@@ -1001,6 +1001,16 @@ def api_cerebro_status():
     return jsonify(cerebro.get_status())
 
 
+@app.route("/api/magna/aprendizado")
+def api_magna_aprendizado():
+    """Diagnóstico constante: o que a Magna aprendeu e o que falta."""
+    try:
+        return jsonify({"status": "ok", **magna.diagnostico_aprendizado()})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/cerebro/treinar", methods=["POST"])
 def api_cerebro_treinar():
     return api_treinar_ia()

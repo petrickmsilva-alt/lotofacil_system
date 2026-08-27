@@ -81,6 +81,12 @@ Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:
 
 Não existe aprendizado oculto nem outro gerador paralelo.
 
+Combinações que **já saíram com 15 pontos** no histórico oficial nunca são
+reemitidas (a chance de o mesmo jogo sair duas vezes é desprezível). Após a
+conferência, cada cartela entra em `memoria_cartelas_aprendidas`; apagar o lote
+tira da tela, mas a memória de aprendizado permanece. Diagnóstico contínuo:
+`GET /api/magna/aprendizado`.
+
 ## Testes e segurança
 
 ```bash
