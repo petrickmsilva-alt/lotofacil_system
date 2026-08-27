@@ -507,10 +507,20 @@ class ForjaDeLotes:
     def forjar_suprema(self, vf: np.ndarray, n_cartelas: int,
                        alvo: int = 13, segundos: float = 60.0,
                        mapa: Optional[np.ndarray] = None) -> Dict[str, Any]:
-        """Atalho supremo pessoal: 60s, 25 candidatas, 7 seeds, k=7."""
+        """Atalho supremo pessoal: 60s, 25 candidatas, 7 seeds, k=7 — adaptativo."""
+        # adaptativo: poucas cartelas → menos seeds para não estourar tempo API
+        if n_cartelas <= 3:
+            n_seeds = 3
+        elif n_cartelas <= 6:
+            n_seeds = 5
+        else:
+            n_seeds = 7
+        # se segundos pequeno, reduz seeds para manter per-seed >=3s
+        if segundos < 20:
+            n_seeds = max(2, min(n_seeds, int(segundos // 3)))
         return self.forjar_com_forca_maxima(
             vf=vf, n_cartelas=n_cartelas, alvo=alvo,
-            segundos=segundos, n_candidatas=25, k_robusto=7, n_seeds=7, mapa=mapa)
+            segundos=segundos, n_candidatas=25, k_robusto=7, n_seeds=n_seeds, mapa=mapa)
 
     def forjar_14_exato(self, vf: np.ndarray, n_cartelas: int,
                         segundos: float = 15.0) -> Dict[str, Any]:

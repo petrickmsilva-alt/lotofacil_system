@@ -359,16 +359,15 @@ def api_magna_decidir():
 
 @app.route("/api/magna/suprema", methods=["POST"])
 def api_magna_suprema():
-    """MAGNA SUPREMA v10 — Sistema único pessoal em potência máxima, sem erros.
+    """MAGNA SUPREMA v11 — Sistema único pessoal em potência máxima, sem erros.
 
-    Usa tudo que é possível e impossível para 13/14/15:
-    - Detector de regime K-means
-    - Memória vetorial com atenção
-    - Juiz Magna 8 critérios com regeneração
-    - Verificador exaustivo P(lote≥t) sobre 3.268.760
-    - Alocador orçamento inteligente
-    - Forja suprema 60s 7 seeds k=7
-    - Aprendizado Bayesiano com momentum
+    Evoluções completas:
+    - EWC continual, meta por regime, clustering adaptativo, balança 0.001g
+    - Perfil risco pessoal, MCTS pool, multi-rota 60/30/10, utilidade esperada prêmios reais
+    - Juiz 8 critérios + adversarial + NIST + p-value + juiz que aprende
+    - Explainability LLM, fingerprint SHA256, backtest 50, binomial, curva
+
+    Único gerador Magna para decisão única e 3 âncoras.
     """
     try:
         dados = request.get_json() or {}
@@ -376,12 +375,18 @@ def api_magna_suprema():
         orcamento = float(dados.get("orcamento", 100.0))
         alvo = int(dados.get("alvo", 13))
         modo = dados.get("modo", "suprema")
+        perfil = dados.get("perfil", "equilibrado")
+        segundos = float(dados.get("segundos_forja", dados.get("segundos", 30.0)))
         salvar = bool(dados.get("salvar", True))
         resultado = magna.decidir_suprema(
             quantidade=quantidade,
             orcamento=orcamento,
             alvo=alvo,
             modo=modo,
+            perfil=perfil,
+            segundos_forja=segundos,
+            usar_mcts=bool(dados.get("usar_mcts", True)),
+            usar_multi_rota=bool(dados.get("usar_multi_rota", False)),
             tentativas_juiz=int(dados.get("tentativas_juiz", 2)),
             registrar=salvar,
         )
@@ -408,9 +413,16 @@ def api_magna_suprema():
 
 @app.route("/api/magna/regime")
 def api_magna_regime():
-    """Detecta regime atual K-means."""
+    """Detecta regime atual K-means adaptativo."""
     try:
-        return jsonify({"status": "ok", "regime": magna.detectar_regime_atual()})
+        # tenta adaptativo
+        try:
+            from core.magna_suprema import DetectorRegime
+            det = DetectorRegime(magna.matriz)
+            regime = det.detectar_adaptativo(janela=100)
+        except Exception:
+            regime = magna.detectar_regime_atual()
+        return jsonify({"status": "ok", "regime": regime})
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500
@@ -418,7 +430,7 @@ def api_magna_regime():
 
 @app.route("/api/magna/verificar", methods=["POST"])
 def api_magna_verificar():
-    """Verificação exaustiva de lote."""
+    """Verificação exaustiva + backtest + binomial + curva."""
     try:
         dados = request.get_json() or {}
         cartelas = [c.get("dezenas") if isinstance(c, dict) else c for c in dados.get("cartelas", [])]
@@ -426,7 +438,107 @@ def api_magna_verificar():
         if not cartelas:
             return jsonify({"status": "erro", "msg": "cartelas vazias"}), 400
         ver = magna.verificar_lote_exaustivo(cartelas, pool or list(range(1,18)))
-        return jsonify({"status": "ok", "verificacao": ver})
+        # backtest opcional
+        backtest = {}
+        try:
+            from core.magna_suprema import BacktestLote, TesteBinomial, CurvaAprendizado, TesteNIST, PValueRandom, JuizAdversarial
+            backtest = BacktestLote().testar(cartelas, magna.matriz, janela=50)
+            nist = TesteNIST().testar(cartelas)
+            pval = PValueRandom().calcular(ver.get("p13_exata",0), len(cartelas), alvo=13)
+            adv = JuizAdversarial().julgar(cartelas, pool or list(range(1,18)))
+            curva = CurvaAprendizado(magna.get_historico_magna(50)).curva()
+        except Exception as e:
+            nist = {"erro": str(e)}
+            pval = {}
+            adv = {}
+            curva = {}
+        return jsonify({
+            "status": "ok",
+            "verificacao": ver,
+            "backtest": backtest,
+            "nist": nist,
+            "p_value": pval,
+            "adversarial": adv,
+            "curva": curva,
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/chat", methods=["POST"])
+def api_magna_chat():
+    """Explainability LLM + Chat — responde 'por que 22?' etc."""
+    try:
+        dados = request.get_json() or {}
+        pergunta = dados.get("pergunta", dados.get("mensagem", ""))
+        if not pergunta:
+            return jsonify({"status": "erro", "msg": "pergunta vazia"}), 400
+        # contexto: último resultado ou pega do body
+        contexto = dados.get("contexto", {})
+        # se não tem contexto, usa vetor atual
+        if not contexto:
+            try:
+                fontes, consulta, espectro, informacao, entropias = magna._fontes_assimiladas_magna()
+                pesos = dict(magna.pesos_fontes_magna)
+                vetor = np.zeros(25, dtype=float)
+                for nome, v in fontes.items():
+                    vetor += v * pesos[nome]
+                vetor = magna._normalizar_vetor(vetor)
+                # último lote se existir
+                ultimo = magna.decisoes.get("magna")
+                contexto = {
+                    "vf": vetor,
+                    "fontes": fontes,
+                    "votos": np.asarray(consulta["votos"], dtype=int),
+                    "cartelas": [],
+                    "pool": [],
+                    "analise": {},
+                    "regime": magna.detectar_regime_atual(),
+                }
+            except Exception as e:
+                contexto = {"erro": str(e)}
+        # chat
+        try:
+            from core.magna_suprema import ExplainabilityMagna, ChatMagna
+            exp = ExplainabilityMagna()
+            chat = ChatMagna(exp)
+            resposta = chat.responder(pergunta, contexto)
+        except Exception as e:
+            resposta = f"Erro no chat: {e}"
+        return jsonify({"status": "ok", "pergunta": pergunta, "resposta": resposta})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/fingerprint")
+def api_magna_fingerprint():
+    """Fingerprint pessoal SHA256."""
+    try:
+        from core.magna_suprema import FingerprintPessoal
+        fp = FingerprintPessoal(magna.db)
+        fp.carregar_historico()
+        return jsonify({"status": "ok", "fingerprint": fp.relatorio(), "total_hashes": len(fp.cache)})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/perfil", methods=["POST"])
+def api_magna_perfil():
+    """Perfil risco pessoal + utilidade esperada."""
+    try:
+        dados = request.get_json() or {}
+        perfil = dados.get("perfil", "equilibrado")
+        from core.magna_suprema import PerfilRiscoPessoal, AlocadorMultiRota
+        p = PerfilRiscoPessoal(perfil)
+        aloc = AlocadorMultiRota().alocar(
+            orcamento=float(dados.get("orcamento", 100.0)),
+            quantidade=int(dados.get("quantidade", 8)),
+            perfil=perfil
+        )
+        return jsonify({"status": "ok", "perfil": p.relatorio(), "alocacao_multi_rota": aloc})
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500
@@ -486,11 +598,17 @@ def api_magna_forja_menu():
 
 @app.route("/api/magna/ancoras-123", methods=["POST"])
 def api_magna_ancoras_123():
-    """Comando extra: 3 cartelas âncora 01, 02 e 03 + 14 dezenas da Magna."""
+    """Comando extra: 3 cartelas âncora 01,02,03 + 14 dezenas Magna — MESMO PROCESSO SUPREMO ÚNICO."""
     try:
         dados = request.get_json() or {}
         salvar = bool(dados.get("salvar", True))
-        resultado = magna.decidir_ancoradas_01_02_03(registrar=salvar)
+        perfil = dados.get("perfil", "equilibrado")
+        orcamento = float(dados.get("orcamento", 100.0))
+        resultado = magna.decidir_ancoradas_01_02_03(
+            registrar=salvar,
+            orcamento=orcamento,
+            perfil=perfil,
+        )
         salvos = 0
         if salvar and resultado.get("n_cartelas", 0) > 0:
             salvos = _salvar_cartelas_banco(
