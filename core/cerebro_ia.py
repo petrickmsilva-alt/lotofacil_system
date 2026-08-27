@@ -27,6 +27,12 @@ from .oraculo_convergente import OraculoConvergente
 from .wheeling import MotorWheeling
 from .caixa_client import CaixaClient
 from .fisica_sorteio import MotorFisicaSorteio
+# Forja v2 extraordinária — pool elite com força máxima e rotas por orçamento
+try:
+    from .forja_lotes import MotorGrafos, melhor_rota_por_orcamento
+except Exception:
+    MotorGrafos = None
+    melhor_rota_por_orcamento = None
 
 
 def _popcount_uf(x: int) -> int:
@@ -669,6 +675,9 @@ class CerebroIA:
         "fisica": 0.08,
     }
 
+    # v9.2 extraordinária: pool elite força máxima + forja força máxima
+    VERSAO_MAGNA = "9.2-Magna-Extraordinaria-Forca-Maxima"
+
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
         "freq_recente": 0.07,
@@ -1183,7 +1192,7 @@ class CerebroIA:
 
         # Grupo Elite GARANTIDO com no mínimo 19 dezenas (3.876 combinações)
         tam_elite = max(19, min(21, 15 + qtd))
-        grupo_elite = [int(x) for x in self._selecionar_elite(vf, tam_elite)]
+        grupo_elite = [int(x) for x in self._selecionar_elite_extraordinaria(vf, tam_elite)]
         self.decisoes["grupo_elite"] = sorted(grupo_elite)
         cb("Grupo elite ({} dezenas): {}".format(len(grupo_elite), sorted(grupo_elite)))
 
@@ -1392,7 +1401,7 @@ class CerebroIA:
             self.treinar(callback=callback)
 
         vf = self._vetor_combinado()
-        pool = sorted(int(d) for d in self._selecionar_elite(vf, n_pool))
+        pool = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, n_pool))
         cb("Pool de {} dezenas selecionado: {}".format(len(pool), pool))
 
         t_padrao = 31 - n_pool
@@ -1440,7 +1449,7 @@ class CerebroIA:
     def gerar_otimas(self, n_cartelas=1, salvar=False, callback=None,
                       vetor_override=None, alvo=None, modo=None) -> Dict[str, Any]:
         """
-        O Cérebro como motor único do sistema. Dado o número desejado de
+        O Cérebro como motor único EXTRAORDINÁRIO do sistema (v9.2). Dado o número desejado de
         cartelas, ele próprio decide a estratégia ótima:
 
         ── n = 1 (ou alvo=15 com pouco orçamento) ────────────────
@@ -1496,7 +1505,7 @@ class CerebroIA:
 
         vf = (self._normalizar_vetor(vetor_override)
               if vetor_override is not None else self._vetor_combinado())
-        pool_elite = sorted(int(d) for d in self._selecionar_elite(vf, 17))
+        pool_elite = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, 17))
         cb("Vetor combinado pronto · pool elite: {}".format(pool_elite))
 
         from .heavyweight_engine import MotorExaustaoUniverso
@@ -1507,19 +1516,32 @@ class CerebroIA:
         garantia = None
         info_extra: Dict[str, Any] = {}
 
-        # ---------- FORJA ESPACIAL (modo explícito) ----------
+        # ---------- FORJA ESPACIAL EXTRAORDINÁRIA (força máxima) ----------
         if modo == "forja":
             from .forja_lotes import (
                 ForjaDeLotes, GeometriaJohnson, MapaInformacional,
             )
             alvo_forja = int(alvo) if int(alvo or 0) in (13, 14) else 13
-            estrategia = "forja-espacial-{}".format(alvo_forja)
-            cb("Forjando lote exato: maximizando P(melhor ≥ {}) sobre o "
-               "universo completo...".format(alvo_forja))
+            estrategia = "forja-espacial-extraordinaria-{}".format(alvo_forja)
+            cb("Forjando lote EXTRAORDINÁRIO: {} cartelas, alvo ≥{} | "
+               "25 candidatas, 5 seeds, k=5 robusto, 30s força máxima...".format(
+                   n, alvo_forja))
             mapa = MapaInformacional(self.matriz).coordenadas()
-            forja = ForjaDeLotes().forjar(
-                vf, n, alvo=alvo_forja, segundos=10.0,
-                k_robusto=3, semente=None, mapa=mapa)
+            forja_engine = ForjaDeLotes()
+            if alvo_forja == 14 and n <= 15:
+                # para 14 pontos, greedy exato é mais forte que SA
+                forja = forja_engine.forjar_14_exato(vf, n, segundos=15.0)
+                # completa com forja normal se faltar
+                if len(forja.get("cartelas", [])) < n:
+                    resto = forja_engine.forjar_com_forca_maxima(
+                        vf, n - len(forja["cartelas"]), alvo=alvo_forja,
+                        segundos=20.0, n_candidatas=25, k_robusto=5,
+                        n_seeds=3, mapa=mapa)
+                    forja["cartelas"] = sorted(sorted(c) for c in (forja["cartelas"] + resto["cartelas"]))
+            else:
+                forja = forja_engine.forjar_com_forca_maxima(
+                    vf, n, alvo=alvo_forja, segundos=30.0,
+                    n_candidatas=25, k_robusto=5, n_seeds=5, mapa=mapa)
             cartelas = forja.pop("cartelas")
             garantia = None
             geo = GeometriaJohnson().relatorio(cartelas)
@@ -1539,7 +1561,7 @@ class CerebroIA:
         # ---------- ESCADA DE CAPTURA (alvo explícito) ----------
         elif int(alvo or 0) == 15 and n >= 16:
             estrategia = "wheeling-garantia-15"
-            pool15 = sorted(int(d) for d in self._selecionar_elite(vf, 16))
+            pool15 = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, 16))
             cb("Escada 15: pool de 16 dezenas → 16 cartelas garantem o "
                "prêmio máximo SE o pool capturar (1:204.297)")
             res_w = self.wheeling.gerar(pool15, garantia=15, max_cartelas=16)
@@ -1554,7 +1576,7 @@ class CerebroIA:
         elif int(alvo or 0) == 13 and n >= 6:
             estrategia = "wheeling-garantia-13"
             if n >= 13:
-                pool13 = sorted(int(d) for d in self._selecionar_elite(vf, 19))
+                pool13 = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, 19))
                 cb("Escada 13: pool de 19 → fechamento DUAL no espaço dos "
                    "complementos (captura 1:843)...")
                 from .forja_lotes import FechamentoDual
@@ -1564,7 +1586,7 @@ class CerebroIA:
                 metodo = res_d["metodo"]
                 verificada = res_d["garantia_verificada"]
             else:
-                pool13 = sorted(int(d) for d in self._selecionar_elite(vf, 18))
+                pool13 = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, 18))
                 cb("Escada 13: pool de 18 → família exata de 6 cartelas "
                    "(captura 1:4.006, ~6× o pool-17)...")
                 res_w = self.wheeling.gerar(pool13, garantia=13,
@@ -1860,6 +1882,18 @@ class CerebroIA:
             vetor_final += vetor * pesos[nome]
         vetor_final = self._normalizar_vetor(vetor_final)
         vetor_final = self._aplicar_memoria_episodica(vetor_final)
+
+        # Planejamento extraordinário por orçamento (nova inteligência)
+        try:
+            rota_info = self._planejar_rota_extraordinaria(
+                vetor_final, quantidade, orcamento, alvo)
+            if rota_info.get("rota_escolhida"):
+                rc = rota_info["rota_escolhida"]
+                cb("Rota extraordinária escolhida: alvo {} | pool {} | método {} | custo R$ {} | captura {}".format(
+                    rc.get("alvo"), rc.get("n_pool"), rc.get("metodo"),
+                    rc.get("custo_teorico"), rc.get("um_em_captura")))
+        except Exception:
+            pass
 
         cb("Tomando uma decisão única para {} cartela(s)...".format(quantidade))
         resultado = self.gerar_otimas(
@@ -2447,7 +2481,7 @@ class CerebroIA:
                 })
             analise = self.wheeling.analisar_lote(
                 [c["dezenas"] for c in cartelas],
-                sorted(int(d) for d in self._selecionar_elite(vetor, 17)),
+                sorted(int(d) for d in self._selecionar_elite_extraordinaria(vetor, 17)),
             )
             resultado = {
                 "status": "ok",
@@ -2456,7 +2490,7 @@ class CerebroIA:
                 "estrategia": "ancoradas-01-02-03",
                 "n_cartelas": 3,
                 "cartelas": cartelas,
-                "pool_elite": sorted(int(d) for d in self._selecionar_elite(vetor, 17)),
+                "pool_elite": sorted(int(d) for d in self._selecionar_elite_extraordinaria(vetor, 17)),
                 "custo": round(3 * VALOR_APOSTA, 2),
                 "analise": analise,
                 "justificativa_magna": (
@@ -2700,7 +2734,7 @@ class CerebroIA:
             # injeta o RNG determinístico no ruído do vetor combinado
             self._rng_vetor = rng
             vf = self._vetor_combinado()
-            pool = sorted(int(d) for d in self._selecionar_elite(vf, n_pool))
+            pool = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vf, n_pool))
             inter = len(sorteado & set(pool))
             capturou = inter == 15
             capturas += 1 if capturou else 0
@@ -2740,6 +2774,34 @@ class CerebroIA:
         }
 
     def _selecionar_elite(self, v: np.ndarray, tam: int) -> List[int]:
+        """Mantido por compatibilidade — delega para extraordinário."""
+        return self._selecionar_elite_extraordinaria(v, tam)
+
+    def _selecionar_elite_extraordinaria(self, v: np.ndarray, tam: int,
+                                         lambda_div: float = 0.38,
+                                         candidatas_top: int = 22) -> List[int]:
+        """Pool elite com força máxima: vf + diversidade via MotorGrafos.
+
+        Se MotorGrafos não disponível ou matriz pequena, cai para método
+        clássico com garantia de quadrantes. A Magna usa este método em
+        TODA geração — é a única porta de pool.
+        """
+        try:
+            if MotorGrafos is not None and self.n >= 30:
+                grafo = MotorGrafos(self.matriz)
+                pool = grafo.pool_extraordinario(
+                    vf=v, tam=tam, lambda_div=lambda_div,
+                    candidatas_top=max(tam+5, candidatas_top))
+                # log diversidade
+                div = grafo.diversidade_pool(pool)
+                self._log("POOL-EXTRA", "Pool {} dezenas | div média {:.3f} min {:.3f} | vf top {}".format(
+                    len(pool), div.get("media_dist",0), div.get("min_dist",0),
+                    sorted(pool)[:5]))
+                return pool
+        except Exception as exc:
+            self._log("AVISO", "Pool extraordinário fallback: {}".format(exc))
+
+        # fallback clássico
         ranking = list(np.argsort(v)[::-1] + 1)
         grupo = []
         for d in ranking:
@@ -2755,6 +2817,20 @@ class CerebroIA:
             if len(grupo) >= tam: break
             if d not in grupo: grupo.append(d)
         return grupo[:tam]
+
+    def _planejar_rota_extraordinaria(self, vf: np.ndarray, quantidade: int,
+                                      orcamento: Optional[float],
+                                      alvo: Optional[int] = None) -> Dict[str, Any]:
+        """Escolhe rota extraordinária maximizando P(lote≥alvo) dentro do orçamento."""
+        try:
+            if melhor_rota_por_orcamento is not None:
+                return melhor_rota_por_orcamento(
+                    vf=vf, orcamento=orcamento or 1000.0,
+                    quantidade=quantidade, alvo_desejado=alvo)
+        except Exception as exc:
+            self._log("AVISO", "Planejamento rota: {}".format(exc))
+        # fallback simples
+        return {"rota_escolhida": None, "motivo": "fallback"}
 
     def _monte_carlo(self, cands, v, n, rng=None) -> List[List[int]]:
         rng = rng or np.random.default_rng()
@@ -3055,7 +3131,7 @@ class CerebroIA:
     def get_status(self) -> Dict:
         fisica_status = self.fisica.get_status()
         return {
-            "versao": "9.1-Magna-Memoria-15",
+            "versao": "9.2-Magna-Extraordinaria-Forca-Maxima",
             "estado": self.estado,
             "treinado": self.treinado,
             "total_concursos": self.n,

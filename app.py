@@ -349,17 +349,39 @@ def api_magna_decidir():
 
 @app.route("/api/magna/forja/menu")
 def api_magna_forja_menu():
-    """Menu exato da escada de captura 13 × 14 × 15 (probabilidades/custos)."""
+    """Menu exato da escada de captura 13 × 14 × 15 com rotas extraordinárias."""
     try:
-        from core.forja_lotes import menu_captura
+        from core.forja_lotes import menu_captura, melhor_rota_por_orcamento
+        orc = request.args.get("orcamento", None)
+        try:
+            orc_val = float(orc) if orc not in (None, "") else None
+        except Exception:
+            orc_val = None
+        menu = menu_captura(orcamento=orc_val)
+        rotas_extra = None
+        try:
+            if orc_val:
+                vf = magna._vetor_combinado() if magna.treinado else None
+                if vf is not None:
+                    rotas_extra = melhor_rota_por_orcamento(
+                        vf=vf, orcamento=orc_val, quantidade=8)
+        except Exception:
+            rotas_extra = None
         return jsonify({
             "status": "ok",
-            "menu": menu_captura(orcamento=None),
+            "versao": "9.2-Magna-Extraordinaria-Forca-Maxima",
+            "menu": menu,
+            "rota_extraordinaria": rotas_extra,
+            "extraordinaria": {
+                "pool_metodo": "MotorGrafos pool_extraordinario vf+diversidade euclidiana lambda 0.38 + jitter",
+                "forja_metodo": "forjar_com_forca_maxima 25 candidatas, 5 seeds, k=5 robusto, 30s, massa incremental",
+                "fechamento_metodo": "FechamentoDual fechar_com_forca_maxima tabu + ensemble 3 tentativas",
+                "14_exato": "forjar_14_exato greedy 151 leque máximo",
+            },
             "verdade_honesta": (
                 "A garantia é condicional: só vale se o pool capturar as 15 "
-                "dezenas sorteadas. Cada degrau da escada multiplica a "
-                "probabilidade de captura por ~8,4 e reduz os pontos "
-                "garantidos em 1."
+                "dezenas sorteadas. A rota extraordinária maximiza P(lote≥alvo) "
+                "dentro do orçamento: pool diversificado + forja força máxima."
             ),
         })
     except Exception as exc:
