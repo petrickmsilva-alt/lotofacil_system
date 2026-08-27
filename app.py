@@ -304,16 +304,26 @@ def _responder_decisao_magna(dados):
         raise ValueError("alvo deve ser 13, 14 ou 15 (ou ausente)")
     alvo = int(alvo) if alvo not in (None, "") else None
     modo = dados.get("modo")
-    if modo not in (None, "", "auto", "forja"):
-        raise ValueError("modo deve ser 'auto' ou 'forja'")
+    if modo not in (None, "", "auto", "forja", "suprema"):
+        raise ValueError("modo deve ser 'auto', 'forja' ou 'suprema'")
     modo = modo or None
-    resultado = magna.decidir_e_gerar(
-        quantidade=quantidade,
-        orcamento=orcamento,
-        registrar=salvar,
-        alvo=alvo,
-        modo=modo,
-    )
+    # Suprema é a via pessoal em potência máxima
+    if modo == "suprema":
+        resultado = magna.decidir_suprema(
+            quantidade=quantidade,
+            orcamento=float(orcamento or 100.0),
+            alvo=int(alvo or 13),
+            modo="suprema",
+            registrar=salvar,
+        )
+    else:
+        resultado = magna.decidir_e_gerar(
+            quantidade=quantidade,
+            orcamento=orcamento,
+            registrar=salvar,
+            alvo=alvo,
+            modo=modo,
+        )
     salvos = 0
     if salvar and resultado["n_cartelas"] > 0:
         salvos = _salvar_cartelas_banco(
@@ -347,9 +357,84 @@ def api_magna_decidir():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+@app.route("/api/magna/suprema", methods=["POST"])
+def api_magna_suprema():
+    """MAGNA SUPREMA v10 — Sistema único pessoal em potência máxima, sem erros.
+
+    Usa tudo que é possível e impossível para 13/14/15:
+    - Detector de regime K-means
+    - Memória vetorial com atenção
+    - Juiz Magna 8 critérios com regeneração
+    - Verificador exaustivo P(lote≥t) sobre 3.268.760
+    - Alocador orçamento inteligente
+    - Forja suprema 60s 7 seeds k=7
+    - Aprendizado Bayesiano com momentum
+    """
+    try:
+        dados = request.get_json() or {}
+        quantidade = int(dados.get("quantidade", dados.get("n", 8)))
+        orcamento = float(dados.get("orcamento", 100.0))
+        alvo = int(dados.get("alvo", 13))
+        modo = dados.get("modo", "suprema")
+        salvar = bool(dados.get("salvar", True))
+        resultado = magna.decidir_suprema(
+            quantidade=quantidade,
+            orcamento=orcamento,
+            alvo=alvo,
+            modo=modo,
+            tentativas_juiz=int(dados.get("tentativas_juiz", 2)),
+            registrar=salvar,
+        )
+        salvos = 0
+        if salvar and resultado["n_cartelas"] > 0:
+            salvos = _salvar_cartelas_banco(
+                resultado["cartelas"], resultado["concurso_alvo"],
+                tipo="magna_suprema", modo=resultado["estrategia"],
+                grupo_elite=resultado["pool_elite"],
+                cobertura=resultado["analise"]["p_melhor_14_mais"],
+            )
+        return jsonify({
+            "status": "ok",
+            "resultado": resultado,
+            "salvas": salvos,
+            "concurso": resultado["concurso_alvo"],
+        })
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/regime")
+def api_magna_regime():
+    """Detecta regime atual K-means."""
+    try:
+        return jsonify({"status": "ok", "regime": magna.detectar_regime_atual()})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/verificar", methods=["POST"])
+def api_magna_verificar():
+    """Verificação exaustiva de lote."""
+    try:
+        dados = request.get_json() or {}
+        cartelas = [c.get("dezenas") if isinstance(c, dict) else c for c in dados.get("cartelas", [])]
+        pool = dados.get("pool_elite") or dados.get("pool") or []
+        if not cartelas:
+            return jsonify({"status": "erro", "msg": "cartelas vazias"}), 400
+        ver = magna.verificar_lote_exaustivo(cartelas, pool or list(range(1,18)))
+        return jsonify({"status": "ok", "verificacao": ver})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/magna/forja/menu")
 def api_magna_forja_menu():
-    """Menu exato da escada de captura 13 × 14 × 15 com rotas extraordinárias."""
+    """Menu exato da escada de captura 13 × 14 × 15 com rotas extraordinárias e suprema."""
     try:
         from core.forja_lotes import menu_captura, melhor_rota_por_orcamento
         orc = request.args.get("orcamento", None)
@@ -369,7 +454,7 @@ def api_magna_forja_menu():
             rotas_extra = None
         return jsonify({
             "status": "ok",
-            "versao": "9.2-Magna-Extraordinaria-Forca-Maxima",
+            "versao": "10.0-Magna-Suprema-Potencia-Maxima-Pessoal",
             "menu": menu,
             "rota_extraordinaria": rotas_extra,
             "extraordinaria": {
@@ -378,10 +463,20 @@ def api_magna_forja_menu():
                 "fechamento_metodo": "FechamentoDual fechar_com_forca_maxima tabu + ensemble 3 tentativas",
                 "14_exato": "forjar_14_exato greedy 151 leque máximo",
             },
+            "suprema_v10": {
+                "detector_regime": "K-means 3 regimes sobre soma/pares/primos/fib/borda/consec/gap últimos 100 concursos",
+                "memoria_vetorial": "Embedding 25D + atenção cosseno sobre episódios prototipo/repulsao top_k=25",
+                "juiz_magna": "8 critérios: diversidade_pool, cobertura_13, novidade_15, quadrantes, johnson_z, ev, calibracao_vf, filtros_soma",
+                "verificador": "RegiaoAltoAcerto união exata |R13|=4876 |R14|=151 sobre 3.268.760",
+                "alocador": "Knapsack maximiza P≥13 dentro orçamento",
+                "forja_suprema": "60s, 25 candidatas, 7 seeds, k_robusto=7, mapa MDS",
+                "aprendizado": "Dirichlet posterior Bayesiano + momentum 0.65 lr 0.18",
+            },
             "verdade_honesta": (
                 "A garantia é condicional: só vale se o pool capturar as 15 "
                 "dezenas sorteadas. A rota extraordinária maximiza P(lote≥alvo) "
-                "dentro do orçamento: pool diversificado + forja força máxima."
+                "dentro do orçamento: pool diversificado + forja força máxima. "
+                "Suprema v10 adiciona regime, memória vetorial, juiz e verificação exaustiva — ganho combinatório, nunca preditivo."
             ),
         })
     except Exception as exc:
@@ -1375,9 +1470,9 @@ def api_ia_log_tempo_real():
 if __name__ == "__main__":
     print("""
 ╔══════════════════════════════════════════════════════╗
-║   LOTOFÁCIL — INTELIGÊNCIA MAGNA v9.0              ║
-║   Uma memória + uma análise + uma decisão           ║
-║   Criação unificada e auditável                     ║
+║   LOTOFÁCIL — INTELIGÊNCIA MAGNA SUPREMA v10.0      ║
+║   Sistema único pessoal em potência máxima          ║
+║   Aprende, decide, julga, verifica, atua único      ║
 ║   Acesse: http://localhost:5000                      ║
 ╚══════════════════════════════════════════════════════╝
     """)

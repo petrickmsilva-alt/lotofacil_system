@@ -504,6 +504,14 @@ class ForjaDeLotes:
         melhor_global["k_robusto_extraordinario"] = k_robusto
         return melhor_global
 
+    def forjar_suprema(self, vf: np.ndarray, n_cartelas: int,
+                       alvo: int = 13, segundos: float = 60.0,
+                       mapa: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Atalho supremo pessoal: 60s, 25 candidatas, 7 seeds, k=7."""
+        return self.forjar_com_forca_maxima(
+            vf=vf, n_cartelas=n_cartelas, alvo=alvo,
+            segundos=segundos, n_candidatas=25, k_robusto=7, n_seeds=7, mapa=mapa)
+
     def forjar_14_exato(self, vf: np.ndarray, n_cartelas: int,
                         segundos: float = 15.0) -> Dict[str, Any]:
         """Otimização exata para alvo 14 (leque 151) — greedy ponderado máximo."""
