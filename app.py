@@ -699,6 +699,69 @@ def api_magna_fisica_ambiente():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+@app.route("/api/magna/clima")
+def api_magna_clima():
+    """Estado completo da fonte de clima: previsão, vetores,
+    auto-auditoria e resumo dos 3 testes físicos."""
+    try:
+        rel = magna.clima.relatorio()
+        return jsonify(rel)
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/clima/testes")
+def api_magna_clima_testes():
+    """Os 3 testes matemáticos (ímpares×pressão, soma×umidade,
+    frequência×temperatura) com z-scores e vereditos."""
+    try:
+        return jsonify(magna.clima.testes_fisicos())
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/clima/ingestao", methods=["POST"])
+def api_magna_clima_ingestao():
+    """Ingestão de um sorteio com clima (aprendizado contínuo).
+
+    Corpo: {concurso, data?, temperatura_c, pressao_atm, umidade_pct,
+    dezenas?} — upsert por concurso; o motor recalibra os testes.
+    """
+    try:
+        dados = request.get_json() or {}
+        concurso = int(dados.get("concurso"))
+        temp = float(dados.get("temperatura_c"))
+        pressao = float(dados.get("pressao_atm"))
+        umidade = float(dados.get("umidade_pct"))
+        dezenas = dados.get("dezenas")
+        if dezenas:
+            dezenas = [int(d) for d in str(dezenas).replace(",", " ").split()]
+        resultado = magna.clima.aprender(
+            concurso=concurso,
+            temp=temp,
+            pressao=pressao,
+            umidade=umidade,
+            data=str(dados.get("data", "")),
+            dezenas=dezenas,
+        )
+        if dados.get("aprender") and dezenas:
+            # fecha o ciclo: a Magna aprende o resultado com o clima
+            try:
+                resultado["magna"] = magna.aprender_resultado_magna(
+                    concurso, dezenas)
+            except Exception as e2:
+                resultado["magna"] = {"status": "erro", "msg": str(e2)}
+        return jsonify({"status": "ok", **resultado})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro",
+                        "msg": f"dados inválidos: {exc}"}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/cerebro/otimas", methods=["POST"])
 def api_cerebro_otimas():
     """Alias legado: delega à mesma e única Inteligência Magna."""

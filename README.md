@@ -70,6 +70,22 @@ A resposta contém a estratégia escolhida, cartelas, interpretação, contribui
 das fontes, probabilidades exatas e ID da auditoria. As rotas antigas de geração
 delegam para essa mesma API ou redirecionam para `/cerebro`.
 
+## Clima do sorteio (v11.2)
+
+A Magna assimila as condições do ambiente (temperatura × pressão × umidade)
+como fonte de evidência com shrinkage, teto ±10% e auto-auditoria
+walk-forward — ver `MAGNA_SUPREMA_v11_2_CLIMA_FISICO.md`.
+
+```http
+GET  /api/magna/clima              # previsão + top5 + auto-auditoria + resumo
+GET  /api/magna/clima/testes       # 3 testes físicos (z e vereditos 95%/68%)
+POST /api/magna/clima/ingestao     # {concurso, temperatura_c, pressao_atm,
+                                   #  umidade_pct, data?, dezenas?}
+```
+
+CLI: `python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42`.
+O histórico fica em `data/historico_clima_lotofacil.csv` (upsert idempotente).
+
 ## Memória e aprendizado
 
 Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:

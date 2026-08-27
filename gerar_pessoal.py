@@ -18,6 +18,13 @@ Uso:
   python gerar_pessoal.py --qtd 8 --orcamento 100 --alvo 14 --perfil equilibrado --modo suprema --mcts --multi-rota
   python gerar_pessoal.py --qtd 16 --orcamento 200 --alvo 15 --perfil agressivo --modo suprema --segundos 60
   python gerar_pessoal.py --ancoras --perfil conservador
+  python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42
+
+Evolução v11.2 (Clima Físico):
+- Fonte de clima assimilada à Magna (peso 6%, shrinkage 50/50, teto ±10%)
+- 3 testes matemáticos: ímpares×pressão, soma×umidade, frequência×temperatura
+- Auto-auditoria walk-forward escala a confiança da fonte (0.5-1.0×)
+- Aprendizado contínuo: cada sorteio com clima recalibra os testes
 """
 import argparse
 import json
@@ -38,6 +45,13 @@ def main():
     parser.add_argument("--ancoras", action="store_true", help="Gerar 3 âncoras 01/02/03 (mesmo processo supremo)")
     parser.add_argument("--salvar", action="store_true", help="Salvar no banco")
     parser.add_argument("--chat", type=str, default="", help="Pergunta para chat Magna ex: 'por que 22?'")
+    # v11.2 — clima do sorteio (boletim do dia)
+    parser.add_argument("--temp", type=float, default=None,
+                        help="Temperatura °C do próximo sorteio (ex: 19.5)")
+    parser.add_argument("--pressao", type=float, default=None,
+                        help="Pressão atm do próximo sorteio (ex: 0.912)")
+    parser.add_argument("--umidade", type=float, default=None,
+                        help="Umidade %% do próximo sorteio (ex: 42)")
     args = parser.parse_args()
 
     print(f"""
@@ -51,8 +65,31 @@ def main():
 """)
 
     magna = InteligenciaMagna(n_cartelas=args.qtd)
-    print(f"[SISTEMA] {magna.n} concursos carregados, treinando em potência máxima v11...")
+    print(f"[SISTEMA] {magna.n} concursos carregados, treinando em potência máxima v11.2...")
     magna.treinar()
+
+    # v11.2 — Clima: boletim do dia (se informado) + auto-auditoria
+    if args.temp is not None or args.pressao is not None or args.umidade is not None:
+        magna.clima.definir_condicoes(args.temp, args.pressao, args.umidade)
+        print(f"[CLIMA] Boletim definido: temp={args.temp}°C pressao={args.pressao} atm umidade={args.umidade}%")
+    try:
+        rep_c = magna.clima.relatorio()
+        prev = rep_c["clima_previsto"]
+        auto = rep_c["auto_ponderacao"]
+        print(f"[CLIMA v11.2] {rep_c['n_registros']} registros | próximo: "
+              f"{prev['temperatura']}°C {prev['pressao']} atm {prev['umidade']}% "
+              f"({prev['fonte']}) | top5 {rep_c['top5_clima_previsto']} | "
+              f"confiança {auto.get('fator_confianca')}")
+        tf = rep_c["testes_fisicos"]
+        for nome, t in (("T1", tf["T1_impares_pressao"]),
+                        ("T2", tf["T2_soma_umidade"]),
+                        ("T3", tf["T3_frequencia_temperatura"])):
+            if t.get("aplicavel"):
+                print(f"      {nome}: {t.get('veredito', '-')} — "
+                      f"{str(t.get('leitura', ''))[:110]}")
+        print(f"      honestidade: {tf['honestidade']['resumo']}")
+    except Exception as e:
+        print(f"[CLIMA] Erro (não bloqueia): {e}")
 
     # Regime adaptativo
     try:
