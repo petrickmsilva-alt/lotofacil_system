@@ -232,6 +232,26 @@ class DBManager:
             "ON cartelas(concurso_alvo)"
         )
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS memoria_cartelas_aprendidas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cartela_origem_id INTEGER,
+                concurso INTEGER,
+                bitmask INTEGER,
+                dezenas TEXT NOT NULL,
+                acertos INTEGER DEFAULT 0,
+                premio_ganho REAL DEFAULT 0,
+                status TEXT,
+                score_total REAL DEFAULT 0,
+                timestamp TEXT,
+                UNIQUE(concurso, bitmask)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memoria_bitmask "
+            "ON memoria_cartelas_aprendidas(bitmask)"
+        )
+
         conn.commit()
         conn.close()
 
@@ -534,3 +554,33 @@ class DBManager:
         rows = cursor.fetchall()
         conn.close()
         return rows
+
+    def arquivar_cartela_aprendida(self, dados):
+        """Persiste cartela conferida na memória de longo prazo.
+
+        `dados`: (cartela_origem_id, concurso, bitmask, dezenas_json,
+                  acertos, premio, status, score_total, timestamp)
+        Duplicatas (mesmo concurso+bitmask) são ignoradas.
+        """
+        conn = self.get_conn()
+        try:
+            conn.execute("""
+                INSERT OR IGNORE INTO memoria_cartelas_aprendidas
+                (cartela_origem_id, concurso, bitmask, dezenas, acertos,
+                 premio_ganho, status, score_total, timestamp)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, dados)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_bitmasks_15_oficiais(self):
+        """Bitmasks de todos os sorteios oficiais (15 pontos já ocorreram)."""
+        conn = self.get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT bitmask FROM resultados WHERE bitmask IS NOT NULL"
+            ).fetchall()
+            return {int(r[0]) for r in rows if r[0] is not None}
+        finally:
+            conn.close()

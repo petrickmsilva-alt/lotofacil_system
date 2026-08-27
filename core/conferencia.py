@@ -228,6 +228,20 @@ class Conferencia:
                 self.db.atualizar_conferencia(
                     _safe_int(cartela["id"]), acertos, premio, status
                 )
+                bitmask = 0
+                for d in dez_cartela:
+                    bitmask |= 1 << (int(d) - 1)
+                self.db.arquivar_cartela_aprendida((
+                    _safe_int(cartela["id"]),
+                    concurso,
+                    bitmask,
+                    str(sorted(dez_cartela)),
+                    acertos,
+                    float(premio),
+                    status,
+                    float(cartela["score_total"] or 0),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ))
 
                 resultados_conf.append({
                     "cartela_id":        _safe_int(cartela["id"]),
@@ -575,9 +589,37 @@ class Conferencia:
             return []
 
     def apagar_lote(self, lote_id):
+        """Remove o lote da tela após arquivar as cartelas na memória permanente."""
         try:
+            self.db.criar_tabelas()
             conn   = self.db.get_conn()
             cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM cartelas WHERE lote_id = ?", (str(lote_id),)
+            )
+            rows = cursor.fetchall()
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for c in rows:
+                dez = [_safe_int(c["d{}".format(i)]) for i in range(1, 16)]
+                bitmask = 0
+                for d in dez:
+                    bitmask |= 1 << (d - 1)
+                cursor.execute("""
+                    INSERT OR IGNORE INTO memoria_cartelas_aprendidas
+                    (cartela_origem_id, concurso, bitmask, dezenas, acertos,
+                     premio_ganho, status, score_total, timestamp)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                """, (
+                    _safe_int(c["id"]),
+                    _safe_int(c["concurso_alvo"]),
+                    bitmask,
+                    str(dez),
+                    _safe_int(c["acertos"]),
+                    float(c["premio_ganho"] or 0),
+                    c["status"] or "apagada_tela",
+                    float(c["score_total"] or 0),
+                    ts,
+                ))
 
             cursor.execute(
                 "DELETE FROM cartelas WHERE lote_id = ?", (str(lote_id),)
@@ -591,7 +633,11 @@ class Conferencia:
             conn.commit()
             conn.close()
 
-            return {"status": "ok", "cartelas_apagadas": n_cart}
+            return {
+                "status": "ok",
+                "cartelas_apagadas": n_cart,
+                "arquivadas_memoria": len(rows),
+            }
 
         except Exception as e:
             return {"status": "erro", "msg": str(e)}
