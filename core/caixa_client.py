@@ -222,6 +222,22 @@ class CaixaClient:
 
         normalizado["listaDezenas"] = ["{:02d}".format(d) for d in dezenas_int]
         normalizado["_fonte"] = fonte
+        # v11.3 — ordem real de sorteio (1ª, 2ª, ... bola), se a fonte
+        # fornecer (campo oficial `dezenasSorteadasOrdemSorteio`; espelhos
+        # usam `listaDezenasOrdemSorteio`). Só é aceita se tiver 15
+        # dezenas únicas 1–25 formando o MESMO conjunto de listaDezenas.
+        ordem_bruta = (bruto.get("dezenasSorteadasOrdemSorteio") or
+                       bruto.get("listaDezenasOrdemSorteio"))
+        normalizado["ordem_sorteio"] = None
+        if isinstance(ordem_bruta, (list, tuple)):
+            try:
+                ordem_int = [int(d) for d in ordem_bruta]
+            except (TypeError, ValueError):
+                ordem_int = []
+            if (len(ordem_int) == 15 and len(set(ordem_int)) == 15 and
+                    all(1 <= d <= 25 for d in ordem_int) and
+                    set(ordem_int) == set(dezenas_int)):
+                normalizado["ordem_sorteio"] = ordem_int
         faixas_rateio = {int(item["numeroAcertos"]) for item in rateio}
         normalizado["_premios_disponiveis"] = \
             faixas_rateio == {11, 12, 13, 14, 15}

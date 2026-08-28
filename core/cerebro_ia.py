@@ -33,6 +33,11 @@ try:
     from .clima_lotofacil import MotorClima
 except Exception as _e_clima:
     print(f"[AVISO] clima_lotofacil import: {_e_clima}")
+
+try:
+    from .padroes_ordem import MotorOrdemSorteio
+except Exception as _e_ordem:
+    print(f"[AVISO] padroes_ordem import: {_e_ordem}")
     MotorClima = None
 # Forja v2 extraordinária + Suprema v10
 try:
@@ -716,19 +721,23 @@ class CerebroIA:
     # re-normalizados em _carregar_pesos_fontes_magna e reajustados a
     # cada sorteio pelo aprendizado bayesiano das fontes.
     _FONTES_MAGNA_DEFAULT = {
-        "motores": 0.37,
-        "oraculos": 0.19,
+        "motores": 0.36,
+        "oraculos": 0.18,
         "espectral": 0.10,
         "informacao": 0.10,
-        "recente": 0.10,
+        "recente": 0.09,
         "fisica": 0.08,
-        "clima": 0.06,
+        "clima": 0.05,
+        # v11.3 — ordem real de sorteio (1ª bola, streaks, transições).
+        # Peso baixo por design: só sobe se o placar walk-forward provar
+        # lift sobre o acaso (4% por dezena).
+        "ordem": 0.04,
     }
 
     # v9.2 extraordinária: pool elite força máxima + forja força máxima
     VERSAO_MAGNA = "11.0-Magna-Suprema-Unica-Pessoal-Evoluida"
     VERSAO_SUPREMA = "11.0"
-    VERSAO_EVOLUCAO = "v11.2-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico"
+    VERSAO_EVOLUCAO = "v11.3-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-OrdemSorteio"
 
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
@@ -813,6 +822,31 @@ class CerebroIA:
             self.clima = _ClimaNeutro()
         self._log("INIT", "Clima v11.2: {} registros, auto-auditoria ativa".format(
             self.clima.n_registros))
+
+        # v11.3 — Motor de Padrões da Ordem de Sorteio (1ª bola, streaks)
+        if MotorOrdemSorteio is not None:
+            self.ordem_motor = MotorOrdemSorteio(db_path=self.db_path)
+        else:  # pragma: no cover — fallback neutro
+            class _OrdemNeutra:
+                n_registros = 0
+
+                def vetor_preferencia(self):
+                    return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+
+                def auto_ponderacao(self, *a, **k):
+                    return {"aplicavel": False, "fator_confianca": 0.5}
+
+                def relatorio(self):
+                    return {"status": "erro",
+                            "msg": "motor de ordem indisponível"}
+
+                def aprender(self, *a, **k):
+                    return {"status": "erro",
+                            "msg": "motor de ordem indisponível"}
+
+            self.ordem_motor = _OrdemNeutra()
+        self._log("INIT", "Ordem de Sorteio v11.3: {} concursos com ordem real"
+                  .format(self.ordem_motor.n_registros))
 
         # Carregar dados
         self._ingestor = IngestorDados(self.db_path, client=client)
@@ -1902,6 +1936,22 @@ class CerebroIA:
             vetor_clima = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float))
 
+        # v11.3 — Fonte de ordem real de sorteio: 1ª bola, streaks e
+        # transições, com auto-auditoria walk-forward. Sob independência
+        # o lift é ~1.0 e o fator mantém o vetor praticamente uniforme —
+        # a fonte entra no consenso apenas na medida do lift comprovado.
+        try:
+            fator_ordem = float(
+                self.ordem_motor.auto_ponderacao().get("fator_confianca", 0.5))
+            v_ordem = self.ordem_motor.vetor_preferencia()
+            uniforme_ordem = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
+            v_ordem_atenuado = ((1.0 - fator_ordem) * uniforme_ordem +
+                                fator_ordem * v_ordem)
+            vetor_ordem = self._normalizar_vetor(v_ordem_atenuado)
+        except Exception:
+            vetor_ordem = self._normalizar_vetor(
+                np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS)
+
         fontes = {
             "motores": vetor_motores,
             "oraculos": vetor_oraculos,
@@ -1910,6 +1960,7 @@ class CerebroIA:
             "recente": vetor_recente,
             "fisica": vetor_fisica,
             "clima": vetor_clima,
+            "ordem": vetor_ordem,
         }
         return fontes, consulta, espectro, informacao, entropias
 
@@ -3416,7 +3467,7 @@ class CerebroIA:
                     f"utilidade esperada EV real R${resultado.get('utilidade_esperada',{}).get('ev_real_premios_medios')} ROI {resultado.get('utilidade_esperada',{}).get('roi')}%, "
                     f"verificação exaustiva P≥13={resultado.get('verificacao_exaustiva',{}).get('p13_exata')} — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","ordem","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -3518,6 +3569,17 @@ class CerebroIA:
 
             dezenas_reais = self._ingestor.extrair_dezenas(data_json)
             premios_reais = self._ingestor.extrair_premios(data_json)
+
+            # 1.5) v11.3 — captura a ordem real das bolas do concurso que
+            # acabou de sair (fonte dos padrões de ordem da Magna).
+            ordem_sorteio = data_json.get("ordem_sorteio")
+            if ordem_sorteio:
+                try:
+                    self.db.salvar_ordem(concurso, ordem_sorteio)
+                    if hasattr(self, "ordem_motor"):
+                        self.ordem_motor.aprender(concurso, ordem_sorteio)
+                except (ValueError, sqlite3.Error) as exc:
+                    self._log("AVISO", "Ordem {}: {}".format(concurso, exc))
 
             # 2) Confere as apostas que estavam na fila para ESTE concurso.
             #    (Bug anterior: conferia a fila de "proximo" contra o
@@ -3778,6 +3840,12 @@ class CerebroIA:
                 "top5_previsto": (
                     self.clima.top5_clima(usar_web=False)
                     if self.clima.n_registros else None),
+            },
+            "ordem": {
+                "registros": self.ordem_motor.n_registros,
+                "auto_auditoria": (
+                    self.ordem_motor.auto_ponderacao()
+                    if self.ordem_motor.n_registros else None),
             },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],

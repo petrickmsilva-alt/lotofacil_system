@@ -252,8 +252,90 @@ class DBManager:
             "ON memoria_cartelas_aprendidas(bitmask)"
         )
 
+        # ── Ordem real de sorteio (1ª, 2ª, ... 15ª bola) ─────
+        # v11.3 — fonte dos padrões de ordem (MotorOrdemSorteio).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ordem_sorteio (
+                concurso INTEGER PRIMARY KEY,
+                b1  INTEGER NOT NULL, b2  INTEGER NOT NULL,
+                b3  INTEGER NOT NULL, b4  INTEGER NOT NULL,
+                b5  INTEGER NOT NULL, b6  INTEGER NOT NULL,
+                b7  INTEGER NOT NULL, b8  INTEGER NOT NULL,
+                b9  INTEGER NOT NULL, b10 INTEGER NOT NULL,
+                b11 INTEGER NOT NULL, b12 INTEGER NOT NULL,
+                b13 INTEGER NOT NULL, b14 INTEGER NOT NULL,
+                b15 INTEGER NOT NULL,
+                atualizado_em TEXT,
+                CHECK (b1 BETWEEN 1 AND 25 AND b2 BETWEEN 1 AND 25
+                   AND b3 BETWEEN 1 AND 25 AND b4 BETWEEN 1 AND 25
+                   AND b5 BETWEEN 1 AND 25 AND b6 BETWEEN 1 AND 25
+                   AND b7 BETWEEN 1 AND 25 AND b8 BETWEEN 1 AND 25
+                   AND b9 BETWEEN 1 AND 25 AND b10 BETWEEN 1 AND 25
+                   AND b11 BETWEEN 1 AND 25 AND b12 BETWEEN 1 AND 25
+                   AND b13 BETWEEN 1 AND 25 AND b14 BETWEEN 1 AND 25
+                   AND b15 BETWEEN 1 AND 25)
+            )
+        """)
+
         conn.commit()
         conn.close()
+
+    # =========================================================
+    # ORDEM DE SORTEIO (v11.3)
+    # =========================================================
+
+    def salvar_ordem(self, concurso, ordem):
+        """Upsert idempotente da ordem real das 15 bolas de um concurso.
+
+        `ordem`: sequência de 15 ints únicos 1–25, na ordem de extração.
+        Retorna True se gravado; rejeita dados inválidos (validação dupla
+        com a CHECK da tabela).
+        """
+        vals = [int(d) for d in ordem]
+        if (len(vals) != 15 or len(set(vals)) != 15 or
+                any(d < 1 or d > 25 for d in vals)):
+            raise ValueError(
+                "ordem inválida: 15 dezenas únicas 1–25 obrigatórias")
+        conn = self.get_conn()
+        try:
+            conn.execute("""
+                INSERT OR REPLACE INTO ordem_sorteio (
+                    concurso, b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,
+                    b11,b12,b13,b14,b15)
+                VALUES (?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (int(concurso), *vals))
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_ordem(self, concurso):
+        """Ordem (b1..b15) de um concurso ou None."""
+        conn = self.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15 "
+                "FROM ordem_sorteio WHERE concurso=?",
+                (int(concurso),)).fetchone()
+            return list(row) if row else None
+        finally:
+            conn.close()
+
+    def get_concursos_sem_ordem(self, limite=None):
+        """Concursos do histórico oficial que ainda não têm ordem gravada."""
+        conn = self.get_conn()
+        try:
+            sql = ("SELECT r.concurso FROM resultados r "
+                   "LEFT JOIN ordem_sorteio o ON o.concurso = r.concurso "
+                   "WHERE o.concurso IS NULL ORDER BY r.concurso DESC")
+            if limite:
+                sql += " LIMIT {}".format(int(limite))
+            return [int(r[0]) for r in conn.execute(sql).fetchall()]
+        finally:
+            conn.close()
 
     # =========================================================
     # RESULTADOS

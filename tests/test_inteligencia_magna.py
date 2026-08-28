@@ -38,10 +38,10 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["n_cartelas"] == 1
     assert resultado["decisao_id"] is not None
     assert len(resultado["fontes_assimiladas"]) == 6
-    # v11.2 — a fonte de clima entrou no consenso (7 fontes)
+    # v11.2 — clima entrou no consenso; v11.3 — ordem real de sorteio.
     assert set(resultado["pesos_fontes"]) == {
         "motores", "oraculos", "espectral", "informacao", "recente",
-        "fisica", "clima",
+        "fisica", "clima", "ordem",
     }
     assert abs(sum(resultado["pesos_fontes"].values()) - 1.0) < 1e-5
     assert len(resultado["top15_magna"]) == 15

@@ -348,6 +348,46 @@ auto-engano.
 > ativá-lo, mova o arquivo para `.github/workflows/ci.yml` no GitHub (a sessão
 > atual não possui permissão `workflows` para criar pipelines).
 
+---
+
+## 10. Adendo (mesmo dia) — Padrões da Ordem Real de Sorteio (v11.3)
+
+Pedido do autor: ensinar a Magna os padrões das dezenas "do início do
+sorteio" (repetições consecutivas, sequência máxima, trio 01/02/03, regra
+de exclusão). Implementado em `core/padroes_ordem.py`.
+
+**Descoberta factual que valida a auditoria:** o banco só guardava dezenas
+ordenadas. Consulta à API oficial (`dezenasSorteadasOrdemSorteio`) provou
+que a percepção vinha da lista ordenada dos sites, não da ordem das bolas:
+3769 = 1ª bola **09** (a 03 foi a 13ª), 3770 = **01** (a 03 nem saiu),
+3676 = **25** (a 04 foi a última bola).
+
+**Entregue:**
+
+- tabela `ordem_sorteio` (CHECK 1–25) + captura automática (sync, ciclo,
+  ingestão) + `backfill_ordem.py` retomável para o histórico completo;
+- motor com as 4 regras do autor mensuradas (frequência por posição,
+  streaks máximos, repetição condicional após 1/2/3+, exclusão walk-forward)
+  e previsão bayesiana com painel do trio;
+- fonte `ordem` no consenso da Magna (4%), atenuada pela auto-auditoria
+  walk-forward (veredito REAL/RUÍDO com p-valor binomial);
+- 17 testes novos — **suíte completa: 111/111 passando**;
+- `MAGNA_ORDEM_SORTEIO.md` com a documentação honesta: sob independência,
+  P(1ª bola = d) = 4% sempre; repetições duplas ~151 em 3.770 concursos e
+  triplas ~6 — o placar medirá e publicará isso sobre os dados reais.
+
+| Arquivo | Mudança |
+|---|---|
+| `core/padroes_ordem.py` | NOVO — motor de padrões da ordem |
+| `backfill_ordem.py` | NOVO — preenchimento retomável do histórico |
+| `core/cerebro_ia.py` | fonte `ordem` (peso, vetor, status, captura no ciclo) |
+| `core/caixa_client.py` | extração validada da ordem de sorteio |
+| `core/data_loader.py` | captura na sincronização do histórico |
+| `database/db_manager.py` | tabela + upsert/consultas de ordem |
+| `app.py` | GET `/api/magna/ordem` + POST ingestão |
+| `tests/test_padroes_ordem.py` | 17 testes |
+| `MAGNA_ORDEM_SORTEIO.md` | documentação da evolução |
+
 | Arquivo | Mudança |
 |---|---|
 | `tests/test_inteligencia_magna.py` | Contrato da estratégia âncora travado por família (`startswith`) |
