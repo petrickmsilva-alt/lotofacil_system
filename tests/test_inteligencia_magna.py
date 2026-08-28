@@ -37,11 +37,15 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["decisao_unica"] is True
     assert resultado["n_cartelas"] == 1
     assert resultado["decisao_id"] is not None
-    assert len(resultado["fontes_assimiladas"]) == 6
-    # v11.2 — clima entrou no consenso; v11.3 — ordem real de sorteio.
+    # v11.4 — o acervo de abertura (base histórica inteira) entrou como
+    # conhecimento assimilado: são 7 fontes de leitura dentro da Magna.
+    assert len(resultado["fontes_assimiladas"]) == 7
+    assert any("acervo" in f for f in resultado["fontes_assimiladas"])
+    # v11.2 — clima entrou no consenso; v11.4 — a fonte `ordem` (módulo
+    # paralelo) virou `abertura`: órgão da própria Magna.
     assert set(resultado["pesos_fontes"]) == {
         "motores", "oraculos", "espectral", "informacao", "recente",
-        "fisica", "clima", "ordem",
+        "fisica", "clima", "abertura",
     }
     assert abs(sum(resultado["pesos_fontes"].values()) - 1.0) < 1e-5
     assert len(resultado["top15_magna"]) == 15

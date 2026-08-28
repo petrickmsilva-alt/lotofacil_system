@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 ============================================================
-BACKFILL DA ORDEM REAL DE SORTEIO (v11.3)
+BACKFILL DA ORDEM REAL DE SORTEIO (v11.3 — ferramenta de captura;
+desde a v11.4 o destino é o acervo da Inteligência Magna)
 ============================================================
 Preenche a tabela `ordem_sorteio` com a ordem REAL de extração
 das bolas (1ª, 2ª, ..., 15ª) de todo o histórico que ainda não
@@ -21,8 +22,12 @@ pulados; se interromper, rode de novo que continua de onde parou.
 Rendimento esperado: ~2–4 concursos/segundo quando a Caixa responde;
 histórico completo (3.770+) em 20–40 minutos. Após concluir:
 
-    python gerar_pessoal.py            # treina com a fonte 'ordem' ativa
-    # painel: GET /api/magna/ordem
+    python gerar_pessoal.py --assimilar    # a Magna reassimila o acervo: o que
+                                           # este script gravou vira o canal
+                                           # `real` do conhecimento da Magna
+    # consulta: GET /api/magna/conhecimento · painel: /cerebro (seção
+    # "Acervo nativo"). A partir da v11.4 a ordem real não alimenta mais um
+    # motor separado: alimenta a própria Magna.
 """
 import argparse
 import sys

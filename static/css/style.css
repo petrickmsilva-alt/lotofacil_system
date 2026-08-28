@@ -1585,7 +1585,11 @@ body {
 .nav-sub a:hover { opacity: 1; }
 
 /* ============================================================
-   PAINEL DE PADRÕES DE ABERTURA (v11.3) — /ordem
+   ACERVO DE CONHECIMENTO DA MAGNA — seção "o que a Magna já
+   sabe" dentro de /cerebro. As classes .ordem-* nasceram no
+   antigo painel /ordem (v11.3); o painel foi absorvido pela
+   Inteligência Magna em v11.4 e os nomes ficaram como estão —
+   são a folha de estilo do acervo, não de um módulo à parte.
    ============================================================ */
 .ordem-hero {
     display: flex;

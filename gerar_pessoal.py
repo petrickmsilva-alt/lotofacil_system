@@ -7,7 +7,7 @@ Evoluções v11:
 - Aprender: EWC continual, meta por regime, clustering adaptativo K=2..4 silhouette, balança 0.001g
 - Decidir: perfil risco pessoal conservador/equilibrado/agressivo, MCTS pool UCT 800 iterações,
            multi-rota 60/30/10, utilidade esperada com prêmios reais médios
-- Julgar: juiz 8 critérios + adversarial fraquezas comuns + NIST chi2 + p-value ratio + juiz que aprende
+- Julgar: juiz 9 critérios + adversarial fraquezas comuns + NIST chi2 + p-value ratio + juiz que aprende
 - Entender: explainability por dezena/cartela, chat "por que 22?", fingerprint SHA256 anti-repetição pessoal
 - Verificar: backtest walk-forward 50 concursos, binomial significância, curva aprendizado mm5
 
@@ -19,6 +19,16 @@ Uso:
   python gerar_pessoal.py --qtd 16 --orcamento 200 --alvo 15 --perfil agressivo --modo suprema --segundos 60
   python gerar_pessoal.py --ancoras --perfil conservador
   python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42
+  python gerar_pessoal.py --assimilar --calibrar-pesos --conhecimento --qtd 1
+  python gerar_pessoal.py --memorizar-abertura "3774:07" --conhecimento
+
+Evolução v11.4 (Acervo de conhecimento único):
+- O antigo painel/módulo de padrões de abertura foi absorvido pela Magna:
+  `AcervoAberturaMagna` vive em core/cerebro_ia.py e é a fonte `abertura`
+- A Magna lê a base histórica inteira no boot (nada de cold start) e memoriza
+  em magna_conhecimento / magna_memoria; cada conferência reassimila e julga
+- Peso da fonte no consenso é medido, não prometido: walk-forward fora-da-amostra
+  decide (RUÍDO → vetor atenuado 0,5; abertura nunca muda a hipergeométrica)
 
 Evolução v11.2 (Clima Físico):
 - Fonte de clima assimilada à Magna (peso 6%, shrinkage 50/50, teto ±10%)
@@ -45,6 +55,22 @@ def main():
     parser.add_argument("--ancoras", action="store_true", help="Gerar 3 âncoras 01/02/03 (mesmo processo supremo)")
     parser.add_argument("--salvar", action="store_true", help="Salvar no banco")
     parser.add_argument("--chat", type=str, default="", help="Pergunta para chat Magna ex: 'por que 22?'")
+    # v11.4 — acervo de conhecimento (órgão da própria Magna, sem módulo paralelo)
+    parser.add_argument("--assimilar", action="store_true",
+                        help="A Magna relê a base histórica inteira e memoriza o "
+                             "que aprendeu antes de gerar (abertura + posterior)")
+    parser.add_argument("--calibrar-pesos", action="store_true",
+                        help="Com --assimilar: recalibra o peso das 8 fontes do "
+                             "consenso em walk-forward fora-da-amostra")
+    parser.add_argument("--limite-calibracao", type=float, default=90.0,
+                        help="Orçamento de segundos da calibração walk-forward")
+    parser.add_argument("--conhecimento", action="store_true",
+                        help="Mostra o acervo (o que a Magna já sabe) e o placar "
+                             "walk-forward; combinável com as opções acima")
+    parser.add_argument("--memorizar-abertura", type=str, default="",
+                        help="Memoriza a abertura real de um concurso: "
+                             "'3774:07' (só a 1ª bola) ou '3774:07 01 22 ...' "
+                             "(as 15 bolas na ordem extraída)")
     # v11.2 — clima do sorteio (boletim do dia)
     parser.add_argument("--temp", type=float, default=None,
                         help="Temperatura °C do próximo sorteio (ex: 19.5)")
@@ -56,7 +82,7 @@ def main():
 
     print(f"""
 ╔════════════════════════════════════════════════════════════════╗
-║   MAGNA SUPREMA v11 — SISTEMA ÚNICO PESSOAL EVOLUÍDO           ║
+║   MAGNA SUPREMA v11.4 — SISTEMA ÚNICO PESSOAL EVOLUÍDO         ║
 ║   Potência máxima, sem erros, uso próprio                      ║
 ║   Qtd={args.qtd} Orçamento=R${args.orcamento:.2f} Alvo={args.alvo} Perfil={args.perfil} Modo={args.modo}
 ║   Segundos={args.segundos} Tentativas={args.tentativas} MCTS={args.mcts} MultiRota={args.multi_rota}
@@ -65,8 +91,75 @@ def main():
 """)
 
     magna = InteligenciaMagna(n_cartelas=args.qtd)
-    print(f"[SISTEMA] {magna.n} concursos carregados, treinando em potência máxima v11.2...")
+    print(f"[SISTEMA] {magna.n} concursos carregados, treinando em potência máxima v11.4...")
     magna.treinar()
+
+    # ── v11.4 — ACERVO DE CONHECIMENTO ────────────────────────────────────
+    # A Magna aprende da própria base histórica (os 3.700+ concursos que já
+    # estão no banco) e memoriza o resultado: quem abre, com que frequência,
+    # o que está em sequência, o placar walk-forward das regras populares e o
+    # posterior do próximo início. Não é módulo à parte: é a fonte `abertura`
+    # do consenso, julgada a cada conferência.
+    if args.memorizar_abertura:
+        try:
+            concurso_txt, _, resto = args.memorizar_abertura.replace("=", " ")                 .replace(":", " ").partition(" ")
+            concurso = int(concurso_txt)
+            bolas = [int(d) for d in resto.replace(",", " ").split() if d.strip()]
+            if len(bolas) == 1:
+                res_ab = magna.aprender_abertura_medida(concurso, bolas[0],
+                                                         origem="cli")
+            else:
+                res_ab = magna.aprender_ordem_sorteio(concurso, bolas)
+            print(f"[ACERVO] concurso {concurso} memorizado: {res_ab.get('status')} "
+                  f"· abertura real {bolas[0]:02d}")
+        except (ValueError, IndexError) as e:
+            print(f"[ACERVO] entrada inválida em --memorizar-abertura: {e}")
+            sys.exit(2)
+
+    if args.assimilar or args.conhecimento:
+        try:
+            if args.assimilar:
+                print(f"[ACERVO] Relendo a base histórica inteira "
+                      f"(calibrar pesos = {args.calibrar_pesos})...")
+                res = magna.assimilar_acervo(
+                    forcar=True, calibrar_fontes=args.calibrar_pesos,
+                    limite_segundos=args.limite_calibracao)
+                print(f"[ACERVO] {res.get('status')} até o concurso "
+                      f"{res.get('aprendido_ate')} · veredito "
+                      f"{res.get('veredito')} · fator "
+                      f"{res.get('fator_confianca')}")
+                if res.get("calibracao"):
+                    cal = res["calibracao"]
+                    print(f"[ACERVO] calibração: {cal.get('provas')} provas em "
+                          f"{cal.get('tempo_seg')}s"
+                          f"{' (parcial)' if cal.get('parcial') else ''}")
+            kn = magna.conhecimento(detalhes=False)
+            ev = magna.evidencia_abertura()
+            print(f"[ACERVO] {kn['versao_acervo']} · {kn['base']['concursos']} "
+                  f"concursos lidos (1–{kn['base']['ultimo']}) · a decidir: "
+                  f"concurso {kn['base']['proximo_concurso']}")
+            print(f"[ACERVO] leitura: {ev['leitura']}")
+            top = ", ".join(f"{int(r['dezena']):02d} {r['prob']:.1%}"
+                            for r in (ev["ranking_completo"] or [])[:3])
+            print(f"[ACERVO] abertura mais provável: {top or '—'}")
+            plac = ev["placar"]
+            if plac.get("aplicavel"):
+                print(f"[ACERVO] placar walk-forward ({plac['n_provas']} provas): "
+                      f"{plac['leitura']}")
+            print(f"[ACERVO] pesos do consenso: " +
+                  " · ".join(f"{n} {v:.3f}" for n, v in
+                             kn["pesos_fontes"].items()))
+            print(f"[ACERVO] memória conferida: "
+                  f"{kn['placar_abertura'].get('provas', 0)} palpite(s) de "
+                  f"abertura julgado(s) · top1 "
+                  f"{kn['placar_abertura'].get('acerto_top1', 0)}")
+            print(f"[ACERVO] honestidade: {kn['honestidade']}")
+        except Exception as e:
+            print(f"[ACERVO] Erro (não bloqueia a decisão): {e}")
+        # `--conhecimento` sozinho é consulta: mostra e sai sem gerar.
+        if args.conhecimento and not args.assimilar and "--qtd" not in sys.argv:
+            print("[ACERVO] --conhecimento sem geração: nada criado.")
+            return
 
     # v11.2 — Clima: boletim do dia (se informado) + auto-auditoria
     if args.temp is not None or args.pressao is not None or args.umidade is not None:

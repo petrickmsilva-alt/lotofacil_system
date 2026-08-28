@@ -364,7 +364,7 @@ def api_magna_suprema():
     Evoluções completas:
     - EWC continual, meta por regime, clustering adaptativo, balança 0.001g
     - Perfil risco pessoal, MCTS pool, multi-rota 60/30/10, utilidade esperada prêmios reais
-    - Juiz 8 critérios + adversarial + NIST + p-value + juiz que aprende
+    - Juiz 9 critérios + adversarial + NIST + p-value + juiz que aprende
     - Explainability LLM, fingerprint SHA256, backtest 50, binomial, curva
 
     Único gerador Magna para decisão única e 3 âncoras.
@@ -578,7 +578,9 @@ def api_magna_forja_menu():
             "suprema_v10": {
                 "detector_regime": "K-means 3 regimes sobre soma/pares/primos/fib/borda/consec/gap últimos 100 concursos",
                 "memoria_vetorial": "Embedding 25D + atenção cosseno sobre episódios prototipo/repulsao top_k=25",
-                "juiz_magna": "8 critérios: diversidade_pool, cobertura_13, novidade_15, quadrantes, johnson_z, ev, calibracao_vf, filtros_soma",
+                "juiz_magna": "9 critérios: diversidade_pool, cobertura_13, novidade_15, "
+                              "quadrantes, johnson_z, ev, calibracao_vf, "
+                              "filtros_soma, cobertura_abertura (acervo)",
                 "verificador": "RegiaoAltoAcerto união exata |R13|=4876 |R14|=151 sobre 3.268.760",
                 "alocador": "Knapsack maximiza P≥13 dentro orçamento",
                 "forja_suprema": "60s, 25 candidatas, 7 seeds, k_robusto=7, mapa MDS",
@@ -764,25 +766,75 @@ def api_magna_clima_ingestao():
 
 @app.route("/ordem")
 def ordem_page():
-    """Painel v11.3 — Padrões de Abertura (menor dezena) e da Ordem
-    Real de Sorteio (1ª bola), com placar walk-forward em tempo real."""
-    return render_template("ordem.html")
+    """v11.4 — o painel de padrões de abertura deixou de ser uma página à parte:
+    o conhecimento mora na Inteligência Magna e é mostrado no /cerebro."""
+    return redirect(url_for("cerebro_page"), code=303)
 
 
 @app.route("/api/magna/ordem")
 def api_magna_ordem():
-    """v11.3 — Padrões da ORDEM REAL de sorteio (1ª bola, streaks,
-    repetição condicional, trio 01/02/03, regra de exclusão do usuário,
-    auto-auditoria walk-forward) + v11.3b padrões da MENOR dezena
-    (o 'início' da lista ordenada: distribuição 60/25/10, streaks,
-    placar walk-forward das regras)."""
+    """v11.4 — removido: o antigo motor de ordem virou o ACERVO da Magna.
+
+    Mantém a URL viva por um tempo, mas responde 410 apontando o novo caminho,
+    para que qualquer atalho antigo deixe claro que não existe mais módulo.
+    """
+    return jsonify({"status": "removido",
+                    "msg": "v11.4: os padrões de abertura foram absorvidos pela "
+                           "Inteligência Magna. Use /api/magna/conhecimento "
+                           "(o acervo) e /api/magna/abertura (leitura + "
+                           "placar walk-forward).",
+                    "novo_endereco": ["/api/magna/conhecimento",
+                                      "/api/magna/conhecimento/assimilar",
+                                      "/api/magna/abertura",
+                                      "/api/magna/ordem/ingestao"]}), 410
+
+
+@app.route("/api/magna/abertura")
+def api_magna_abertura():
+    """O que a Magna sabe sobre a abertura do próximo concurso.
+
+    É a mesma evidência que entra no consenso das fontes, que o Juiz usa e que
+    a conferência vai julgar — leitura + placar walk-forward + palpite.
+    """
     try:
-        relatorio = magna.ordem_motor.relatorio()
-        try:
-            relatorio["menor_dezena"] = magna.minimo_motor.relatorio_minimo()
-        except Exception as exc2:
-            relatorio["menor_dezena"] = {"status": "erro", "msg": str(exc2)}
-        return jsonify(relatorio)
+        return jsonify(magna.evidencia_abertura())
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/conhecimento")
+def api_magna_conhecimento():
+    """Inventário do acervo da Magna: base lida, fontes do consenso, pesos,
+    abertura aprendida, memória de decisões conferidas e leitura honesta."""
+    try:
+        detalhes = request.args.get("detalhes", "1") != "0"
+        dominio = (request.args.get("dominio") or "").strip()
+        if dominio:
+            return jsonify(magna.conhecimento(dominio=dominio,
+                                               detalhes=True))
+        return jsonify(magna.conhecimento(detalhes=detalhes))
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/conhecimento/assimilar", methods=["POST"])
+def api_magna_conhecimento_assimilar():
+    """Manda a Magna reler a base histórica inteira (e, se pedido, recalibrar
+    o peso de cada fonte em walk-forward). É o 'aprender' manual do ciclo."""
+    try:
+        dados = request.get_json(silent=True) or {}
+        limite = float(dados.get("limite_segundos", 60.0))
+        resultado = magna.assimilar_acervo(
+            forcar=bool(dados.get("forcar", True)),
+            calibrar_fontes=bool(dados.get("calibrar_fontes",
+                                           dados.get("calibrar", False))),
+            limite_segundos=limite)
+        return jsonify(resultado)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro",
+                        "msg": f"dados inválidos: {exc}"}), 400
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500
@@ -790,22 +842,30 @@ def api_magna_ordem():
 
 @app.route("/api/magna/ordem/ingestao", methods=["POST"])
 def api_magna_ordem_ingestao():
-    """v11.3 — Ingestão da ordem real das bolas de um concurso.
+    """v11.4 — ingestão da ORDEM REAL das bolas de um concurso, dentro da Magna.
 
     Corpo: {concurso, ordem: [b1..b15 na ordem de extração]} — upsert
-    idempotente; alimenta o placar walk-forward e a fonte 'ordem'.
+    idempotente no banco e no acervo: alimenta a série da 1ª bola (canal
+    `real`), o placar walk-forward e o peso da fonte `abertura`.
+    Alternativa mais leve: {concurso, abertura: N} quando só se sabe qual bola
+    saiu primeiro.
     """
     try:
         dados = request.get_json() or {}
         concurso = int(dados.get("concurso"))
         ordem = dados.get("ordem")
-        if not ordem:
+        if ordem:
+            if isinstance(ordem, str):
+                ordem = [int(d) for d in ordem.replace(",", " ").split()]
+            ordem = [int(d) for d in ordem]
+            resultado = magna.aprender_ordem_sorteio(concurso, ordem)
+        elif dados.get("abertura") is not None:
+            resultado = magna.aprender_abertura_medida(
+                concurso, int(dados["abertura"]), origem="ingestao")
+        else:
             return jsonify({"status": "erro",
-                            "msg": "campo 'ordem' obrigatório"}), 400
-        if isinstance(ordem, str):
-            ordem = [int(d) for d in ordem.replace(",", " ").split()]
-        ordem = [int(d) for d in ordem]
-        resultado = magna.ordem_motor.aprender(concurso, ordem)
+                            "msg": "informe 'ordem' (15 bolas) ou 'abertura' "
+                                   "(a 1ª bola)"}), 400
         return jsonify(resultado)
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro",
@@ -1216,6 +1276,7 @@ def api_status():
     status_sistema["ultimo_concurso"] = db.get_ultimo_concurso() or 0
     status_sistema["total_concursos"] = db.get_total_concursos() or 0
     status_sistema["ia_treinada"] = cerebro.treinado
+
     if status_sistema["ultima_atualizacao"] is None:
         status_sistema["ultima_atualizacao"] = (
             data_loader.get_status_base().get("ultima_atualizacao")
@@ -1704,9 +1765,10 @@ def api_ia_log_tempo_real():
 if __name__ == "__main__":
     print("""
 ╔══════════════════════════════════════════════════════╗
-║   LOTOFÁCIL — INTELIGÊNCIA MAGNA SUPREMA v10.0      ║
-║   Sistema único pessoal em potência máxima          ║
-║   Aprende, decide, julga, verifica, atua único      ║
+║  LOTOFÁCIL — INTELIGÊNCIA MAGNA SUPREMA v11.4       ║
+║  Sistema único pessoal em potência máxima           ║
+║  Aprende, decide, julga, verifica, atua — um só     ║
+║  Acervo de conhecimento nativo (base inteira)       ║
 ║   Acesse: http://localhost:5000                      ║
 ╚══════════════════════════════════════════════════════╝
     """)
@@ -1727,6 +1789,40 @@ if __name__ == "__main__":
         print("[AVISO] Carregue o histórico primeiro")
 
     status_sistema["ia_treinada"] = cerebro.treinado
+
+    # ── v11.4 — PRÉ-CARGA DE CONHECIMENTO (parte do boot, não um passo manual) ──
+    # A Magna já nasce tendo lido a base histórica inteira; aqui ela também
+    # CALIBRA o peso de cada fonte do consenso em walk-forward antes de o
+    # usuário pedir qualquer coisa — para que a decisão do concurso 3774 já
+    # saia com todo o conhecimento que existe no sistema. Roda em thread para
+    # não segurar o servidor; a UI mostra o estado em /cerebro e em
+    # /api/magna/conhecimento. Desligue com LOTOFACIL_ACERVO_BOOT=0.
+    if os.getenv("LOTOFACIL_ACERVO_BOOT", "1") != "0":
+        def _precarregar_acervo():
+            try:
+                print("[ACERVO] A Magna está calibrando o próprio conhecimento "
+                      "sobre a base histórica (tudo o que existe nela)...")
+                res = magna.assimilar_acervo(
+                    forcar=True, calibrar_fontes=True, limite_segundos=90.0)
+                print("[ACERVO] {}: {}".format(
+                    res.get("status"),
+                    res.get("leitura")
+                    or "pesos do consenso calibrados em walk-forward"))
+                cal = res.get("calibracao") or {}
+                if cal:
+                    print("[ACERVO] calibração: {} provas fora-da-amostra em {}s{}"
+                          " · pesos {}".format(
+                              cal.get("provas"), cal.get("tempo_seg"),
+                              " (parcial: o orçamento cortou)"
+                              if cal.get("parcial") else "",
+                              " · ".join("{} {:.3f}".format(n, p) for n, p
+                                         in (cal.get("pesos_calibrados") or
+                                            {}).items())))
+            except Exception as exc:
+                print("[AVISO] pré-carga de acervo: {}".format(exc))
+
+        threading.Thread(target=_precarregar_acervo, daemon=True,
+                         name="acervo-boot").start()
 
     # Monitora a Caixa em segundo plano: novo sorteio → treino + aprendizado.
     try:
