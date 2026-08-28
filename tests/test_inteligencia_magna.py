@@ -156,7 +156,9 @@ def test_ancoras_01_02_03_usam_memoria_unica(magna_decisao):
     magna, _ = magna_decisao
     r = magna.decidir_ancoradas_01_02_03(registrar=False, concurso_alvo=10001)
     assert r["n_cartelas"] == 3
-    assert r["estrategia"] == "ancoradas-01-02-03"
+    # v11: a família "ancoradas-01-02-03" ganhou o sufixo "-suprema".
+    # O contrato travado é a família (prefixo), não o rebranding.
+    assert r["estrategia"].startswith("ancoradas-01-02-03")
     c1, c2, c3 = (c["dezenas"] for c in r["cartelas"])
     # Cartela 1 começa com a dezena 01.
     assert c1[0] == 1

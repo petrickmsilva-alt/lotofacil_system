@@ -85,3 +85,23 @@ MIOLO = {7, 8, 9, 12, 13, 14, 17, 18, 19}
 
 # URL da Caixa
 URL_RESULTADOS = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/"
+
+# ============================================================
+# CALENDÁRIO DE SORTEIOS (auditoria 2026-08-28)
+# Desde 19/07/2026 a Caixa transferiu os sorteios de sábado para
+# domingo às 11h (Espaço da Sorte, São Paulo). Grade atual:
+#   segunda a sexta  21h
+#   domingo          11h
+#   sábado           sem sorteio
+# Regras, preços e probabilidades não mudaram.
+# ============================================================
+DIAS_SORTEIO_HORA = {
+    0: 21,  # segunda
+    1: 21,  # terça
+    2: 21,  # quarta
+    3: 21,  # quinta
+    4: 21,  # sexta
+    5: None,  # sábado — sem sorteio
+    6: 11,  # domingo
+}
+

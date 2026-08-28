@@ -206,7 +206,10 @@ def test_magna_alvo13_usa_escada_de_captura(magna):
 def test_magna_modo_forja_entrega_geometria_e_lote_valido(magna):
     r = magna.decidir_e_gerar(quantidade=3, modo="forja", alvo=13,
                               registrar=False)
-    assert r["estrategia"] == "forja-espacial-13"
+    # v11: a forja ganhou o prefixo "extraordinaria". O contrato travado é
+    # a família "forja-espacial" + o alvo, não o nome exato da variante.
+    assert r["estrategia"].startswith("forja-espacial")
+    assert r["estrategia"].endswith("-13")
     assert r["n_cartelas"] == 3
     forja = r["forja"]
     assert forja["alvo"] == 13
