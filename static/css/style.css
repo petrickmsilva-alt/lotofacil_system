@@ -1583,3 +1583,274 @@ body {
     padding-left: 42px !important; font-size: 13px; opacity: .85;
 }
 .nav-sub a:hover { opacity: 1; }
+
+/* ============================================================
+   PAINEL DE PADRÕES DE ABERTURA (v11.3) — /ordem
+   ============================================================ */
+.ordem-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+.ordem-hero h2 { margin-bottom: 6px; }
+.ordem-hero p { color: var(--text-muted); max-width: 720px; }
+.ordem-badge {
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    border: 1px solid rgba(108, 92, 231, 0.35);
+    white-space: nowrap;
+    font-size: 0.92rem;
+}
+.ordem-badge.quente {
+    border-color: var(--warning);
+    box-shadow: 0 0 14px rgba(253, 203, 110, 0.25);
+}
+
+.ordem-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
+    margin-bottom: 18px;
+}
+.ordem-panel {
+    background: var(--card-bg);
+    border: 1px solid rgba(108, 92, 231, 0.2);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow);
+}
+.ordem-panel h3 {
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.ordem-panel h3 small { color: var(--text-muted); font-weight: 400; }
+.ordem-panel h4 {
+    margin: 10px 0 8px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ordem-loading, .ordem-vazio {
+    color: var(--text-muted);
+    padding: 18px 0;
+    text-align: center;
+}
+.ordem-nota, .ordem-micro {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 10px;
+}
+.ordem-honestidade {
+    margin-top: 8px;
+    padding: 14px 16px;
+    border-left: 3px solid var(--info);
+    background: rgba(116, 185, 255, 0.07);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+/* Candidatas (previsão) */
+.ordem-candidatas-lista {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+.ordem-candidata {
+    background: rgba(10, 10, 35, 0.5);
+    border: 1px solid rgba(108, 92, 231, 0.25);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.ordem-candidata.lider {
+    border-color: var(--success);
+    box-shadow: 0 0 16px rgba(0, 184, 148, 0.18);
+}
+.ordem-dezena {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--primary);
+    background: rgba(108, 92, 231, 0.15);
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+.ordem-candidata.lider .ordem-dezena {
+    color: var(--success);
+    background: rgba(0, 184, 148, 0.15);
+}
+.ordem-candidata-info { flex: 1; min-width: 0; }
+.ordem-candidata-rotulo {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+.ordem-candidata-pct { font-weight: 700; margin-top: 5px; }
+
+.ordem-repeticao-box {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(253, 203, 110, 0.08);
+    border: 1px solid rgba(253, 203, 110, 0.3);
+    font-size: 0.9rem;
+}
+
+/* Barras */
+.ordem-bar {
+    height: 9px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+    margin: 4px 0;
+}
+.ordem-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+}
+.ordem-bar-fill.verde { background: linear-gradient(90deg, var(--success), #009b7a); }
+.ordem-bar-fill.roxo { background: linear-gradient(90deg, var(--primary), var(--info)); }
+.ordem-bar-fill.tracejado {
+    background: repeating-linear-gradient(
+        90deg, rgba(224, 224, 255, 0.45) 0 6px, transparent 6px 10px);
+}
+
+/* Placar */
+.ordem-placar-linha { margin-bottom: 14px; }
+.ordem-placar-rotulo { font-size: 0.9rem; margin-bottom: 2px; }
+.ordem-placar-nums { font-size: 0.82rem; color: var(--text-muted); }
+.ordem-placar-nums strong { color: var(--text); font-size: 0.95rem; }
+
+/* Streaks */
+.ordem-streak-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.ordem-streak-card {
+    background: rgba(10, 10, 35, 0.5);
+    border: 1px solid rgba(108, 92, 231, 0.25);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+.ordem-streak-card.recorde { border-color: rgba(253, 203, 110, 0.5); }
+.ordem-streak-num {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--warning);
+}
+.ordem-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.ordem-tabela th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 500;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(108, 92, 231, 0.3);
+}
+.ordem-tabela td {
+    padding: 7px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Frequências */
+.ordem-freq-linha {
+    display: grid;
+    grid-template-columns: 44px 1fr 150px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.ordem-freq-dezena {
+    font-weight: 800;
+    color: var(--primary);
+    font-size: 1.05rem;
+}
+.ordem-freq-nums { font-size: 0.85rem; }
+
+/* Auto-auditoria */
+.ordem-aud-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+.ordem-aud-card {
+    background: rgba(10, 10, 35, 0.5);
+    border: 1px solid rgba(108, 92, 231, 0.2);
+    border-radius: var(--radius);
+    padding: 14px;
+}
+.ordem-aud-nums { color: var(--text-muted); font-size: 0.84rem; margin-top: 8px; }
+.ordem-veredito {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+.ordem-veredito.real {
+    background: rgba(0, 184, 148, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(0, 184, 148, 0.4);
+}
+.ordem-veredito.ruido {
+    background: rgba(253, 203, 110, 0.12);
+    color: var(--warning);
+    border: 1px solid rgba(253, 203, 110, 0.4);
+}
+.ordem-veredito.neutro {
+    background: rgba(136, 136, 170, 0.12);
+    color: var(--text-muted);
+    border: 1px solid rgba(136, 136, 170, 0.3);
+}
+
+/* Ordem real */
+.ordem-real-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+}
+.ordem-backfill {
+    background: rgba(116, 185, 255, 0.06);
+    border: 1px dashed rgba(116, 185, 255, 0.4);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-size: 0.9rem;
+}
+.ordem-backfill code {
+    display: inline-block;
+    margin: 8px 0;
+    padding: 6px 12px;
+    background: var(--dark);
+    border-radius: 6px;
+    color: var(--success);
+    font-family: monospace;
+}
+
+@media (max-width: 760px) {
+    .ordem-hero { flex-direction: column; }
+    .ordem-streak-cards { grid-template-columns: 1fr; }
+    .ordem-freq-linha { grid-template-columns: 36px 1fr; }
+    .ordem-freq-nums { grid-column: 2; }
+}

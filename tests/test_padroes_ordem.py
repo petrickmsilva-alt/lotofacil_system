@@ -369,3 +369,14 @@ def test_api_magna_ordem_inclui_menor_dezena():
     # run atual coerente com o banco (03 nos concursos 3772-3773)
     atual = md["streaks"]["run_atual"]
     assert atual["dezena"] in (1, 2, 3)
+
+
+def test_pagina_ordem_renderiza():
+    from app import app as flask_app
+    client = flask_app.test_client()
+    r = client.get("/ordem")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Padrões de Abertura" in html
+    assert "ordem.js" in html
+    assert "Quem abre o pr\u00f3ximo concurso" in html

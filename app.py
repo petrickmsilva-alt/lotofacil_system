@@ -762,6 +762,13 @@ def api_magna_clima_ingestao():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+@app.route("/ordem")
+def ordem_page():
+    """Painel v11.3 — Padrões de Abertura (menor dezena) e da Ordem
+    Real de Sorteio (1ª bola), com placar walk-forward em tempo real."""
+    return render_template("ordem.html")
+
+
 @app.route("/api/magna/ordem")
 def api_magna_ordem():
     """v11.3 — Padrões da ORDEM REAL de sorteio (1ª bola, streaks,
