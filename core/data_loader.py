@@ -196,6 +196,15 @@ class DataLoader:
             )
             self.db.inserir_resultado(
                 dados, preservar_premios=preservar_premios)
+            # v11.3 — captura a ordem real de sorteio quando a fonte traz
+            # (campo oficial dezenasSorteadasOrdemSorteio). Falha aqui não
+            # rejeita o concurso: a ordem pode ser completada depois.
+            ordem = data_json.get("ordem_sorteio")
+            if ordem:
+                try:
+                    self.db.salvar_ordem(concurso, ordem)
+                except (ValueError, sqlite3.Error):
+                    pass
             return True
         except (TypeError, ValueError, OverflowError, OSError, sqlite3.Error) as exc:
             print("[HISTÓRICO] Concurso rejeitado: {}".format(exc))

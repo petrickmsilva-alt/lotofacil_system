@@ -86,6 +86,26 @@ POST /api/magna/clima/ingestao     # {concurso, temperatura_c, pressao_atm,
 CLI: `python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42`.
 O histórico fica em `data/historico_clima_lotofacil.csv` (upsert idempotente).
 
+## Ordem real de sorteio (v11.3)
+
+O sistema agora armazena e analisa a **ordem real das bolas** (1ª, 2ª, ...,
+15ª) — campo oficial `dezenasSorteadasOrdemSorteio`. A lógica popular das
+dezenas "do início" (repetições, sequências máximas, trio 01/02/03) foi
+implementada em `core/padroes_ordem.py` e entra no consenso como fonte
+`ordem` (4%), **sempre com placar walk-forward**: se a regra não superar o
+acaso (4% por dezena), o veredito RUÍDO fica publicado e o vetor entra
+atenuado — ver `MAGNA_ORDEM_SORTEIO.md`.
+
+```bash
+python backfill_ordem.py           # preenche o histórico (retomável, local)
+```
+
+```http
+GET  /api/magna/ordem              # streaks, repetição condicional, trio,
+                                   # regra de exclusão do usuário, auto-auditoria
+POST /api/magna/ordem/ingestao     # {concurso, ordem: [b1..b15]}
+```
+
 ## Memória e aprendizado
 
 Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:

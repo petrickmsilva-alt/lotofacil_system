@@ -762,6 +762,59 @@ def api_magna_clima_ingestao():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+@app.route("/ordem")
+def ordem_page():
+    """Painel v11.3 — Padrões de Abertura (menor dezena) e da Ordem
+    Real de Sorteio (1ª bola), com placar walk-forward em tempo real."""
+    return render_template("ordem.html")
+
+
+@app.route("/api/magna/ordem")
+def api_magna_ordem():
+    """v11.3 — Padrões da ORDEM REAL de sorteio (1ª bola, streaks,
+    repetição condicional, trio 01/02/03, regra de exclusão do usuário,
+    auto-auditoria walk-forward) + v11.3b padrões da MENOR dezena
+    (o 'início' da lista ordenada: distribuição 60/25/10, streaks,
+    placar walk-forward das regras)."""
+    try:
+        relatorio = magna.ordem_motor.relatorio()
+        try:
+            relatorio["menor_dezena"] = magna.minimo_motor.relatorio_minimo()
+        except Exception as exc2:
+            relatorio["menor_dezena"] = {"status": "erro", "msg": str(exc2)}
+        return jsonify(relatorio)
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/ordem/ingestao", methods=["POST"])
+def api_magna_ordem_ingestao():
+    """v11.3 — Ingestão da ordem real das bolas de um concurso.
+
+    Corpo: {concurso, ordem: [b1..b15 na ordem de extração]} — upsert
+    idempotente; alimenta o placar walk-forward e a fonte 'ordem'.
+    """
+    try:
+        dados = request.get_json() or {}
+        concurso = int(dados.get("concurso"))
+        ordem = dados.get("ordem")
+        if not ordem:
+            return jsonify({"status": "erro",
+                            "msg": "campo 'ordem' obrigatório"}), 400
+        if isinstance(ordem, str):
+            ordem = [int(d) for d in ordem.replace(",", " ").split()]
+        ordem = [int(d) for d in ordem]
+        resultado = magna.ordem_motor.aprender(concurso, ordem)
+        return jsonify(resultado)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro",
+                        "msg": f"dados inválidos: {exc}"}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/cerebro/otimas", methods=["POST"])
 def api_cerebro_otimas():
     """Alias legado: delega à mesma e única Inteligência Magna."""
