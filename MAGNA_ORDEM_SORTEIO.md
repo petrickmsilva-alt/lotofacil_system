@@ -1,7 +1,15 @@
-# 🎯 MAGNA v11.3 — Padrões da Ordem Real de Sorteio
+# 🎯 MAGNA — Padrões da Ordem Real de Sorteio (registro de medição)
 
-**Data:** 28/08/2026 (America/Sao_Paulo)
-**Módulo:** `core/padroes_ordem.py` · Fonte Magna: `ordem` (peso default 4%)
+**Data:** 28/08/2026 (America/São Paulo) · medição v11.3/v11.3b, base até 3773
+**Onde isso vive hoje (v11.4):** `AcervoAberturaMagna` dentro de
+`core/cerebro_ia.py` — **órgão da Inteligência Magna**, não módulo separado.
+Fonte do consenso: `abertura` (peso default 4%, atenuada pelo veredito).
+Doc da integração: [`MAGNA_ACERVO_CONHECIMENTO.md`](MAGNA_ACERVO_CONHECIMENTO.md).
+
+> Este arquivo é o **registro das medições** (o que a base histórica mostrou e o
+> que foi publicado como veredito). A arquitetura, as rotas e os pesos estão no
+> documento do acervo acima — o módulo `core/padroes_ordem.py`, o painel `/ordem`
+> e a fonte `ordem` deixaram de existir na v11.4.
 
 ---
 
@@ -18,10 +26,12 @@ A hipótese era:
 
 | Regra | Onde | Como é medida |
 |---|---|---|
-| R1 — "01/02/03 saem mais no início" | `frequencia_posicao(1)`, `frequencia_janela_inicial(3)` | contagem real da 1ª bola e das 3 primeiras bolas por dezena |
-| R2 — "máximo de vezes seguidas" | `max_streak_historico()`, `distribuicao_streaks()` | maior sequência de repetição da 1ª bola em todo o histórico, por dezena |
-| R3 — "repetiu 2×, não repete de novo" | `taxa_repeticao()` | P(repetir) global e condicional após streak de 1, 2 e 3+ — comparada à taxa do acaso (4%) |
-| R4 — "qual das outras duas vai sair?" | `previsao_primeira_bola()` | posterior bayesiana (Dirichlet) + exclusão da última 1ª bola + ordenação das restantes do trio |
+| R1 — "01/02/03 saem mais no início" | `frequencias(canal)`, `janela_inicial(3)` | contagem real da 1ª bola e das 3 primeiras bolas por dezena |
+| R2 — "máximo de vezes seguidas" | `streaks(canal)` | sequência atual, recorde histórico e distribuição de comprimentos, por dezena |
+| R3 — "repetiu 2×, não repete de novo" | `taxa_repeticao(canal)`, `repeticao_apos_streak(d, k)` | P(repetir) global e condicional após streak de 1, 2 e 3+ — medido **por dezena**, nunca agregado |
+| R4 — "qual das outras duas vai sair?" | `previsao(canal)`, `posterior(canal)` | posterior (contagens suavizadas + margem) + a pergunta decisiva com as candidatas com e sem exclusão |
+
+*(nomes na v11.4; na v11.3 eram métodos do módulo separado `core/padroes_ordem.py`)*
 
 ## 2. A descoberta da auditoria: você estava lendo a lista ORDENADA
 
@@ -74,14 +84,24 @@ capturados automaticamente pela sincronização do histórico e pelo ciclo
 autônomo. Já semeamos com as ordens reais verificadas dos concursos
 3676, 3769 e 3770.
 
-### 4.2 Painel e API
+### 4.2 Painel e API (v11.4)
 
 ```http
-GET  /api/magna/ordem               # relatório completo
-POST /api/magna/ordem/ingestao      # {concurso, ordem: [b1..b15]}
+GET  /api/magna/abertura             # o que a Magna sabe do próximo início
+GET  /api/magna/conhecimento          # acervo: base, fontes, pesos, memória
+POST /api/magna/conhecimento/assimilar  # {forcar, calibrar_fontes, limite_segundos}
+POST /api/magna/ordem/ingestao       # {concurso, ordem: [b1..b15]} — pela Magna
+GET  /api/magna/ordem                # 410 (a URL antiga aponta o caminho novo)
 ```
 
-Exemplo de resposta (com o histórico cheio):
+O painel `ordem.html` foi absorvido pela seção **“Acervo nativo”** de
+`/cerebro`; o `MotorPadroesMinimo`/`MotorOrdemSorteio` viraram os dois canais
+(`minima`, `real`) do mesmo acervo.
+
+Exemplo de resposta **da v11.3** (o formato atual é o de
+`GET /api/magna/abertura`: `digest`, `aprendido_ate`, `veredito`,
+`fator_confianca`, `ranking_completo`, `probabilidades`, `palpite_top3`,
+`recorde`, `placar`, `auto_auditoria`, `pergunta_decisiva`, `leitura`):
 
 ```json
 {
@@ -104,11 +124,14 @@ Exemplo de resposta (com o histórico cheio):
 
 ### 4.3 Na Magna
 
-A fonte `ordem` entrou no consenso com peso default 4% (renormalizado
-entre as 8 fontes). O `vetor_preferencia()` é atenuado pela
-auto-auditoria walk-forward — com lift ~1 (acaso), o vetor é quase
-uniforme e não distorce a decisão; as cartelas seguem nascendo da
-estrutura combinatória, agora também informada pela ordem real.
+A fonte passou a se chamar `abertura` e entrou no consenso com peso default 4%
+(renormalizada entre as 8 fontes). O vetor é atenuado pela auto-auditoria
+walk-forward — com lift ~1 (acaso), ele é quase uniforme e não distorce a
+decisão; as cartelas seguem nascendo da estrutura combinatória, agora também
+informada pela ordem real. A diferença da v11.4 é de posse: quem atenua, quem
+pesa e quem julga é a própria Magna
+(`vetor_abertura_para_consenso()`), e o palpite sai da decisão já registrado
+para ser julgado na conferência.
 
 ## 5. A SUA LÓGICA, MEDIDA SOBRE O HISTÓRICO COMPLETO (v11.3b)
 
@@ -122,8 +145,9 @@ Você esclareceu: o "início do sorteio" é a **menor dezena da lista ordenada**
   60,0% / 25,0% / 9,8% — `P(menor=k) = C(25−k,14)/C(25,15)`);
 - ✅ o recorde de aberturas seguidas do 01 é **17 concursos** (1750–1766).
 
-Implementado em `MotorPadroesMinimo` (mesmo módulo), com o banco atualizado
-até o concurso **3773** (seus dados: 3771 abriu 02, 3772 e 3773 abriram 03).
+Medido no canal `minima` do acervo (o que era `MotorPadroesMinimo`), com o banco
+atualizado até o concurso **3773** (seus dados: 3771 abriu 02, 3772 e 3773
+abriram 03).
 
 ### A sua pergunta: "03 saiu 2×, a chance de repetir é muito pequena?"
 
@@ -147,22 +171,31 @@ A regra de exclusão **perde 9 pontos**: quando o 01 está em sequência
 (o caso mais comum), excluir o 01 força prever o 02 (25%) em vez de
 manter o 01 (60%). **Streak não altera probabilidade — e o placar prova.**
 
-O que o sistema passa a fazer: prever o próximo "início" pela margem
-hipergeométrica (o melhor preditor possível, validado fora-da-amostra),
-publicar streaks/recorde/pergunta-resposta no painel, e alimentar a fonte
-`ordem` da Magna com essa posterior. No 3774, a leitura do sistema é:
-**01 (60%) > 02 (25%) > 03 (9,8%)** — sem excluir ninguém.
+O que o sistema faz hoje: prevê o próximo "início" pela margem hipergeométrica
+(o melhor preditor possível, validado fora-da-amostra), publica
+streaks/recorde/pergunta-resposta na seção "Acervo nativo" de `/cerebro` e
+alimenta a fonte **`abertura`** do consenso da Magna com essa posterior. No
+3774, a leitura do sistema é: **01 (60%) > 02 (25%) > 03 (9,8%)** — sem
+excluir ninguém.
 
 > Armadilha evitada: agregando todas as dezenas, "P(repetir | streak
 > longo)" parece subir (58% após 3+). É composição, não causa — streaks
 > longos são quase sempre do 01, que repete 60% por natureza. A medição
 > por dezena elimina a ilusão.
 
-## 6. Arquivos
+## 6. Arquivos (estado v11.4)
 
-- `core/padroes_ordem.py` — motor completo (estatísticas, previsão, placar)
-- `backfill_ordem.py` — preenchimento retomável do histórico
-- `database/db_manager.py` — tabela `ordem_sorteio` (CHECK 1–25, upsert)
+- `core/cerebro_ia.py` — `AcervoAberturaMagna` (estatística, previsão, placar,
+  auditoria) + a integração no `CerebroIA` (`assimilar_acervo`,
+  `evidencia_abertura`, `ancoras_do_acervo`, `aprender_ordem_sorteio`,
+  `conhecimento`, `calibrar_pesos_walkforward`)
+- `core/magna_suprema.py` — 9º critério do Juiz (`cobertura_abertura`)
+- `database/db_manager.py` — tabela `ordem_sorteio` (CHECK 1–25, upsert) e
+  `magna_conhecimento` / `magna_memoria` criados pela própria Magna
+- `backfill_ordem.py` — preenchimento retomável do canal `real` (opcional)
 - `core/caixa_client.py` — captura de `dezenasSorteadasOrdemSorteio` com validação
 - `core/data_loader.py` / ciclo autônomo — captura automática dos novos concursos
-- `tests/test_padroes_ordem.py` — 28 testes (17 ordem real + 11 menor dezena)
+- `templates/cerebro.html` — seção “Acervo nativo”
+- `tests/test_magna_acervo.py` — 27 testes do acervo e da integração
+- ~~`core/padroes_ordem.py`~~, ~~`templates/ordem.html`~~,
+  ~~`static/js/ordem.js`~~, ~~`tests/test_padroes_ordem.py`~~ — absorvidos

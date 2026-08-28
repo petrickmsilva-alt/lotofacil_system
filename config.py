@@ -6,7 +6,12 @@ CONFIGURAÇÕES GLOBAIS DO SISTEMA LOTOFÁCIL
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, "database", "lotofacil.db")
+# `LOTOFACIL_DB` aponta para outro arquivo .db sem tocar em nada: é como se
+# valida o aprendizado da Magna (acervo, calibração, conferência) numa CÓPIA da
+# base antes de escrever na base real — o sistema todo (app, CLI, migração,
+# CerebroIA) lê daqui, então não existe segundo caminho escondido.
+DATABASE_PATH = os.environ.get("LOTOFACIL_DB") or os.path.join(
+    BASE_DIR, "database", "lotofacil.db")
 MODELS_PATH = os.path.join(BASE_DIR, "database", "modelos")
 
 # Garantir que pastas existam

@@ -10,15 +10,15 @@ conhecimento foi assimilado pela Inteligência Magna.
 ## Como a decisão funciona
 
 ```text
-Histórico completo
+Histórico completo  →  ACERVO DA MAGNA (abertura: base inteira, memorizada)
       ↓
 Síntese analítica + consenso + espectro + informação + leitura recente
       ↓
-Filtros avançados + risco/EV + cobertura combinatória
+Filtros avançados + risco/EV + cobertura combinatória + juiz 9 critérios
       ↓
 UMA decisão da Inteligência Magna
       ↓
-Cartelas → conferência → aprendizado auditável → novos pesos
+Cartelas → conferência → julga o palpite → aprendizado auditável → novos pesos
 ```
 
 A quantidade solicitada é apenas um limite. A estratégia é escolhida pela Magna:
@@ -44,6 +44,11 @@ python app.py
 ```
 
 Acesse `http://127.0.0.1:5000/cerebro`.
+
+No primeiro boot a Magna calibra o próprio acervo (pesos das 8 fontes em
+walk-forward sobre a base inteira) em segundo plano — ~90 s sem travar a
+interface; depois disso o conhecimento é reaproveitado do banco e a leitura é
+reassegurada antes de cada decisão. Desligue com `LOTOFACIL_ACERVO_BOOT=0`.
 
 O servidor usa `127.0.0.1` e debug desligado por padrão. Configurações opcionais:
 
@@ -86,25 +91,68 @@ POST /api/magna/clima/ingestao     # {concurso, temperatura_c, pressao_atm,
 CLI: `python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42`.
 O histórico fica em `data/historico_clima_lotofacil.csv` (upsert idempotente).
 
-## Ordem real de sorteio (v11.3)
+## Acervo de conhecimento (v11.4) — dentro da Magna, não ao lado dela
 
-O sistema agora armazena e analisa a **ordem real das bolas** (1ª, 2ª, ...,
-15ª) — campo oficial `dezenasSorteadasOrdemSorteio`. A lógica popular das
-dezenas "do início" (repetições, sequências máximas, trio 01/02/03) foi
-implementada em `core/padroes_ordem.py` e entra no consenso como fonte
-`ordem` (4%), **sempre com placar walk-forward**: se a regra não superar o
-acaso (4% por dezena), o veredito RUÍDO fica publicado e o vetor entra
-atenuado — ver `MAGNA_ORDEM_SORTEIO.md`.
+A leitura das **aberturas** (quem abre a lista ordenada e qual foi a 1ª bola
+física extraída) deixou de ser um módulo ou uma página paralela. Ela é agora o
+**acervo de conhecimento da própria Inteligência Magna**: `AcervoAberturaMagna`,
+definido em `core/cerebro_ia.py`, montado no `__init__` da Magna e alimentado
+por ela mesma.
+
+```text
+base histórica (resultados + ordem_sorteio)
+        ↓  a Magna lê TUDO no boot (~0,4 s para 3.773 concursos)
+acervo  →  frequências · streaks · recorde · repetição por dezena
+        →  posterior do próximo início · placar walk-forward · p-valor
+        ↓
+fonte `abertura` do consenso (peso default 4%, atenuada pelo veredito)
+        ↓
+decisão · interpretação por cartela · 9º critério do Juiz · âncoras 01/02/03
+        ↓
+conferência → o palpite de abertura é julgado → pesos e memória reajustados
+```
+
+O que isso muda na prática:
+
+- **nada de cold start.** Ao subir (`python app.py`), um thread de pré-carga
+  manda a Magna reler a base inteira e calibrar o peso de cada fonte em
+  walk-forward. A decisão do concurso **3774 já nasce com o conhecimento
+  acumulado**; se a pré-carga ainda não terminou, `_garantir_acervo()` reassimila
+  antes de cada decisão (custo ~0 quando a base não mudou).
+- **o aprendizado é contínuo e auditável.** Cada conferência grava em
+  `magna_memoria` se o palpite de abertura acertou (top1/top2/top3) e
+  `magna_conhecimento` guarda o snapshot com `digest` — a decisão registra o
+  digest do conhecimento que a produziu, e a auditoria compara os dois.
+- **a regra popular é medida, não obedecida.** Excluir a abertura que veio 2×
+  seguidas fica em 51,7% contra 60,6% de simplesmente prever a mais provável: o
+  sistema publica o placar e **não** exclui ninguém.
 
 ```bash
-python backfill_ordem.py           # preenche o histórico (retomável, local)
+python backfill_ordem.py                                   # 1ª bola física (opcional)
+python gerar_pessoal.py --assimilar --calibrar-pesos       # reler + calibrar (CLI)
+python gerar_pessoal.py --conhecimento                     # só consulta
+python gerar_pessoal.py --memorizar-abertura "3774:07"     # alimenta um concurso
 ```
 
 ```http
-GET  /api/magna/ordem              # streaks, repetição condicional, trio,
-                                   # regra de exclusão do usuário, auto-auditoria
-POST /api/magna/ordem/ingestao     # {concurso, ordem: [b1..b15]}
+GET  /api/magna/abertura               # o que a Magna sabe do próximo início
+GET  /api/magna/conhecimento           # acervo completo: base, fontes, pesos,
+                                       # dominios, memória recente, placar
+GET  /api/magna/conhecimento?dominio=abertura
+POST /api/magna/conhecimento/assimilar # {forcar, calibrar_fontes, limite_segundos}
+POST /api/magna/ordem/ingestao         # {concurso, ordem:[b1..b15]} ou
+                                       # {concurso, abertura:N}
+GET  /api/magna/ordem                  # 410 — a URL antiga aponta o novo caminho
+GET  /ordem                            # 303 → /cerebro (o painel virou seção)
 ```
+
+Flags: `LOTOFACIL_ACERVO_AUTO=0` deixa o acervo em modo somente-leitura (lê e
+usa, não grava nem recalibra sozinho — é o modo da suíte de testes);
+`LOTOFACIL_ACERVO_BOOT=0` desliga a pré-carga do `python app.py`;
+`LOTOFACIL_DB=/caminho.db` troca o banco (útil para validar numa cópia).
+Painel: **`/cerebro` → seção "Acervo nativo"**. Documentação completa em
+[`MAGNA_ACERVO_CONHECIMENTO.md`](MAGNA_ACERVO_CONHECIMENTO.md); a medição
+estatística detalhada continua em [`MAGNA_ORDEM_SORTEIO.md`](MAGNA_ORDEM_SORTEIO.md).
 
 ## Memória e aprendizado
 
@@ -113,7 +161,10 @@ Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:
 1. a Magna compara o top-15 de cada fonte com o resultado real;
 2. ajusta suavemente os pesos em `magna_estado`;
 3. grava cada mudança em `magna_aprendizado`;
-4. mantém a decisão, o resultado e os pesos vinculados pelo mesmo ID.
+4. mantém a decisão, o resultado e os pesos vinculados pelo mesmo ID;
+5. julga o que havia previsto sobre a **abertura** e reassimila o acervo
+   (`magna_conhecimento` + `magna_memoria`) — a memória do concurso vira o
+   conhecimento do próximo.
 
 Não existe aprendizado oculto nem outro gerador paralelo.
 

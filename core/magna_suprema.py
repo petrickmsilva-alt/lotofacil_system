@@ -469,7 +469,7 @@ class MCTSPool:
         return sorted(pool_final)[:tam]
 
 # ----------------------------------------------------------------
-# Juiz Magna — 8 critérios + adversarial + NIST + p-value + aprendizado
+# Juiz Magna — 9 critérios + adversarial + NIST + p-value + aprendizado
 # ----------------------------------------------------------------
 class JuizMagna:
     def __init__(self, matriz: Optional[np.ndarray] = None):
@@ -483,12 +483,16 @@ class JuizMagna:
             "ev": 0.7,
             "calibracao_vf": 0.8,
             "filtros_soma": 0.9,
+            # v11.4 — o acervo de abertura da própria Magna entrou como
+            # critério de julgamento (peso baixo: é estrutura, não previsão).
+            "cobertura_abertura": 0.6,
         }
         self.historico_falhas = {}  # critério -> vezes que falhou mas depois deu 13+
 
     def julgar(self, cartelas: List[List[int]], pool: List[int],
                analise: Dict[str, Any], vf: np.ndarray,
-               historico_15_masks: set) -> Dict[str, Any]:
+               historico_15_masks: set,
+               abertura: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         criterios = {}
         try:
             from .forja_lotes import MotorGrafos
@@ -574,6 +578,60 @@ class JuizMagna:
             "valor": {"min": min(somas) if somas else 0, "max": max(somas) if somas else 0},
             "peso": self.pesos_criterios["filtros_soma"],
         }
+
+        # v11.4 — cobertura de abertura (conhecimento da própria Magna).
+        # `abertura` é o posterior aprendido do acervo: {"probabilidades":
+        # {dezena: p}, "ranking": [d...]} . O lote é julgado pela massa de
+        # probabilidade de abertura que ele cobre: um lote cujas cartelas
+        # abrem quase sempre em 04/05 ignora a estrutura do sorteio real.
+        # É critério de ESTRUTURA (peso 0,6) — não altera a hipergeométrica.
+        if abertura:
+            try:
+                probs = {int(k): float(v) for k, v in
+                         (abertura.get("probabilidades") or {}).items()}
+                if probs and cartelas:
+                    aberturas_lote = sorted({min(int(d) for d in c)
+                                             for c in cartelas})
+                    cobertura = round(sum(probs.get(d, 0.0)
+                                          for d in aberturas_lote), 4)
+                    ranking_aprendido = [int(d) for d in
+                                         (abertura.get("ranking") or [])][:3]
+                    top1 = ranking_aprendido[0] if ranking_aprendido else None
+                    # Duas formas de respeitar o conhecimento: abrir uma das
+                    # cartelas com a dezena que a base aponta como mais provável
+                    # (o caso natural de 1 ou 2 cartelas), ou, com lote ≥3,
+                    # distribuir as aberturas de modo a cobrir 85% da massa —
+                    # o hedge que o próprio placar walk-forward mediu. Nunca é
+                    # cota para lote pequeno: uma cartela só pode abrir de um
+                    # jeito, e cobrar dela "cobertura" seria exigir o imposível.
+                    cobre_a_mais_provavel = (top1 is None
+                                             or top1 in aberturas_lote)
+                    hedge_de_lote = (len(cartelas) >= 3
+                                     and cobertura >= 0.85)
+                    criterios["cobertura_abertura"] = {
+                        "ok": bool(cobre_a_mais_provavel or hedge_de_lote),
+                        "valor": {
+                            "aberturas_do_lote": aberturas_lote,
+                            "massa_coberta": cobertura,
+                            "alvo_de_hedge": 0.85,
+                            "cobre_a_abertura_mais_provavel": bool(
+                                cobre_a_mais_provavel),
+                            "ranking_aprendido": ranking_aprendido,
+                        },
+                        "peso": self.pesos_criterios["cobertura_abertura"],
+                        "leitura": (
+                            "o lote cobre {:.1f}% da massa de abertura "
+                            "aprendida da base histórica{}".format(
+                                100 * cobertura,
+                                "" if cobre_a_mais_provavel else
+                                " e nenhuma cartela abre pela dezena mais "
+                                "provável do conhecimento")),
+                    }
+            except Exception as exc:  # pragma: no cover — critério opcional
+                criterios["cobertura_abertura"] = {
+                    "ok": True, "valor": str(exc),
+                    "peso": self.pesos_criterios["cobertura_abertura"],
+                }
 
         reprovados = [k for k,v in criterios.items() if not v.get("ok")]
         nota = sum(v.get("peso",1) for k,v in criterios.items() if v.get("ok")) / max(sum(v.get("peso",1) for v in criterios.values()),1)

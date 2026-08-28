@@ -29,17 +29,10 @@
             </li>
             <li>
                 <a href="/cerebro"
-                   class="{% if request.path.startswith('/cerebro') or request.path in ['/gerar','/cartela_do_dia','/wheeling','/analise','/singularidade','/ia_auditoria','/fisica','/avaliacao'] %}active{% endif %}">
+                   class="{% if request.path.startswith('/cerebro') or request.path in ['/gerar','/cartela_do_dia','/wheeling','/analise','/singularidade','/ia_auditoria','/fisica','/avaliacao','/ordem'] %}active{% endif %}">
                     <i class="fas fa-wand-magic-sparkles"></i> Inteligência Magna
                 </a>
             </li>
-            <li>
-                <a href="/ordem"
-                   class="{% if request.path == '/ordem' %}active{% endif %}">
-                    <i class="fas fa-ranking-star"></i> Padrões de Abertura
-                </a>
-            </li>
-
             <li class="nav-grupo-titulo">
                 <i class="fas fa-folder-open"></i> SISTEMA
             </li>

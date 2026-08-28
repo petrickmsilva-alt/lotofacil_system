@@ -27,7 +27,94 @@
     <div><i class="fas fa-atom"></i><span>Singularidade</span></div>
     <div><i class="fas fa-shield-halved"></i><span>Auditoria</span></div>
     <div><i class="fas fa-basketball"></i><span>Física</span></div>
+    <div title="O que a Magna aprendeu da própria base histórica"><i class="fas fa-book-open"></i><span>Acervo de abertura</span></div>
     <div class="magna-fluxo"><span></span><i class="fas fa-arrow-right"></i><strong>DECISÃO MAGNA</strong></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     ACERVO DE CONHECIMENTO — órgão da própria Inteligência Magna.
+     Não é painel paralelo: é a memória que a Magna lê da base
+     histórica antes de qualquer decisão, e que cada conferência
+     volta a julgar.
+     ══════════════════════════════════════════════════════════════ -->
+<section class="ordem-panel magna-acervo" id="magna-acervo" aria-label="Acervo de conhecimento da Magna">
+    <div class="magna-section-title">
+        <div>
+            <span>ACERVO NATIVO — A MAGNA LÊ A PRÓPRIA BASE</span>
+            <h3>O que a Magna já sabe antes de decidir</h3>
+        </div>
+        <div class="acervo-actions">
+            <button type="button" id="acervo-aprender" class="acervo-btn">
+                <i class="fas fa-book-open"></i> Reler a base inteira
+            </button>
+            <button type="button" id="acervo-calibrar" class="acervo-btn secundario">
+                <i class="fas fa-sliders"></i> Calibrar pesos
+            </button>
+        </div>
+    </div>
+
+    <p class="acervo-leitura" id="acervo-leitura">
+        <i class="fas fa-circle-notch fa-spin"></i> consultando o acervo da Magna…
+    </p>
+    <div class="acervo-meta" id="acervo-meta"></div>
+
+    <div class="ordem-grid-2">
+        <div>
+            <h4><i class="fas fa-bullseye"></i> Abertura do próximo concurso</h4>
+            <div id="acervo-previsao" class="ordem-candidatas-lista">
+                <div class="ordem-loading">carregando…</div>
+            </div>
+            <div id="acervo-decisiva" class="ordem-repeticao-box"></div>
+        </div>
+
+        <div>
+            <h4><i class="fas fa-scale-balanced"></i> Placar walk-forward
+                <small id="acervo-provas"></small></h4>
+            <div id="acervo-placar" class="ordem-placar">
+                <div class="ordem-loading">calculando…</div>
+            </div>
+            <p class="ordem-nota">Teto teórico = a melhor pontuação possível sob
+                independência: o melhor preditor é a própria margem. Quando o
+                veredito é <strong>RUÍDO</strong>, o vetor entra atenuado e a
+                leitura é publicada como conhecimento — nunca como promessa.</p>
+        </div>
+
+        <div>
+            <h4><i class="fas fa-code-branch"></i> Fontes do consenso e pesos</h4>
+            <div id="acervo-fontes" class="ordem-freqs">
+                <div class="ordem-loading">…</div>
+            </div>
+        </div>
+
+        <div>
+            <h4><i class="fas fa-table-list"></i> Ordem real das bolas
+                <small>(1ª bola física — canal <code>real</code>)</small></h4>
+            <div id="acervo-real" class="ordem-real">
+                <div class="ordem-loading">…</div>
+            </div>
+            <form id="acervo-ingestao" class="acervo-ingestao">
+                <label>Concurso
+                    <input type="number" id="acervo-concurso" min="1" placeholder="3774" required>
+                </label>
+                <label>Ordem das 15 bolas (ou só a 1ª)
+                    <input type="text" id="acervo-ordem"
+                           placeholder="07 01 22 03 … — ou apenas 07">
+                </label>
+                <button type="submit" class="acervo-btn mini">
+                    <i class="fas fa-download"></i> Memorizar
+                </button>
+            </form>
+            <p class="acervo-aviso" id="acervo-aviso"></p>
+        </div>
+    </div>
+
+    <p class="ordem-honestidade">
+        <i class="fas fa-circle-info"></i>
+        Nada aqui é um módulo à parte: o acervo é memória da própria Magna, entra
+        no consenso com o peso que a medição justificou e é julgado a cada
+        conferência. Cada concurso é independente — a probabilidade
+        hipergeométrica de cada cartela e as garantias do fechamento não mudam.
+    </p>
 </section>
 
 <div class="magna-grid">
@@ -339,6 +426,7 @@
     const processing = document.getElementById('magna-processing');
     const resultBox = document.getElementById('magna-result');
     const stages = [
+        ['Reassegurando o acervo de conhecimento…', 'A Magna lê a própria base histórica inteira antes de decidir: aberturas, streaks, placar walk-forward.'],
         ['Assimilando o histórico…', 'Frequência, transições, distribuição e leitura recente.'],
         ['Fundindo todas as evidências…', 'Consenso, espectro e teoria da informação entram na mesma memória.'],
         ['Interpretando risco e cobertura…', 'Filtros avançados, valor esperado e garantia condicional.'],
@@ -556,6 +644,9 @@
             const data = await response.json();
             if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na decisão');
             renderizar(data);
+            // a decisão é registrada com o digest do acervo que a produziu —
+            // o painel do conhecimento acompanha o estado logo em seguida
+            if (typeof carregarAcervo === 'function') carregarAcervo();
         } catch (err) {
             alert('Inteligência Magna: ' + err.message);
         } finally {
@@ -684,10 +775,241 @@
             }
         });
     }
+
+    /* ══════════════════════════════════════════════════════════
+       ACERVO — a Magna expõe a própria memória (abertura + pesos
+       do consenso + placar walk-forward). Um só cérebro: os dados
+       vêm dos endpoints da Magna, não de um módulo paralelo.
+       ══════════════════════════════════════════════════════════ */
+    function acPct(v, c) {
+        return (v == null) ? '—' : (Number(v) * 100).toFixed(c == null ? 1 : c) + '%';
+    }
+    function acBola(d) { return String(d).padStart(2, '0'); }
+    function acNum(v) { return (v == null) ? '—' : Number(v).toLocaleString('pt-BR'); }
+
+    function acCandidata(r, i, maior) {
+        const forca = Math.max(4, Math.round((r.prob || 0) / (maior || 1) * 100));
+        return '<div class="ordem-candidata' + (i === 0 ? ' lider' : '') + '">' +
+            '<div class="ordem-dezena">' + acBola(r.dezena) + '</div>' +
+            '<div class="ordem-candidata-info">' +
+            '<div class="ordem-candidata-rotulo">abertura prevista</div>' +
+            '<div class="ordem-bar"><div class="ordem-bar-fill' + (i === 0 ? ' verde' : '') +
+            '" style="width:' + forca + '%"></div></div>' +
+            '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div>' +
+            '<div class="ordem-candidata-rotulo">teto ' + acPct(r.prob_teorica) +
+            ' · ' + acNum(r.vezes_na_base) + '× na base</div>' +
+            '</div></div>';
+    }
+
+    function acLinhaPlacar(rotulo, taxa, teto, cor) {
+        const larg = Math.max(2, Math.min(100, Math.round((taxa || 0) * 100)));
+        return '<div class="ordem-placar-linha">' +
+            '<div class="ordem-placar-rotulo">' + rotulo + '</div>' +
+            '<div class="ordem-bar"><div class="ordem-bar-fill ' + cor +
+            '" style="width:' + larg + '%"></div></div>' +
+            '<div class="ordem-placar-nums"><strong>' + acPct(taxa, 1) + '</strong>' +
+            (teto != null ? ' · teto teórico ' + acPct(teto, 1) : '') + '</div></div>';
+    }
+
+    function renderAcervo(ev, kn) {
+        const leitura = document.getElementById('acervo-leitura');
+        if (leitura) {
+            leitura.innerHTML = '<i class="fas fa-brain"></i> ' +
+                ((ev && ev.leitura) || (kn && kn.leitura) ||
+                 'Ainda não há acervo assimilado — use “Reler a base inteira”.');
+        }
+
+        const meta = document.getElementById('acervo-meta');
+        if (meta) {
+            const pesoAb = ((kn && kn.pesos_fontes) || {}).abertura;
+            const itens = [
+                ['versão do acervo', (kn && kn.versao_acervo) || (ev && ev.versao) || '—'],
+                ['aprendido até', (ev && ev.aprendido_ate != null) ? ('concurso ' + ev.aprendido_ate) : '—'],
+                ['concursos lidos', ev ? acNum(ev.concursos_da_base) : '—'],
+                ['com ordem real', ev ? acNum(ev.concursos_com_ordem_real) : '—'],
+                ['veredito', (ev && ev.veredito) ? (ev.veredito + ' · fator ' + Number(ev.fator_confianca).toFixed(2)) : '—'],
+                ['peso no consenso', pesoAb == null ? '—' : Number(pesoAb).toFixed(3)],
+                ['impressão', String((ev && ev.digest) || '—').replace('sha256:', '').slice(0, 16)]
+            ];
+            meta.innerHTML = itens.map(function (par) {
+                return '<div class="acervo-meta-item"><span>' + par[0] + '</span><strong>' +
+                    par[1] + '</strong></div>';
+            }).join('');
+        }
+
+        const prev = document.getElementById('acervo-previsao');
+        if (prev) {
+            const rank = (ev && ev.ranking_completo) || [];
+            prev.innerHTML = rank.length
+                ? rank.map(function (r, i) { return acCandidata(r, i, rank[0].prob); }).join('')
+                : '<div class="ordem-vazio">sem acervo assimilado ainda</div>';
+        }
+
+        const dec = document.getElementById('acervo-decisiva');
+        if (dec) {
+            const pd = (ev && ev.pergunta_decisiva) || {};
+            const med = pd.medicao_no_historico || {};
+            dec.style.display = pd.descricao ? '' : 'none';
+            if (pd.descricao) {
+                dec.innerHTML = '<strong><i class="fas fa-question"></i> ' + pd.descricao + '</strong>' +
+                    '<div class="ordem-aud-nums">' +
+                    (med.taxa_real != null
+                        ? 'medido: ' + acPct(med.taxa_real) + ' em ' + acNum(med.provas) +
+                          ' provas · margem ' + acPct(med.taxa_teorica)
+                        : 'sem provas no histórico: vale a taxa da margem') +
+                    (pd.veredito_operacional ? '<br><span class="ordem-veredito ruido">' +
+                        pd.veredito_operacional + '</span>' : '') +
+                    '</div>';
+            }
+        }
+
+        const plac = document.getElementById('acervo-placar');
+        const pv = document.getElementById('acervo-provas');
+        if (plac) {
+            const w = (ev && ev.placar) || {};
+            if (pv) pv.textContent = w.n_provas ? '(' + acNum(w.n_provas) + ' provas sem vazamento)' : '';
+            const linhas = [];
+            if (w.margem_da_magna_top1) {
+                linhas.push(acLinhaPlacar('prever sempre a abertura nº 1', w.margem_da_magna_top1.taxa,
+                    w.margem_da_magna_top1.teto_teorico, 'verde'));
+            }
+            if (w.cobertura_top2) {
+                linhas.push(acLinhaPlacar('cober as 2 aberturas mais prováveis', w.cobertura_top2.taxa,
+                    w.cobertura_top2.teto_teorico, 'roxo'));
+            }
+            if (w.regra_popular_de_exclusao) {
+                linhas.push(acLinhaPlacar('excluir a abertura em sequência (regra popular)',
+                    w.regra_popular_de_exclusao.taxa, null, 'tracejado'));
+            }
+            const mem = (kn && kn.placar_abertura) || {};
+            if (mem.provas) {
+                linhas.push(acLinhaPlacar('palpites da Magna conferidos (' + acNum(mem.provas) +
+                    ' decisão(ões))', mem.acerto_top1, ((mem.margem_teorica || {}).top1), 'roxo'));
+            }
+            const aud = (ev && ev.auto_auditoria) || {};
+            plac.innerHTML = (linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>') +
+                (aud.veredito ? '<div class="ordem-aud-nums">auto-auditoria: ' + aud.veredito +
+                    ' · lift ' + Number(aud.lift == null ? 0 : aud.lift).toFixed(4) +
+                    ' · p-valor ' + Number(aud.p_valor == null ? 1 : aud.p_valor).toFixed(3) +
+                    ' · ' + (w.leitura || '') + '</div>' : '');
+        }
+
+        const fon = document.getElementById('acervo-fontes');
+        if (fon) {
+            const pesos = (kn && kn.pesos_fontes) || {};
+            const chaves = Object.keys(pesos);
+            const maior = Math.max.apply(null, [0.0001].concat(chaves.map(function (k) { return pesos[k]; })));
+            fon.innerHTML = chaves.map(function (nome) {
+                const larg = Math.max(2, Math.round(pesos[nome] / maior * 100));
+                const marca = nome === 'abertura'
+                    ? (kn.calibrado ? 'calibrado em walk-forward' : 'default; calibrar para medir')
+                    : '';
+                return '<div class="ordem-freq-linha"><div class="ordem-freq-dezena" title="' +
+                    nome + '">' + nome.slice(0, 3).toUpperCase() + '</div>' +
+                    '<div class="ordem-bar"><div class="ordem-bar-fill ' +
+                    (nome === 'abertura' ? 'verde' : '') + '" style="width:' + larg +
+                    '%"></div></div><div class="ordem-freq-nums"><strong>' +
+                    Number(pesos[nome]).toFixed(4) + '</strong>' +
+                    (marca ? ' <em>· ' + marca + '</em>' : '') + '</div></div>';
+            }).join('') || '<div class="ordem-vazio">sem pesos carregados</div>';
+        }
+
+        const real = document.getElementById('acervo-real');
+        if (real) {
+            const can = ((((kn || {}).abertura_relatorio || {}).canais) || {}).real;
+            if (!can || !can.n_registros) {
+                real.innerHTML = '<div class="ordem-backfill"><i class="fas fa-info-circle"></i> ' +
+                    'O canal <code>real</code> (1ª bola física) só tem o que você alimentar: ' +
+                    'grave os concursos manualmente abaixo ou rode <code>python backfill_ordem.py</code>. ' +
+                    'A fonte <code>abertura</code> da Magna não depende disso — ela lê as ' +
+                    '3.700+ aberturas já no banco.</div>';
+            } else {
+                const lista = (((can.previsao || {}).ranking) || []).slice(0, 5).map(function (r, i) {
+                    return acCandidata(r, i, can.previsao.ranking[0].prob);
+                }).join('');
+                const atual = (can.previsao || {}).abertura_atual;
+                real.innerHTML = '<div class="ordem-aud-nums">' + acNum(can.n_registros) +
+                    ' concursos com ordem real · ' + (atual
+                        ? 'abre hoje <strong>' + acBola(atual.dezena) + '</strong> há ' + atual.streak +
+                          ' concurso(s) (desde o ' + atual.desde_o_concurso + ')'
+                        : 'sem sequência ativa') + '</div>' +
+                    '<div class="ordem-candidatas-lista" style="margin-top:10px">' + lista + '</div>';
+            }
+        }
+    }
+
+    function carregarAcervo() {
+        Promise.all([
+            fetch('/api/magna/abertura').then(function (r) { return r.json(); }).catch(function () { return {}; }),
+            fetch('/api/magna/conhecimento?detalhes=1').then(function (r) { return r.json(); }).catch(function () { return {}; })
+        ]).then(function (res) { renderAcervo(res[0] || {}, res[1] || {}); });
+    }
+
+    function acervoAprender(calibrar) {
+        const btn = document.getElementById(calibrar ? 'acervo-calibrar' : 'acervo-aprender');
+        const aviso = document.getElementById('acervo-aviso');
+        const original = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> ' + (calibrar ? 'calibrando…' : 'lendo a base…'); }
+        if (aviso) aviso.textContent = calibrar
+            ? 'Calibrar refaz o walk-forward das 8 fontes sobre a base inteira — um minuto por vez, com orçamento de tempo.'
+            : '';
+        fetch('/api/magna/conhecimento/assimilar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ forcar: true, calibrar_fontes: !!calibrar,
+                                   limite_segundos: calibrar ? 120 : 30 })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (aviso) aviso.textContent = (d.status || 'ok') + ' — ' + (d.leitura || d.msg || '');
+            carregarAcervo();
+        }).catch(function (e) {
+            if (aviso) aviso.textContent = 'a Magna não conseguiu aprender agora: ' + e;
+        }).finally(function () {
+            if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        });
+    }
+
+    const acBtnAprender = document.getElementById('acervo-aprender');
+    if (acBtnAprender) acBtnAprender.addEventListener('click', function () { acervoAprender(false); });
+    const acBtnCalibrar = document.getElementById('acervo-calibrar');
+    if (acBtnCalibrar) acBtnCalibrar.addEventListener('click', function () { acervoAprender(true); });
+
+    const acForm = document.getElementById('acervo-ingestao');
+    if (acForm) acForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const aviso = document.getElementById('acervo-aviso');
+        const conc = parseInt(document.getElementById('acervo-concurso').value, 10);
+        const nums = (document.getElementById('acervo-ordem').value || '')
+            .split(/[^0-9]+/).filter(Boolean).map(Number);
+        if (!conc || !nums.length) {
+            if (aviso) aviso.textContent = 'informe o concurso e pelo menos a primeira bola.';
+            return;
+        }
+        const corpo = nums.length === 1 ? { concurso: conc, abertura: nums[0] }
+                                        : { concurso: conc, ordem: nums };
+        if (aviso) aviso.textContent = 'memorizando…';
+        fetch('/api/magna/ordem/ingestao', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(corpo)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (aviso) aviso.textContent = (d.status === 'erro')
+                ? 'erro: ' + d.msg
+                : 'gravado · abertura real ' + acBola(d.abertura_real) + ' · acervo até ' +
+                  ((d.acervo || {}).aprendido_ate || '—');
+            carregarAcervo();
+        }).catch(function (e) { if (aviso) aviso.textContent = 'falhou: ' + e; });
+    });
+
+    carregarAcervo();
+    if (document.getElementById('magna-result') && !document.getElementById('magna-result').hidden) {
+        carregarAcervo();
+    }
+
 })();
 </script>
 
 <style>
+.magna-acervo{padding:26px 28px;margin-bottom:18px;border-color:rgba(0,184,148,.28)}.magna-acervo .acervo-actions{display:flex;gap:8px}.acervo-btn{border:1px solid rgba(0,184,148,.5);border-radius:10px;background:rgba(0,184,148,.12);color:#7ce0c6;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer}.acervo-btn.secundario{border-color:rgba(108,92,231,.5);background:rgba(108,92,231,.12);color:#b6a9ff}.acervo-btn.mini{padding:8px 12px}.acervo-btn:disabled{opacity:.5;cursor:wait}.acervo-leitura{margin:0;padding:14px 16px;border-left:2px solid #00b894;background:#11121c;border-radius:10px;color:#a8b3ae;font-size:12px;line-height:1.65}.acervo-leitura i{color:#68d9b4;margin-right:6px}.acervo-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:14px 0 4px}.acervo-meta-item{padding:10px 12px;border:1px solid #262839;border-radius:10px;background:#12131e}.acervo-meta-item span,.acervo-meta-item strong{display:block}.acervo-meta-item span{color:#6f7188;font-size:9px;text-transform:uppercase;letter-spacing:.6px}.acervo-meta-item strong{margin-top:4px;color:#d7d4f5;font-size:12px}.acervo-ingestao{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:end;margin-top:14px}.acervo-ingestao label{display:flex;flex-direction:column;gap:6px;color:#9a9cb2;font-size:10px}.acervo-ingestao input{border:1px solid #34364b;border-radius:9px;background:#11121d;color:#fff;padding:9px 10px;font-size:12px;outline:none}.acervo-ingestao input:focus{border-color:#4fd1a5}.acervo-aviso{color:#7ce0c6;font-size:10px;margin:8px 0 0;min-height:14px}.magna-acervo .ordem-grid-2>div>h4{margin:0 0 10px;color:#8f92ad;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.magna-acervo .ordem-aud-nums{font-size:11px}.magna-acervo .ordem-candidata{padding:10px}.magna-acervo .ordem-dezena{font-size:1.15rem;padding:7px 9px}@media(max-width:900px){.acervo-ingestao{grid-template-columns:1fr}}
+
 .magna-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;min-height:250px;padding:38px 42px;margin-bottom:18px;border:1px solid rgba(132,94,247,.3);border-radius:22px;background:radial-gradient(circle at 85% 20%,rgba(108,92,231,.28),transparent 34%),linear-gradient(135deg,#17182b 0%,#222044 100%)}
 .magna-hero:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,#000,transparent)}
 .magna-hero>div:first-child{position:relative;z-index:2;max-width:720px}.magna-kicker,.magna-section-title span,.magna-cartelas-head span{color:#9b8cff;font-size:11px;font-weight:800;letter-spacing:1.8px}.magna-hero h2{font-size:34px;line-height:1.1;margin:12px 0;color:#fff}.magna-hero p{font-size:15px;line-height:1.7;color:#b8b9cf;max-width:680px}.magna-orbe{position:relative;width:155px;height:155px;display:grid;place-items:center;margin-right:24px;border-radius:50%;border:1px solid rgba(155,140,255,.35);box-shadow:0 0 60px rgba(108,92,231,.28),inset 0 0 35px rgba(108,92,231,.2)}.magna-orbe>i{font-size:55px;color:#b9adff;filter:drop-shadow(0 0 16px #6c5ce7)}.magna-orbe span{position:absolute;inset:-12px;border:1px solid rgba(155,140,255,.2);border-radius:50%;animation:magnaPulse 3s infinite}.magna-orbe span:nth-child(2){inset:-26px;animation-delay:.8s}.magna-orbe span:nth-child(3){inset:-42px;animation-delay:1.6s}@keyframes magnaPulse{50%{opacity:.25;transform:scale(1.04)}}

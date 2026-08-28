@@ -1,10 +1,13 @@
 """
 ============================================================
-INTELIGÊNCIA MAGNA v9.0 — UNIFICADA & AUTÔNOMA
+INTELIGÊNCIA MAGNA v11.4 — UNIFICADA, AUTÔNOMA E CIENTE
 Assimila motores, oráculos, análise, singularidade e wheeling
 + Repulsão Vetorial de Coulomb (Sem Repetições)
 + Deriva de Entropia Temporal Nanosegundo
 + Flutuação Caótica de Pesos via Atrator de Lorenz
++ ACERVO PRÓPRIO: aprende com toda a base histórica, memoriza e
+  decide — os padrões de abertura deixaram de ser um módulo à parte
+  e viraram um órgão desta inteligência (ver AcervoAberturaMagna)
 ============================================================
 """
 import os
@@ -12,10 +15,13 @@ import sqlite3
 import numpy as np
 import json
 import time
+import hashlib
 import threading
 import itertools
+from collections import Counter
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, Optional
+from math import comb
+from typing import List, Dict, Any, Sequence, Tuple, Optional
 
 from config import (
     DATABASE_PATH, TOTAL_DEZENAS, DEZENAS_POR_JOGO,
@@ -34,11 +40,6 @@ try:
 except Exception as _e_clima:
     print(f"[AVISO] clima_lotofacil import: {_e_clima}")
 
-try:
-    from .padroes_ordem import MotorOrdemSorteio, MotorPadroesMinimo
-except Exception as _e_ordem:
-    print(f"[AVISO] padroes_ordem import: {_e_ordem}")
-    MotorClima = None
 # Forja v2 extraordinária + Suprema v10
 try:
     from .forja_lotes import MotorGrafos, melhor_rota_por_orcamento, ForjaDeLotes, GeometriaJohnson, MapaInformacional
@@ -713,6 +714,759 @@ class OtimizadorSPSA:
 
 
 # ============================================================
+# BLOCO 3.9 — ACERVO DE ABERTURA DA MAGNA (memória viva · v11.4)
+# ============================================================
+# O que antes era o módulo separado `core/padroes_ordem.py` agora é um órgão da
+# própria Inteligência Magna. Não existe painel paralelo, nem segundo gerador,
+# nem peso manual: o acervo alimenta o MESMO vetor que faz a Magna analisar,
+# julgar, decidir, moldar e criar as cartelas — e é reensinado a cada sorteio
+# conferido, com a memória gravada no banco.
+#
+# HONESTIDADE (regra da casa): nenhum padrão de abertura muda a probabilidade
+# hipergeométrica de uma cartela. O acervo (a) MEDe a estrutura real do sorteio
+# sobre toda a base histórica, (b) MEMORIZA a medição com carimbo auditável,
+# (c) PUBLICA o placar walk-forward fora-da-amostra de cada regra popular e
+# (d) ATENUA a própria influência quando o placar mostra que ela não passou do
+# acaso. Nenhuma garantia combinatória (wheeling/forja) é alterada.
+
+_ACERVO_TAM_ORDEM = 15
+_ACERVO_CATEGORIAS = {"minima": 12, "real": TOTAL_DEZENAS}
+_ACERVO_PALPITE = {"minima": 1, "real": 5}
+_ACERVO_ROTULO = {
+    "minima": "menor dezena do concurso (a que abre a lista ordenada)",
+    "real": "1ª bola física extraída do globo",
+}
+# concursos necessários para a frequência medida pesar metade da margem teórica
+_ACERVO_MISTURA = 200.0
+
+
+def _binom_p(k: int, n: int, p: float) -> float:
+    """p-valor binomial exato bicaudal (com fallback sem SciPy)."""
+    if n <= 0 or not 0.0 < p < 1.0:
+        return 1.0
+    try:
+        from scipy.stats import binomtest
+        return float(binomtest(int(k), int(n), float(p)).pvalue)
+    except Exception:  # pragma: no cover — ambiente sem SciPy
+        def pmf(i):
+            return comb(n, i) * (p ** i) * ((1.0 - p) ** (n - i))
+        esquerda = sum(pmf(i) for i in range(0, int(k) + 1))
+        direita = sum(pmf(i) for i in range(int(k), n + 1))
+        return float(min(1.0, esquerda + direita))
+
+
+class AcervoAberturaMagna:
+    """Conhecimento memorizado da Magna sobre QUEM ABRE o próximo concurso.
+
+    Dois canais medidos pelo mesmo órgão:
+
+      `minima` — a MENOR dezena do sorteio, isto é, a dezena que "abre" a lista
+      ordenada exibida pelos sites. A distribuição é enviesada por construção
+      combinatória::
+
+          P(menor = k) = C(25-k, 14) / C(25, 15)
+          01 -> 60,0% · 02 -> 25,0% · 03 -> 9,8% · 04 -> 3,6% · 05+ -> 1,6%
+
+      Base: todos os concursos da tabela `resultados` (a base histórica inteira).
+
+      `real` — a 1ª bola fisicamente extraída (campo oficial
+      ``dezenasSorteadasOrdemSorteio``, tabela `ordem_sorteio`). Sob sorteio
+      independente, P = 1/25 para qualquer dezena, sem memória do anterior.
+
+      Base: o que o backfill/a sincronização já capturaram.
+
+    Por canal o acervo mede: frequência real × teórica, streaks (sequência
+    atual e recorde histórico), repetição condicional POR DEZENA (sem a
+    armadilha da composição), placar walk-forward das regras populares,
+    auto-auditoria com p-valor binomial e a posterior do próximo início.
+    """
+
+    TOTAL = TOTAL_DEZENAS
+    TAM_ORDEM = _ACERVO_TAM_ORDEM
+    TRIO_POPULAR = (1, 2, 3)
+    _CATEGORIAS = _ACERVO_CATEGORIAS
+    _PALPITE = _ACERVO_PALPITE
+    _ROTULO = _ACERVO_ROTULO
+    _MARGEM_MISTURA = _ACERVO_MISTURA
+
+    # ------------------------------------------------------------
+    # construção e ingestão
+    # ------------------------------------------------------------
+    def __init__(self, minima: Optional[Sequence[Tuple[int, int]]] = None,
+                 ordens: Optional[Sequence[Tuple[int, Sequence[int]]]] = None,
+                 alpha: float = 1.0):
+        self._lock = threading.RLock()
+        self.alpha = float(alpha)
+        self.serie: Dict[str, List[Tuple[int, int]]] = {
+            "minima": sorted((int(c), int(m)) for c, m in (minima or [])),
+            "real": sorted((int(c), self.validar_ordem(o)[0])
+                           for c, o in (ordens or [])),
+        }
+        self._ordens: Dict[int, Tuple[int, ...]] = {
+            int(c): self.validar_ordem(o) for c, o in (ordens or [])}
+        self._memo: Dict[Any, Any] = {}
+
+    @classmethod
+    def validar_ordem(cls, ordem: Sequence[int]) -> Tuple[int, ...]:
+        """Exige exatamente 15 dezenas únicas em 1-25, na ordem de extração."""
+        try:
+            vals = tuple(int(d) for d in ordem)
+        except (TypeError, ValueError):
+            raise ValueError("ordem deve conter 15 inteiros 1-25")
+        if (len(vals) != cls.TAM_ORDEM or len(set(vals)) != cls.TAM_ORDEM
+                or any(d < 1 or d > cls.TOTAL for d in vals)):
+            raise ValueError(
+                "ordem inválida: 15 dezenas únicas 1-25 obrigatórias, "
+                "recebi {}".format(list(vals)))
+        return vals
+
+    def aprender(self, canal: str, concurso: int,
+                  abertura: int) -> Dict[str, Any]:
+        """Upsert idempotente de uma abertura medida na memória viva."""
+        if canal not in self.serie:
+            raise ValueError("canal desconhecido: {}".format(canal))
+        concurso, abertura = int(concurso), int(abertura)
+        if concurso < 1 or not 1 <= abertura <= self.TOTAL:
+            raise ValueError("concurso/abertura fora da faixa válida")
+        with self._lock:
+            atual = dict(self.serie[canal])
+            igual = atual.get(concurso) == abertura
+            atual[concurso] = abertura
+            self.serie[canal] = sorted(atual.items())
+            self._memo.clear()
+            return {"status": "ok", "canal": canal, "concurso": concurso,
+                    "abertura": abertura, "idempotente": igual,
+                    "n_registros": len(self.serie[canal])}
+
+    def aprender_ordem(self, concurso: int,
+                        ordem: Sequence[int]) -> Dict[str, Any]:
+        """Registra a ordem real completa de um sorteio (canal `real`)."""
+        vals = self.validar_ordem(ordem)
+        res = self.aprender("real", concurso, vals[0])
+        with self._lock:
+            self._ordens[int(concurso)] = vals
+            self._memo.clear()
+        res.update({"ordem": list(vals), "n_ordens": len(self._ordens)})
+        return res
+
+    # ------------------------------------------------------------
+    # teoria: a margem que já é o melhor preditor possível
+    # ------------------------------------------------------------
+    @classmethod
+    def p_teorica(cls, canal: str, k: int) -> float:
+        if k < 1 or k > cls.TOTAL:
+            return 0.0
+        if canal == "minima":
+            if k > cls.TOTAL - (cls.TAM_ORDEM - 1):
+                return 0.0
+            return (comb(cls.TOTAL - k, cls.TAM_ORDEM - 1)
+                    / comb(cls.TOTAL, cls.TAM_ORDEM))
+        return 1.0 / cls.TOTAL
+
+    @classmethod
+    def categorias(cls, canal: str) -> range:
+        return range(1, cls._CATEGORIAS.get(canal, cls.TOTAL) + 1)
+
+    # ------------------------------------------------------------
+    # leitura da memória
+    # ------------------------------------------------------------
+    def n(self, canal: str) -> int:
+        return len(self.serie.get(canal) or [])
+
+    def n_total(self) -> int:
+        return self.n("minima") + self.n("real")
+
+    def ultimo(self, canal: str = "minima") -> Optional[int]:
+        s = self.serie.get(canal) or []
+        return int(s[-1][0]) if s else None
+
+    def abertura_atual(self, canal: str = "minima") -> Optional[int]:
+        s = self.serie.get(canal) or []
+        return int(s[-1][1]) if s else None
+
+    def _chave_memo(self, nome: str, canal: str):
+        return (nome, canal, self.n("minima"), self.n("real"))
+
+    def frequencias(self, canal: str = "minima") -> Dict[str, Any]:
+        chave = self._chave_memo("freq", canal)
+        if chave in self._memo:
+            return self._memo[chave]
+        s = self.serie.get(canal) or []
+        cnt = Counter(v for _, v in s)
+        n = len(s)
+        tabela = []
+        for k in self.categorias(canal):
+            teor = self.p_teorica(canal, k)
+            real = int(cnt.get(k, 0))
+            tabela.append({
+                "dezena": int(k), "vezes": real,
+                "frequencia": round(real / n, 4) if n else 0.0,
+                "teorico": round(teor, 4),
+                "razao": round((real / n) / teor, 3) if n and teor else None,
+                "ultimo_concurso": (max((c for c, v in s if v == k), default=None)
+                                     if n else None),
+            })
+        res = {"n": n, "tabela": tabela}
+        self._memo[chave] = res
+        return res
+
+    def janela_inicial(self, k: int = 3) -> Dict[str, int]:
+        """Dezenas dentro das k primeiras bolas (o trio 01/02/03 popular)."""
+        if k < 1 or k > self.TAM_ORDEM:
+            raise ValueError("janela 1-15")
+        cnt: Counter = Counter()
+        for _, ordem in sorted(self._ordens.items()):
+            cnt.update(ordem[:k])
+        return {str(d): int(cnt.get(d, 0)) for d in range(1, self.TOTAL + 1)}
+
+    def _runs(self, canal: str) -> List[Dict[str, Any]]:
+        runs: List[Dict[str, Any]] = []
+        for concurso, valor in (self.serie.get(canal) or []):
+            if runs and runs[-1]["dezena"] == valor:
+                runs[-1]["fim"] = concurso
+                runs[-1]["comprimento"] += 1
+            else:
+                runs.append({"dezena": valor, "inicio": concurso,
+                             "fim": concurso, "comprimento": 1})
+        return runs
+
+    def streaks(self, canal: str = "minima") -> Dict[str, Any]:
+        chave = self._chave_memo("streaks", canal)
+        if chave in self._memo:
+            return self._memo[chave]
+        s = self.serie.get(canal) or []
+        runs = self._runs(canal)
+        por = {int(d): {"atual": 0, "maximo": 0, "maximo_inicio": None,
+                        "maximo_fim": None, "ultimo_concurso": None,
+                        "concursos_desde_ultima": None}
+               for d in self.categorias(canal)}
+        for r in runs:
+            info = por.get(r["dezena"])
+            if info is None:
+                continue
+            if r["comprimento"] > info["maximo"]:
+                info["maximo"] = r["comprimento"]
+                info["maximo_inicio"] = r["inicio"]
+                info["maximo_fim"] = r["fim"]
+            info["ultimo_concurso"] = r["fim"]
+        atual = maior = None
+        if runs:
+            atual = runs[-1]
+            if atual["dezena"] in por:
+                por[atual["dezena"]]["atual"] = atual["comprimento"]
+            indice = {c: i for i, (c, _) in enumerate(s)}
+            fim = len(s) - 1
+            for info in por.values():
+                pos = indice.get(info["ultimo_concurso"])
+                if pos is not None:
+                    info["concursos_desde_ultima"] = fim - pos
+            maior = max(runs, key=lambda r: r["comprimento"])
+        res = {
+            "canal": canal, "rotulo": self._ROTULO.get(canal, canal),
+            "n_registros": len(s),
+            "run_atual": ({"dezena": atual["dezena"],
+                           "comprimento": atual["comprimento"],
+                           "inicio": atual["inicio"]} if atual else None),
+            "recorde_historico": ({"dezena": maior["dezena"],
+                                   "comprimento": maior["comprimento"],
+                                   "inicio": maior["inicio"],
+                                   "fim": maior["fim"]} if maior else None),
+            "distribuicao_streaks": {str(int(k)): int(v) for k, v in
+                                     Counter(r["comprimento"]
+                                             for r in runs).items()},
+            "por_dezena": por,
+        }
+        self._memo[chave] = res
+        return res
+
+    def taxa_repeticao(self, canal: str = "minima") -> Dict[str, Any]:
+        chave = self._chave_memo("repeticao", canal)
+        if chave in self._memo:
+            return self._memo[chave]
+        v = [x[1] for x in (self.serie.get(canal) or [])]
+        n = len(v) - 1
+        if n <= 0:
+            return {"aplicavel": False, "n": 0}
+        reps = sum(1 for i in range(1, len(v)) if v[i] == v[i - 1])
+        base = sum(self.p_teorica(canal, k) ** 2
+                   for k in self.categorias(canal))
+        cond: Dict[str, Any] = {}
+        for rotulo, alvo in (("apos_1", 1), ("apos_2", 2), ("apos_3_mais", 3)):
+            tot = rep = 0
+            corrente = 1
+            for i in range(1, len(v)):
+                repetiu = v[i] == v[i - 1]
+                pertence = ((rotulo == "apos_3_mais" and corrente >= 3)
+                            or (rotulo != "apos_3_mais" and corrente == alvo))
+                if pertence:
+                    tot += 1
+                    if repetiu:
+                        rep += 1
+                corrente = corrente + 1 if repetiu else 1
+            cond[rotulo] = {"provas": tot, "repetiu": rep,
+                            "taxa": round(rep / tot, 4) if tot else None,
+                            "taxa_esperada": round(base, 4)}
+        por_dezena = {}
+        for d in list(self.categorias(canal))[:8]:
+            trans = sum(1 for i in range(1, len(v)) if v[i - 1] == d)
+            repet = sum(1 for i in range(1, len(v))
+                        if v[i - 1] == d and v[i] == d)
+            if trans:
+                por_dezena[str(int(d))] = {
+                    "transicoes": trans, "repetiu": repet,
+                    "taxa_real": round(repet / trans, 4),
+                    "taxa_teorica": round(self.p_teorica(canal, d), 4),
+                }
+        res = {
+            "aplicavel": True, "n_transicoes": n,
+            "global": {"repeticoes": int(reps), "taxa": round(reps / n, 4),
+                       "taxa_esperada": round(base, 4),
+                       "p_valor": (round(_binom_p(reps, n, base), 4)
+                                   if base > 0 else None)},
+            "condicional": cond,
+            "por_dezena": por_dezena,
+            "leitura": ("a repetição observada coincide com a margem: "
+                        "sequência não altera probabilidade"
+                        if abs(reps / n - base) < 0.02 else
+                        "diferença pequena diante da margem — sem efeito "
+                        "operacional sem significância"),
+        }
+        self._memo[chave] = res
+        return res
+
+    def repeticao_apos_streak(self, dezena: int, streak_min: int = 2,
+                              canal: str = "minima") -> Dict[str, Any]:
+        """P(essa dezena abrir de novo | já abriu `streak_min`x seguidas).
+
+        Medido APENAS na dezena pedida. A versão agregada engana: streaks
+        longos são quase sempre do 01, que abre 60% por natureza — o que
+        parece sinal é composição, não causa.
+        """
+        v = [x[1] for x in (self.serie.get(canal) or [])]
+        dezena, streak_min = int(dezena), int(streak_min)
+        tot = rep = 0
+        corrente = 1
+        for i in range(1, len(v)):
+            repetiu = v[i] == v[i - 1]
+            if v[i - 1] == dezena and corrente >= streak_min:
+                tot += 1
+                if repetiu:
+                    rep += 1
+            corrente = corrente + 1 if repetiu else 1
+        teor = self.p_teorica(canal, dezena)
+        taxa = rep / tot if tot else None
+        if tot and taxa is not None and abs(taxa - teor) < 0.03:
+            leitura = ("a repetição seguiu a margem de sempre — streak não "
+                       "altera probabilidade")
+        elif tot:
+            leitura = "amostra pequena: vale a taxa da margem"
+        else:
+            leitura = "sem provas no histórico: vale a taxa da margem"
+        return {
+            "canal": canal, "dezena": dezena, "streak_min": streak_min,
+            "provas": tot, "repetiu": rep,
+            "taxa_real": round(taxa, 4) if tot else None,
+            "taxa_teorica": round(teor, 4),
+            "leitura": leitura,
+        }
+
+    def matriz_transicao(self, canal: str = "minima",
+                         suavizar: bool = True) -> np.ndarray:
+        """P(próxima abertura = j | abertura atual = i); linhas somam 1."""
+        k = self._CATEGORIAS.get(canal, self.TOTAL)
+        m = np.ones((k, k), dtype=float) * (1.0 if suavizar else 0.0)
+        s = self.serie.get(canal) or []
+        for i in range(1, len(s)):
+            a, b = s[i - 1][1], s[i][1]
+            if 1 <= a <= k and 1 <= b <= k:
+                m[a - 1, b - 1] += 1.0
+        return m / m.sum(axis=1, keepdims=True)
+    # ------------------------------------------------------------
+    # posterior do próximo início: margem teórica + o que a base mostrou
+    # ------------------------------------------------------------
+    def posterior(self, canal: str = "minima") -> Dict[int, float]:
+        s = self.serie.get(canal) or []
+        n = len(s)
+        cnt = Counter(v for _, v in s)
+        cats = list(self.categorias(canal))
+        alpha = self.alpha
+        medida = {d: (cnt.get(d, 0) + alpha) / (n + alpha * len(cats))
+                  for d in cats}
+        massa = sum(self.p_teorica(canal, d) for d in cats) or 1.0
+        teoria = {d: self.p_teorica(canal, d) / massa for d in cats}
+        w = n / (n + self._MARGEM_MISTURA)
+        return {int(d): w * medida[d] + (1.0 - w) * teoria[d] for d in cats}
+
+    def ranking_abertura(self, canal: str = "minima") -> List[Dict[str, Any]]:
+        probs = self.posterior(canal)
+        ordem = sorted(probs, key=lambda d: probs[d], reverse=True)
+        cnt = Counter(v for _, v in (self.serie.get(canal) or []))
+        acum = 0.0
+        out = []
+        for pos, d in enumerate(ordem[:5], 1):
+            acum += probs[d]
+            out.append({"posicao": pos, "dezena": int(d),
+                        "prob": round(probs[d], 5),
+                        "prob_acumulada": round(acum, 5),
+                        "prob_teorica": round(self.p_teorica(canal, d), 5),
+                        "vezes_na_base": int(cnt.get(d, 0))})
+        return out
+
+    def proximas_aberturas(self, k: int = 3,
+                           canal: str = "minima") -> List[int]:
+        """As k aberturas mais prováveis do próximo concurso (p/ âncoras)."""
+        probs = self.posterior(canal)
+        ordem = sorted(probs, key=lambda d: probs[d], reverse=True)
+        return [int(d) for d in ordem[:max(1, int(k))]]
+
+    def previsao(self, canal: str = "minima") -> Dict[str, Any]:
+        probs = self.posterior(canal)
+        st = self.streaks(canal)
+        run = st["run_atual"]
+        atual = run["dezena"] if run else None
+        tam = run["comprimento"] if run else 0
+        medida = (self.repeticao_apos_streak(atual, tam, canal=canal)
+                  if atual is not None and tam >= 2 else None)
+        ordem = sorted(probs, key=lambda d: probs[d], reverse=True)
+        sem_excluir = [int(d) for d in ordem[:3]]
+        se_excluir = [int(d) for d in ordem if d != atual][:2]
+        return {
+            "canal": canal, "rotulo": self._ROTULO.get(canal, canal),
+            "n_registros": self.n(canal),
+            "probabilidades": {str(d): round(p, 5) for d, p in probs.items()},
+            "ranking": self.ranking_abertura(canal),
+            "proximo_palpite_top3": sem_excluir,
+            "abertura_atual": ({"dezena": atual, "streak": tam,
+                                "desde_o_concurso": run["inicio"]}
+                               if run else None),
+            "pergunta_decisiva": {
+                "descricao": ("a abertura {} veio {}x seguidas: vale exclui-la "
+                              "e apostar nas outras?".format(
+                                  "{:02d}".format(atual)
+                                  if atual is not None else "--", tam)),
+                "excluida": atual,
+                "candidatas_sem_excluir": sem_excluir,
+                "candidatas_se_excluir": se_excluir,
+                "p_repetir_a_atual": (round(probs.get(atual, 0.0), 5)
+                                      if atual is not None else None),
+                "medicao_no_historico": medida,
+                "veredito_operacional": (
+                    "NAO EXCLUIR: a repeticao medida coincide com a margem e "
+                    "o placar walk-forward mostra perda ao excluir"
+                    if medida else
+                    "streak inativo: seguir o ranking da margem"),
+            },
+        }
+
+    # ------------------------------------------------------------
+    # placar walk-forward (sem vazamento) e auto-auditoria
+    # ------------------------------------------------------------
+    def _walkforward(self, canal: str) -> Dict[str, Any]:
+        """Percorre a base inteira prevendo o concurso t+1 com dados de < t."""
+        chave = self._chave_memo("wf", canal)
+        if chave in self._memo:
+            return self._memo[chave]
+        s = self.serie.get(canal) or []
+        cats = list(self.categorias(canal))
+        massa = sum(self.p_teorica(canal, d) for d in cats) or 1.0
+        teoria = {d: self.p_teorica(canal, d) / massa for d in cats}
+        posterior_c: Counter = Counter()
+        r_top = r_top2 = r_excl = provas = 0
+        corrente_d, corrente_n = None, 0
+        for i in range(len(s) - 1):
+            atual = s[i][1]
+            proximo = s[i + 1][1]
+            if posterior_c:
+                n_passado = sum(posterior_c.values())
+                w = n_passado / (n_passado + self._MARGEM_MISTURA)
+                probs = {
+                    d: w * ((posterior_c.get(d, 0) + self.alpha)
+                            / (n_passado + self.alpha * len(cats)))
+                    + (1.0 - w) * teoria[d] for d in cats}
+                ranking = sorted(probs, key=lambda d: probs[d], reverse=True)
+                if ranking[0] == proximo:
+                    r_top += 1
+                if proximo in set(ranking[:2]):
+                    r_top2 += 1
+                escolha = (max((d for d in probs if d != atual),
+                               key=lambda d: probs[d])
+                           if corrente_n >= 2 else ranking[0])
+                if escolha == proximo:
+                    r_excl += 1
+                provas += 1
+            corrente_n = corrente_n + 1 if atual == corrente_d else 1
+            corrente_d = atual
+            posterior_c[atual] += 1
+        res = {"n_provas": provas, "acertos_top1": r_top,
+               "acertos_top2": r_top2, "acertos_exclusao": r_excl}
+        self._memo[chave] = res
+        return res
+
+    def _palpite_top_m(self, canal: str) -> int:
+        return self._PALPITE.get(canal, 1)
+
+    def linha_de_base(self, canal: str = "minima") -> float:
+        """Acerto esperado do MELHOR preditor possível sob independência."""
+        m = self._palpite_top_m(canal)
+        return sum(sorted((self.p_teorica(canal, d)
+                            for d in self.categorias(canal)),
+                           reverse=True)[:m])
+
+    def placar_walkforward(self, canal: str = "minima") -> Dict[str, Any]:
+        if self.n(canal) < 50:
+            return {"aplicavel": False, "motivo": "dados insuficientes",
+                    "n_registros": self.n(canal)}
+        wf = self._walkforward(canal)
+        provas = wf["n_provas"]
+        teto1 = self.linha_de_base(canal) if self._palpite_top_m(canal) == 1 \
+            else max(self.p_teorica(canal, d) for d in self.categorias(canal))
+        teto2 = (self.p_teorica(canal, 1) + self.p_teorica(canal, 2)
+                 if canal == "minima" else 2.0 / self.TOTAL)
+        r_top, r_top2, r_excl = (wf["acertos_top1"], wf["acertos_top2"],
+                                 wf["acertos_exclusao"])
+        custo = round(100.0 * (r_top - r_excl) / provas, 2) if provas else 0.0
+        return {
+            "aplicavel": True, "canal": canal, "n_provas": provas,
+            "margem_da_magna_top1": {
+                "acertos": r_top, "taxa": round(r_top / provas, 4),
+                "teto_teorico": round(teto1, 4),
+                "leitura": "o melhor preditor possível é a própria margem"},
+            "cobertura_top2": {
+                "acertos": r_top2, "taxa": round(r_top2 / provas, 4),
+                "teto_teorico": round(teto2, 4)},
+            "regra_popular_de_exclusao": {
+                "acertos": r_excl, "taxa": round(r_excl / provas, 4),
+                "custo_vs_top1_pp": custo,
+                "leitura": ("excluir a abertura em sequência custa {} pontos "
+                            "porcentuais: streak não muda probabilidade"
+                            .format(custo))},
+            "leitura": ("{} provas fora-da-amostra: a Magna acerta {}% do "
+                        "início previsto (teto {}%); a regra popular de "
+                        "exclusão fica em {}%".format(
+                            provas, round(100 * r_top / provas, 1),
+                            round(100 * teto1, 1),
+                            round(100 * r_excl / provas, 1))),
+        }
+
+    def auto_auditoria(self, canal: str = "minima",
+                       min_registros: int = 30) -> Dict[str, Any]:
+        """Existe algo ALÉM da margem? Medido fora-da-amostra, com p-valor."""
+        chave = self._chave_memo("auto", canal)
+        if chave in self._memo:
+            return self._memo[chave]
+        if self.n(canal) < min_registros + 1:
+            res = {"aplicavel": False, "motivo": "dados insuficientes",
+                   "n_registros": self.n(canal), "fator_confianca": 0.5,
+                   "veredito": "SEM AMOSTRA"}
+            self._memo[chave] = res
+            return res
+        wf = self._walkforward(canal)
+        provas = wf["n_provas"]
+        m = self._palpite_top_m(canal)
+        acertos = wf["acertos_top1"] if m == 1 else wf["acertos_top2"]
+        base = self.linha_de_base(canal)
+        taxa = acertos / provas if provas else 0.0
+        lift = taxa / base if base else 1.0
+        p = round(_binom_p(acertos, provas, base), 4) if provas else 1.0
+        real = bool(provas >= 50 and p < 0.05 and lift > 1.02)
+        fator = (round(0.75 + 0.25 * min(1.0, max(0.0, (lift - 1.0) / 0.10)), 4)
+                 if real else 0.5)
+        res = {
+            "aplicavel": True, "canal": canal, "palpite_top_m": m,
+            "n_provas": provas, "acertos": int(acertos),
+            "taxa": round(taxa, 4), "linha_de_base": round(base, 4),
+            "lift": round(lift, 4), "p_valor": p,
+            "veredito": "REAL" if real else "RUÍDO",
+            "fator_confianca": fator,
+            "leitura": ("o padrão superou a margem fora-da-amostra: entra com "
+                        "confiança alta no consenso" if real else
+                        "nenhum padrão superou a margem hipergeométrica: o "
+                        "vetor entra atenuado (0,5) e a leitura é publicada "
+                        "como conhecimento, não como promessa"),
+        }
+        self._memo[chave] = res
+        return res
+
+    # ------------------------------------------------------------
+    # entrega ao consenso da Magna
+    # ------------------------------------------------------------
+    def vetor_bruto(self, canal: str = "minima") -> np.ndarray:
+        probs = self.posterior(canal)
+        v = np.array([probs.get(d, 0.0) for d in range(1, self.TOTAL + 1)],
+                     dtype=float)
+        v = v + 1.0 / self.TOTAL          # piso: nenhuma dezena zerada
+        return v / v.sum()
+
+    def pesos_de_evidencia(self) -> Dict[str, float]:
+        """Peso de cada canal na leitura, proporcional ao que ele já viu."""
+        out = {}
+        for canal in self._CATEGORIAS:
+            n_provas = max(0, self.n(canal) - 1)
+            out[canal] = n_provas / (n_provas + 150.0) if n_provas else 0.0
+        total = sum(out.values())
+        if total <= 0:
+            return {c: 0.5 for c in self._CATEGORIAS}
+        return {k: v / total for k, v in out.items()}
+
+    def fator_confianca(self) -> float:
+        pesos = self.pesos_de_evidencia()
+        fat = sum(pesos[c] * float(
+            self.auto_auditoria(c).get("fator_confianca", 0.5)) for c in pesos)
+        return round(float(fat or 0.5), 4)
+
+    def vetor_evidencia(self) -> np.ndarray:
+        """Vetor 25-dim (soma 1) mesclando os canais pela força da evidência.
+
+        Sem atenuação aqui: quem mistura com o uniforme é a Magna, usando
+        `fator_confianca()` — a mesma disciplina aplicada à fonte de clima.
+        """
+        pesos = self.pesos_de_evidencia()
+        v = np.zeros(self.TOTAL, dtype=float)
+        for canal, w in pesos.items():
+            if w > 0:
+                v += w * self.vetor_bruto(canal)
+        if v.sum() <= 0:
+            return np.ones(self.TOTAL, dtype=float) / self.TOTAL
+        return v / v.sum()
+
+    # ------------------------------------------------------------
+    # julgamento do próprio palpite (memória do que a Magna previu)
+    # ------------------------------------------------------------
+    @staticmethod
+    def avaliar_palpite(ranking: Sequence[int],
+                        abertura_real: int) -> Dict[str, Any]:
+        """Em que posição do ranking previsto caiu a abertura realmente sorteada."""
+        ordem = [int(d) for d in ranking]
+        alvo = int(abertura_real)
+        pos = ordem.index(alvo) + 1 if alvo in ordem else None
+        return {"abertura_real": alvo, "posicao_no_ranking": pos,
+                "acerto_top1": pos == 1, "acerto_top2": pos in (1, 2),
+                "acerto_top3": pos in (1, 2, 3)}
+
+    def afinidade_cartela(self, dezenas: Sequence[int],
+                          canal: str = "minima") -> Dict[str, Any]:
+        """Quão coerente com a abertura prevista esta cartela é.
+
+        A abertura de uma cartela é a sua menor dezena. Sob o conhecimento
+        memorizado, cartelas que abrem em 01/02/03 pertencem à região onde
+        95% dos sorteios reais abrem. É critério de PLAUSIBILIDADE ESTRUTURAL
+        (desempate), nunca preditivo: a chance de 13/14/15 pontos não muda.
+        """
+        probs = self.posterior(canal)
+        abre = min(int(d) for d in dezenas)
+        p = probs.get(abre, 0.0)
+        p_max = max(probs.values()) if probs else 1.0
+        ranking = self.proximas_aberturas(3, canal=canal)
+        return {"abertura_da_cartela": abre,
+                "prob_no_conhecimento": round(p, 5),
+                "afinidade": round(p / p_max, 4) if p_max else 0.0,
+                "cobre_palpite_da_magna": abre in ranking}
+
+    # ------------------------------------------------------------
+    # sínteses
+    # ------------------------------------------------------------
+    def veredito(self) -> str:
+        autos = [self.auto_auditoria(c) for c in self._CATEGORIAS
+                 if self.auto_auditoria(c).get("aplicavel")]
+        if not autos:
+            return "SEM AMOSTRA"
+        return "REAL" if any(a.get("veredito") == "REAL" for a in autos) \
+            else "RUÍDO"
+
+    def digest(self) -> str:
+        """Hash do que foi aprendido — cada decisão cita exatamente o acervo."""
+        chave = self._chave_memo("digest", "todos")
+        if chave in self._memo:
+            return self._memo[chave]
+        h = hashlib.sha256()
+        for canal in self._CATEGORIAS:
+            s = self.serie.get(canal) or []
+            h.update("{}|{}|".format(canal, len(s)).encode())
+            if s:
+                h.update("{}:{}|".format(s[0][0], s[-1][0]).encode())
+                h.update(str(sorted(Counter(v for _, v in s).items())
+                             ).encode())
+        res = "sha256:" + h.hexdigest()[:16]
+        self._memo[chave] = res
+        return res
+
+    def estado(self) -> Dict[str, Any]:
+        """Resumo barato para status, log e cabeçalho da decisão."""
+        return {
+            "concursos_da_base": self.n("minima"),
+            "concursos_com_ordem_real": self.n("real"),
+            "aprendido_ate_concurso": self.ultimo("minima"),
+            "abertura_atual": self.abertura_atual("minima"),
+            "palpite_top3": self.proximas_aberturas(3),
+            "veredito": self.veredito(),
+            "fator_confianca": self.fator_confianca(),
+            "digest": self.digest(),
+        }
+
+    def leitura(self) -> str:
+        """A Magna interpretando o acervo em uma frase operacional."""
+        prev = self.previsao("minima")
+        auto = self.auto_auditoria("minima")
+        topo = prev.get("ranking") or []
+        quem = " · ".join("{:02d} ({:.1f}%)".format(
+            t["dezena"], 100 * t["prob"]) for t in topo[:3]) or "sem dados"
+        partes = ["abertura mais provável do próximo concurso: {} — medida em "
+                  "{} concursos memorizados".format(quem, self.n("minima"))]
+        run = prev.get("abertura_atual")
+        if run:
+            med = self.repeticao_apos_streak(run["dezena"], run["streak"])
+            frase = ("abertura atual {:02d} no {}º concurso seguido".format(
+                run["dezena"], run["streak"]))
+            if med["provas"] and med["taxa_real"] is not None:
+                frase += ("; P(repetir {:02d} | streak {}) = {:.1%} em {} "
+                          "provas vs {:.1%} da margem".format(
+                              run["dezena"], run["streak"], med["taxa_real"],
+                              med["provas"], med["taxa_teorica"]))
+            partes.append(frase)
+        partes.append("auto-auditoria walk-forward {} (lift {} em {} provas) → "
+                      "fator de confiança {}".format(
+                          auto.get("veredito"), auto.get("lift"),
+                          auto.get("n_provas"), self.fator_confianca()))
+        return ("A Magna leu a base: " + "; ".join(partes) +
+                ". Leitura estrutural: não muda a chance de nenhuma cartela.")
+
+    def relatorio(self) -> Dict[str, Any]:
+        canais = {}
+        for canal in self._CATEGORIAS:
+            canais[canal] = {
+                "rotulo": self._ROTULO[canal],
+                "n_registros": self.n(canal),
+                "ultimo_concurso": self.ultimo(canal),
+                "frequencias": self.frequencias(canal),
+                "streaks": self.streaks(canal),
+                "taxa_repeticao": self.taxa_repeticao(canal),
+                "placar_walkforward": self.placar_walkforward(canal),
+                "auto_auditoria": self.auto_auditoria(canal),
+                "previsao": self.previsao(canal),
+            }
+        return {
+            "status": "ok",
+            "identidade": ("Acervo de Abertura — órgão da Inteligência Magna "
+                           "v11.4"),
+            "digest": self.digest(),
+            "pesos_de_evidencia": self.pesos_de_evidencia(),
+            "fator_confianca": self.fator_confianca(),
+            "veredito": self.veredito(),
+            "canais": canais,
+            "janela_inicial_3": (self.janela_inicial(3) if self._ordens
+                                 else None),
+            "leitura": self.leitura(),
+            "honestidade": (
+                "A abertura é enviesada por construção combinatória (a menor "
+                "de 15 dezenas sorteadas entre 25 tende a ser 01) — isso não é "
+                "previsão: toda cartela mantém a mesma probabilidade "
+                "hipergeométrica. O acervo publica o placar walk-forward e "
+                "atenua o próprio vetor quando o padrão não supera a margem "
+                "fora-da-amostra; nenhuma garantia combinatória é tocada."),
+        }
+
+
+# ============================================================
 # BLOCO 4 — INTELIGÊNCIA MAGNA v9.0 (PROTAGONISTA ÚNICA)
 # ============================================================
 class CerebroIA:
@@ -720,6 +1474,11 @@ class CerebroIA:
     # shrinkage interna e auto-auditoria walk-forward. Os pesos são
     # re-normalizados em _carregar_pesos_fontes_magna e reajustados a
     # cada sorteio pelo aprendizado bayesiano das fontes.
+    #
+    # v11.4 — a fonte `abertura` substitui a antiga `ordem`: ela é alimentada
+    # pelo ACERVO da própria Magna (aprendido da base histórica inteira e
+    # memorizado no banco), e não por um módulo separado. O peso é um teto de
+    # influência: sobe apenas se a auto-auditoria walk-forward medir lift.
     _FONTES_MAGNA_DEFAULT = {
         "motores": 0.36,
         "oraculos": 0.18,
@@ -728,16 +1487,17 @@ class CerebroIA:
         "recente": 0.09,
         "fisica": 0.08,
         "clima": 0.05,
-        # v11.3 — ordem real de sorteio (1ª bola, streaks, transições).
-        # Peso baixo por design: só sobe se o placar walk-forward provar
-        # lift sobre o acaso (4% por dezena).
-        "ordem": 0.04,
+        "abertura": 0.04,
     }
+
+    # Chaves do acervo persistidas em magna_conhecimento
+    _ACERVO_DOMINIOS = ("base", "abertura", "fontes", "memoria")
+    ACERVO_VERSAO = "v11.4-acervo-unico"
 
     # v9.2 extraordinária: pool elite força máxima + forja força máxima
     VERSAO_MAGNA = "11.0-Magna-Suprema-Unica-Pessoal-Evoluida"
     VERSAO_SUPREMA = "11.0"
-    VERSAO_EVOLUCAO = "v11.3-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-OrdemSorteio"
+    VERSAO_EVOLUCAO = "v11.4-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-AcervoAberturaUnico"
 
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
@@ -823,53 +1583,9 @@ class CerebroIA:
         self._log("INIT", "Clima v11.2: {} registros, auto-auditoria ativa".format(
             self.clima.n_registros))
 
-        # v11.3 — Motor de Padrões da Ordem de Sorteio (1ª bola, streaks)
-        if MotorOrdemSorteio is not None:
-            self.ordem_motor = MotorOrdemSorteio(db_path=self.db_path)
-        else:  # pragma: no cover — fallback neutro
-            class _OrdemNeutra:
-                n_registros = 0
-
-                def vetor_preferencia(self):
-                    return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
-
-                def auto_ponderacao(self, *a, **k):
-                    return {"aplicavel": False, "fator_confianca": 0.5}
-
-                def relatorio(self):
-                    return {"status": "erro",
-                            "msg": "motor de ordem indisponível"}
-
-                def aprender(self, *a, **k):
-                    return {"status": "erro",
-                            "msg": "motor de ordem indisponível"}
-
-            self.ordem_motor = _OrdemNeutra()
-        self._log("INIT", "Ordem de Sorteio v11.3: {} concursos com ordem real"
-                  .format(self.ordem_motor.n_registros))
-
-        # v11.3b — Padrões da MENOR dezena (o "início" da lista ordenada).
-        # Distribuição fortemente enviesada (01=60%, 02=25%, 03=9,8%);
-        # prediz o próximo início com a margem + placar walk-forward.
-        if MotorPadroesMinimo is not None:
-            self.minimo_motor = MotorPadroesMinimo(db_path=self.db_path)
-        else:  # pragma: no cover
-            class _MinimoNeutro:
-                n_registros = 0
-
-                def vetor_preferencia_minimo(self):
-                    return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
-
-                def auto_ponderacao(self, *a, **k):
-                    return {"aplicavel": False, "fator_confianca": 0.5}
-
-                def relatorio_minimo(self):
-                    return {"status": "erro",
-                            "msg": "motor de mínimo indisponível"}
-
-            self.minimo_motor = _MinimoNeutro()
-        self._log("INIT", "Padrões do Início (menor dezena): {} concursos"
-                  .format(self.minimo_motor.n_registros))
+        # v11.4 — os padrões de abertura DEIXARAM DE SER UM MÓDULO. Eles são o
+        # acervo da própria Magna (AcervoAberturaMagna), montado logo abaixo,
+        # depois das tabelas de memória, para já nascer aprendido e memorizado.
 
         # Carregar dados
         self._ingestor = IngestorDados(self.db_path, client=client)
@@ -897,6 +1613,22 @@ class CerebroIA:
         self._criar_tabelas_ciclo()
         self.pesos_fontes_magna = self._carregar_pesos_fontes_magna()
         self._ultimo_processado = self._get_ultimo_processado()
+
+        # ── ACERVO DE CONHECIMENTO DA MAGNA (v11.4) ──────────────────
+        # A Magna já nasce aprendendo: ela varre a base histórica, mede a
+        # abertura em dois canais, calibra o peso das próprias fontes em
+        # walk-forward e MEMORIZA tudo em magna_conhecimento/magna_memoria.
+        # É o mesmo acervo que alimenta o vetor, o Juiz e as âncoras de cada
+        # cartela — não existe módulo, painel ou gerador paralelo.
+        self._aberturas_vivas: Dict[int, int] = {}
+        self.acervo = self._montar_acervo_abertura()
+        self._acervo_calibrado = False
+        # v11.4 — o conhecimento é montado aqui, no nascimento da Magna: ela já
+        # vem sabendo o que a base histórica ensina (a leitura dos 3.700+
+        # concursos custa ~0,4 s). A calibração fundante dos pesos (walk-forward
+        # da base inteira) é a parte cara: ela roda no preload do `python app.py`
+        # e sob pedido (botão da UI / CLI / assimilar_acervo(forcar=True)).
+        self.assimilar_acervo(auto=True, calibrar_fontes=False)
         self.estado = "pronto"
 
     def _criar_tabelas_ciclo(self):
@@ -1001,6 +1733,43 @@ class CerebroIA:
                 media_acertos REAL NOT NULL,
                 n_amostra INTEGER NOT NULL
             )
+        """)
+
+        # ── ACERVO DE CONHECIMENTO (v11.4) ──────────────────────────
+        # `magna_conhecimento` guarda o estado consolidado do que a Magna
+        # aprendeu (um registro por domínio, com o carimbo do último concurso
+        # assimilado). `magna_memoria` é o diário apendável: cada lote
+        # aprendido, cada previsão de abertura feita e julgada. Juntos eles
+        # respondem "o que você sabia, em que concurso, e como descobriu".
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_conhecimento (
+                dominio TEXT PRIMARY KEY,
+                versao TEXT NOT NULL,
+                concurso_ate INTEGER NOT NULL DEFAULT 0,
+                n_provas INTEGER NOT NULL DEFAULT 0,
+                veredito TEXT,
+                fator_confianca REAL,
+                snapshot_json TEXT NOT NULL,
+                origem TEXT NOT NULL DEFAULT 'fundante',
+                atualizado_em TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS magna_memoria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                dominio TEXT NOT NULL,
+                evento TEXT NOT NULL,
+                concurso INTEGER,
+                acertos INTEGER,
+                provas INTEGER,
+                taxa REAL,
+                detalhe_json TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_magna_memoria_dom
+            ON magna_memoria(dominio, concurso)
         """)
         conn.commit()
         conn.close()
@@ -1137,9 +1906,16 @@ class CerebroIA:
         ok_filtro, _ = self._gaussiano.filtrar(dez)
         filtro = 1.0 if ok_filtro else 0.55
         ja_15 = 0.0 if self._cartela_ja_foi_15(dez) else 1.0
+        # v11.4 — abertura: coerência com o que a base ensinou (a menor dezena
+        # da cartela frente ao posterior memorizado). É DESEMPATE estrutural de
+        # peso pequeno; a probabilidade hipergeométrica da cartela não muda.
+        try:
+            ab = self.acervo.afinidade_cartela(dez)["afinidade"]
+        except Exception:
+            ab = 0.5
         return (
-            ev * 0.22 + div * 0.16 + kl * 0.12 + mk * 0.14 + vl * 0.10
-            + sg * 0.08 + filtro * 0.10 + ja_15 * 0.08
+            ev * 0.22 + div * 0.14 + kl * 0.10 + mk * 0.14 + vl * 0.10
+            + sg * 0.08 + filtro * 0.09 + ja_15 * 0.08 + ab * 0.05
         )
 
     def gerar_cartela_do_dia(self, reaproveitar: bool = True) -> Dict:
@@ -1876,6 +2652,12 @@ class CerebroIA:
         return valor
 
     def _carregar_pesos_fontes_magna(self):
+        """Pesos das fontes: os gravados pela Magna, com migrações de nome.
+
+        v11.4 — a fonte `ordem` (módulo externo) virou `abertura` (órgão da
+        própria Magna). O peso aprendido na fonte antiga é reaproveitado, não
+        jogado fora: a memória continua a mesma, só mudou de dono.
+        """
         pesos = dict(self._FONTES_MAGNA_DEFAULT)
         try:
             conn = self.db.get_conn()
@@ -1885,8 +2667,16 @@ class CerebroIA:
             conn.close()
             if row:
                 gravados = json.loads(row[0])
-                if set(gravados) == set(pesos):
-                    pesos = {k: max(0.01, float(gravados[k])) for k in pesos}
+                if isinstance(gravados, dict):
+                    if ("ordem" in gravados and "abertura" not in gravados):
+                        gravados = dict(gravados)
+                        gravados["abertura"] = gravados.pop("ordem")
+                        self._log("ACERVO",
+                                  "peso aprendido da fonte 'ordem' migrado "
+                                  "para 'abertura' (mesma memória)")
+                    if set(gravados) == set(pesos):
+                        pesos = {k: max(0.01, float(gravados[k]))
+                                 for k in pesos}
         except (ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
             pass
         total = sum(pesos.values())
@@ -1959,38 +2749,16 @@ class CerebroIA:
             vetor_clima = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float))
 
-        # v11.3 — Fonte de ordem real de sorteio: 1ª bola, streaks e
-        # transições, com auto-auditoria walk-forward. Sob independência
-        # o lift é ~1.0 e o fator mantém o vetor praticamente uniforme —
-        # a fonte entra no consenso apenas na medida do lift comprovado.
+        # v11.4 — Fonte ABERTURA: conhecimento do acervo da própria Magna
+        # (menor dezena + 1ª bola física), medido na base histórica inteira,
+        # memorizado e auto-avaliado walk-forward. Sob independência o lift é
+        # ~1,0 e o fator mantém o vetor quase uniforme — a fonte entra no
+        # consenso apenas na medida do que o placar comprovou.
         try:
-            fator_ordem = float(
-                self.ordem_motor.auto_ponderacao().get("fator_confianca", 0.5))
-            v_ordem = self.ordem_motor.vetor_preferencia()
-            uniforme_ordem = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
-            v_ordem_atenuado = ((1.0 - fator_ordem) * uniforme_ordem +
-                                fator_ordem * v_ordem)
-            vetor_ordem = self._normalizar_vetor(v_ordem_atenuado)
+            vetor_abertura = self.vetor_abertura_para_consenso()
         except Exception:
-            vetor_ordem = self._normalizar_vetor(
+            vetor_abertura = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS)
-
-        # v11.3b — Padrões da menor dezena (início do concurso): posterior
-        # da margem hipergeométrica (01=60%, 02=25%, 03=9,8%), atenuada
-        # pela auto-auditoria (teto = a própria margem). Misturada 50/50
-        # com a 1ª bola física na fonte 'ordem'.
-        try:
-            fator_min = float(
-                self.minimo_motor.auto_ponderacao().get(
-                    "fator_confianca", 0.5))
-            v_min = self.minimo_motor.vetor_preferencia_minimo()
-            uniforme_min = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
-            v_min_atenuado = ((1.0 - fator_min) * uniforme_min +
-                              fator_min * v_min)
-            vetor_ordem = self._normalizar_vetor(
-                (vetor_ordem + self._normalizar_vetor(v_min_atenuado)) / 2.0)
-        except Exception:
-            pass
 
         fontes = {
             "motores": vetor_motores,
@@ -2000,9 +2768,831 @@ class CerebroIA:
             "recente": vetor_recente,
             "fisica": vetor_fisica,
             "clima": vetor_clima,
-            "ordem": vetor_ordem,
+            "abertura": vetor_abertura,
         }
         return fontes, consulta, espectro, informacao, entropias
+
+    # ============================================================
+    # ACERVO DE CONHECIMENTO — aprender, memorizar, julgar (v11.4)
+    # ============================================================
+    def _montar_acervo_abertura(self) -> AcervoAberturaMagna:
+        """Lê da base histórica o que a Magna precisa para saber abrir.
+
+        `resultados.d1`  → canal `minima` (a dezena que abre a lista) — a base
+                           inteira, sem depender de backfill externo;
+        `ordem_sorteio`  → canal `real` (1ª bola física), na medida em que a
+                           captura oficial já forneceu.
+        """
+        minima: List[Tuple[int, int]] = []
+        ordens: List[Tuple[int, Tuple[int, ...]]] = []
+        try:
+            conn = self.db.get_conn()
+            try:
+                for concurso, d1 in conn.execute(
+                        "SELECT concurso, d1 FROM resultados "
+                        "ORDER BY concurso ASC").fetchall():
+                    if d1 is not None and 1 <= int(d1) <= TOTAL_DEZENAS:
+                        minima.append((int(concurso), int(d1)))
+                try:
+                    for row in conn.execute(
+                            "SELECT concurso, b1, b2, b3, b4, b5, b6, b7, b8, "
+                            "b9, b10, b11, b12, b13, b14, b15 "
+                            "FROM ordem_sorteio "
+                            "ORDER BY concurso ASC").fetchall():
+                        ordens.append((int(row[0]), tuple(int(x) for x in row[1:])))
+                except sqlite3.Error:
+                    ordens = []      # tabela ainda não criada nesta base
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            self._log("AVISO", "acervo: leitura da base falhou ({})".format(exc))
+        # aberturas aprendidas em conferências recentes, ainda não refletidas
+        # no dump consultado, continuam na memória viva da Magna
+        ja_vistos = {c for c, _ in minima}
+        for concurso, abertura in sorted(getattr(self, "_aberturas_vivas",
+                                                 {}).items()):
+            if concurso not in ja_vistos:
+                minima.append((int(concurso), int(abertura)))
+        return AcervoAberturaMagna(minima=sorted(minima), ordens=ordens)
+
+    def _ler_conhecimento(self, dominio: str) -> Optional[Dict[str, Any]]:
+        try:
+            conn = self.db.get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM magna_conhecimento WHERE dominio=?",
+                    (dominio,)).fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return None
+        if not row:
+            return None
+        dados = dict(row)
+        try:
+            dados["snapshot"] = json.loads(dados.pop("snapshot_json"))
+        except (TypeError, json.JSONDecodeError):
+            dados["snapshot"] = {}
+        return dados
+
+    def _gravar_conhecimento(self, conn, dominio: str, snapshot: Dict[str, Any],
+                             concurso_ate: int, n_provas: int = 0,
+                             veredito: Optional[str] = None,
+                             fator_confianca: Optional[float] = None,
+                             origem: str = "fundante") -> None:
+        conn.execute("""
+            INSERT INTO magna_conhecimento
+            (dominio, versao, concurso_ate, n_provas, veredito,
+             fator_confianca, snapshot_json, origem, atualizado_em)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(dominio) DO UPDATE SET
+                versao=excluded.versao,
+                concurso_ate=excluded.concurso_ate,
+                n_provas=excluded.n_provas,
+                veredito=excluded.veredito,
+                fator_confianca=excluded.fator_confianca,
+                snapshot_json=excluded.snapshot_json,
+                origem=excluded.origem,
+                atualizado_em=excluded.atualizado_em
+        """, (
+            dominio, self.ACERVO_VERSAO, int(concurso_ate), int(n_provas),
+            veredito, fator_confianca,
+            json.dumps(self._json_seguro(snapshot), sort_keys=True),
+            origem, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+
+    def _registrar_memoria(self, conn, dominio: str, evento: str,
+                           concurso: Optional[int] = None,
+                           acertos: Optional[int] = None,
+                           provas: Optional[int] = None,
+                           taxa: Optional[float] = None,
+                           detalhe: Optional[Dict[str, Any]] = None) -> None:
+        conn.execute("""
+            INSERT INTO magna_memoria
+            (timestamp, dominio, evento, concurso, acertos, provas, taxa,
+             detalhe_json)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), dominio, evento,
+            (int(concurso) if concurso is not None else None),
+            (int(acertos) if acertos is not None else None),
+            (int(provas) if provas is not None else None),
+            (float(taxa) if taxa is not None else None),
+            json.dumps(self._json_seguro(detalhe or {}), sort_keys=True),
+        ))
+
+    def _acervo_carimbo(self, base: Optional[Dict[str, Any]] = None) -> int:
+        """Último concurso que o acervo cobre — base oficial ou memória viva."""
+        ultimo_base = int((base or self._estado_base_historica())["ultimo"] or 0)
+        vivo = (int(self.acervo.ultimo("minima") or 0)
+                if hasattr(self, "acervo") else 0)
+        return max(ultimo_base, vivo)
+
+    def _estado_base_historica(self) -> Dict[str, Any]:
+        """Carimbo da base que a Magna está lendo (para aprendizado incremental)."""
+        try:
+            conn = self.db.get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT COUNT(*), MIN(concurso), MAX(concurso) "
+                    "FROM resultados").fetchone()
+            finally:
+                conn.close()
+            n, primeiro, ultimo = (int(row[0] or 0), int(row[1] or 0),
+                                   int(row[2] or 0))
+        except sqlite3.Error:
+            n, primeiro, ultimo = self.n, 0, 0
+        return {"concursos": n, "primeiro": primeiro, "ultimo": ultimo,
+                "proximo_concurso": (ultimo + 1) if ultimo else None}
+
+    def vetor_abertura_para_consenso(self) -> np.ndarray:
+        """A leitura de abertura, atenuada pela confiança medida na própria base.
+
+        fator 0,5 → vetor quase uniforme (ruído); fator 1,0 → o posterior
+        aprendido entra inteiro. A atenuação é feita AQUI, na Magna, para que a
+        decisão controla o peso da evidência — não o acervo.
+        """
+        fator = float(self.acervo.fator_confianca())
+        v = self.acervo.vetor_evidencia()
+        uniforme = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
+        return self._normalizar_vetor((1.0 - fator) * uniforme + fator * v)
+
+    @staticmethod
+    def _acervo_auto_calibracao() -> bool:
+        """Chave `LOTOFACIL_ACERVO_AUTO=0`: a Magna não toca no estado sozinha.
+
+        Vale só para os caminhos AUTOMÁTICOS (boot e pré-decisão): o acervo é
+        lido e usado, mas nada é gravado nem recalibrado por iniciativa própria
+        — é o que os testes e um `import app` inofensivo precisam. Quando o
+        usuário MANDA (botão da UI, `--assimilar`, `assimilar_acervo(forcar=True)`
+        ou `calibrar_pesos_walkforward()`), a calibração roda do mesmo jeito.
+        """
+        return os.environ.get("LOTOFACIL_ACERVO_AUTO", "1") != "0"
+
+    def assimilar_acervo(self, auto: bool = False, forcar: bool = False,
+                         calibrar_fontes: bool = True,
+                         limite_segundos: float = 25.0,
+                         callback=None) -> Dict[str, Any]:
+        """Porta serializada do aprendizado: a Magna aprende com a própria base.
+
+        `auto=True` (boot e pré-decisão) nunca espera nem trava o usuário: se já
+        existe uma assimilação em curso em outra thread, este passo é adiado —
+        o conhecimento é reconstruído do banco na decisão seguinte. Sob RLock,
+        a mesma thread que já decide reentra sem custo.
+        """
+        adquirido = False
+        if auto:
+            adquirido = self._magna_lock.acquire(blocking=False)
+            if not adquirido:
+                return {"status": "ocupado", "reassimilado": False,
+                        "msg": "assimilação em curso em outra thread — adiada"}
+        else:
+            self._magna_lock.acquire()
+            adquirido = True
+        try:
+            return self._assimilar_acervo_sem_lock(
+                auto=auto, forcar=forcar, calibrar_fontes=calibrar_fontes,
+                limite_segundos=limite_segundos, callback=callback)
+        finally:
+            if adquirido:
+                self._magna_lock.release()
+
+    def _assimilar_acervo_sem_lock(self, auto: bool = False,
+                                   forcar: bool = False,
+                                   calibrar_fontes: bool = True,
+                                   limite_segundos: float = 25.0,
+                                   callback=None) -> Dict[str, Any]:
+        """Aprender TUDO da base histórica e memorizar — sem módulo paralelo.
+
+        1. `abertura` — varre a base inteira (frequências, streaks, recorde,
+           repetição por dezena, placar walk-forward, posterior do próximo
+           concurso) e grava o snapshot com o carimbo do último concurso;
+        2. `fontes`   — calibra o peso de cada fonte do consenso em
+           walk-forward fora-da-amostra (orçamento de tempo; só refaz se a
+           base mudou). Sem esta etapa a Magna começaria no chute do default;
+        3. `memoria`  — resume o que já está conferido e aprendido.
+
+        `auto=True` (boot e pré-decisão) refaz apenas o que ficou desatualizado:
+        se a base não mudou e o carimbo bate, o custo é ~0 e nada é recalibrado.
+        """
+        def cb(msg):
+            self._log("ACERVO", msg)
+            if callback:
+                callback(msg)
+
+        base = self._estado_base_historica()
+        aprendido_ate = (self.acervo.ultimo("minima")
+                         if hasattr(self, "acervo") else None) or 0
+        ate = self._acervo_carimbo(base)
+        gravado = self._ler_conhecimento("abertura")
+        desatualizado = (forcar or aprendido_ate != base["ultimo"]
+                         or not gravado
+                         or int(gravado.get("concurso_ate") or 0) != ate)
+        if not desatualizado:
+            rel = self.acervo.relatorio()
+            return {"status": "atualizado", "base": base,
+                    "aprendido_ate": aprendido_ate,
+                    "digest": self.acervo.digest(),
+                    "veredito": rel["veredito"],
+                    "fator_confianca": rel["fator_confianca"],
+                    "leitura": rel["leitura"],
+                    "reassimilado": False}
+
+        # A fonte da verdade do conhecimento é o banco: reler a série completa
+        # custa ~10 ms para 3.773 concursos e elimina estado defasado.
+        self.acervo = self._montar_acervo_abertura()
+
+        rel = self.acervo.relatorio()
+        canais = rel["canais"]
+        # LOTOFACIL_ACERVO_AUTO=0 = "a Magna não escreve nada por conta própria":
+        # o conhecimento é lido e usado, mas não é persistido nem recalibrado.
+        gravar = not (auto and not self._acervo_auto_calibracao())
+        if not gravar:
+            cb("modo somente-leitura (LOTOFACIL_ACERVO_AUTO=0): conhecimento "
+               "montado em memória, nada gravado nem recalibrado")
+            return {"status": "memoria", "base": base,
+                    "aprendido_ate": self.acervo.ultimo("minima"),
+                    "digest": rel["digest"], "veredito": rel["veredito"],
+                    "fator_confianca": rel["fator_confianca"],
+                    "leitura": rel["leitura"], "reassimilado": True,
+                    "gravado": False}
+        conn = self.db.get_conn()
+        try:
+            self._gravar_conhecimento(conn, "abertura", {
+                "digest": rel["digest"],
+                "fator_confianca": rel["fator_confianca"],
+                "veredito": rel["veredito"],
+                "pesos_de_evidencia": rel["pesos_de_evidencia"],
+                "leitura": rel["leitura"],
+                "canais": {
+                    nome: {
+                        "n_registros": c["n_registros"],
+                        "ultimo_concurso": c["ultimo_concurso"],
+                        "placar_walkforward": c["placar_walkforward"],
+                        "auto_auditoria": c["auto_auditoria"],
+                        "previsao": c["previsao"],
+                        "streaks": {k: v for k, v in c["streaks"].items()
+                                    if k != "por_dezena"},
+                    } for nome, c in canais.items()},
+                "honestidade": rel["honestidade"],
+            }, concurso_ate=ate,
+                n_provas=int(canais["minima"]["n_registros"]),
+                veredito=rel["veredito"],
+                fator_confianca=rel["fator_confianca"],
+                origem="incremental" if auto else "fundante")
+            self._gravar_conhecimento(conn, "base", base,
+                                      concurso_ate=base["ultimo"],
+                                      n_provas=base["concursos"],
+                                      veredito="OK",
+                                      origem="fundante")
+            # só registra quando a leitura realmente mudou: o carimbo evita
+            # inflar a memória com o mesmo aprendizado a cada decisão
+            ultimo_evento = conn.execute(
+                "SELECT provas, taxa, detalhe_json FROM magna_memoria "
+                "WHERE dominio='abertura' AND evento='assimilado' "
+                "AND concurso=? ORDER BY id DESC LIMIT 1", (ate,)).fetchone()
+            ultima_digest = ""
+            try:
+                ultima_digest = json.loads(ultimo_evento[2] or "{}").get(
+                    "digest", "") if ultimo_evento is not None else ""
+            except (TypeError, json.JSONDecodeError):
+                ultima_digest = ""
+            if (ultimo_evento is None
+                    or ultima_digest != rel["digest"]
+                    or (ultimo_evento[0], ultimo_evento[1] or 0.0) !=
+                       (canais["minima"]["n_registros"],
+                        canais["minima"]["auto_auditoria"].get("taxa") or 0.0)):
+                self._registrar_memoria(conn, "abertura", "assimilado",
+                                        concurso=ate,
+                                        provas=canais["minima"]["n_registros"],
+                                        taxa=canais["minima"]["auto_auditoria"].get(
+                                            "taxa"),
+                                        detalhe={"digest": rel["digest"],
+                                                 "veredito": rel["veredito"],
+                                                 "leitura": rel["leitura"]})
+            conn.commit()
+        finally:
+            conn.close()
+
+        cb(rel["leitura"])
+
+        calibracao = None
+        if calibrar_fontes and base["concursos"] >= 120:
+            calibrado = self._ler_conhecimento("fontes")
+            precisa = (forcar or not calibrado
+                       or int(calibrado.get("concurso_ate") or 0)
+                       != base["ultimo"])
+            if precisa and (not auto or self._acervo_auto_calibracao()):
+                cb("Calibrando o peso das {} fontes em walk-forward sobre a "
+                   "base histórica (orçamento de {:.0f}s)...".format(
+                       len(self._FONTES_MAGNA_DEFAULT), limite_segundos))
+                try:
+                    calibracao = self.calibrar_pesos_walkforward(
+                        limite_segundos=limite_segundos, callback=callback)
+                except Exception as exc:
+                    self._log("AVISO", "calibração do acervo indisponível: {}"
+                              .format(exc))
+            elif precisa:
+                cb("Auto-calibração desativada "
+                   "(LOTOFACIL_ACERVO_AUTO=0): pesos permanecem nos defaults "
+                   "aprendidos online. Rode assimilar_acervo(forcar=True) para "
+                   "calibrar.")
+            else:
+                cb("Calibração de fontes já memorizada até o concurso {} — "
+                   "reaproveitando.".format(calibrado.get("concurso_ate")))
+        elif calibrar_fontes:
+            cb("Base pequena ({} concursos): pesos ficam nos defaults até "
+               "haver amostra.".format(base["concursos"]))
+
+        self._gravar_resumo_memoria()
+        return {"status": "ok", "base": base, "gravado": True,
+                "aprendido_ate": ate,
+                "digest": rel["digest"], "reassimilado": True,
+                "veredito": rel["veredito"],
+                "fator_confianca": rel["fator_confianca"],
+                "leitura": rel["leitura"],
+                "pesos_fontes": dict(self.pesos_fontes_magna),
+                "calibracao": calibracao}
+
+    def _gravar_resumo_memoria(self) -> None:
+        """Memória do que já foi conferido/aprendido (dominio `memoria`)."""
+        try:
+            conn = self.db.get_conn()
+            try:
+                dec = conn.execute(
+                    "SELECT COUNT(*), SUM(CASE WHEN status='conferida' "
+                    "THEN 1 ELSE 0 END), AVG(media_acertos), "
+                    "MAX(melhor_acertos) FROM magna_decisoes").fetchone()
+                apr = conn.execute(
+                    "SELECT COUNT(*), AVG(peso_depois - peso_antes) "
+                    "FROM magna_aprendizado").fetchone()
+                mem = conn.execute(
+                    "SELECT COUNT(*) FROM magna_memoria").fetchone()
+                epi = conn.execute(
+                    "SELECT COUNT(*) FROM magna_episodios").fetchone()
+                placar = self.placar_abertura_memoria(conn)
+                snapshot = {
+                    "decisoes": int(dec[0] or 0),
+                    "decisoes_conferidas": int(dec[1] or 0),
+                    "media_acertos_conferidas": round(float(dec[2] or 0.0), 4),
+                    "melhor_acertos": int(dec[3] or 0),
+                    "ajustes_de_peso": int(apr[0] or 0),
+                    "delta_medio_de_peso": round(float(apr[1] or 0.0), 6),
+                    "episodios": int(epi[0] or 0),
+                    "eventos_de_memoria": int(mem[0] or 0),
+                    "placar_abertura": placar,
+                }
+                ultimo = self._acervo_carimbo()
+                self._gravar_conhecimento(conn, "memoria", snapshot,
+                                          concurso_ate=ultimo,
+                                          n_provas=snapshot["decisoes_conferidas"],
+                                          veredito="OK", origem="online")
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            self._log("AVISO", "resumo de memória: {}".format(exc))
+
+    def placar_abertura_memoria(self, conn=None) -> Dict[str, Any]:
+        """O placar do que a Magna PREVÊ de abertura — memória auditável.
+
+        Compara o ranking aprendido com a abertura real de cada concurso
+        conferido e devolve o aproveitamento ao lado da margem teórica.
+        """
+        proprio = conn is None
+        conn = conn or self.db.get_conn()
+        try:
+            rows = conn.execute("""
+                SELECT acertos, provas, taxa, detalhe_json FROM magna_memoria
+                WHERE dominio='abertura' AND evento='palpite'
+                ORDER BY id DESC LIMIT 5000""").fetchall()
+        except sqlite3.Error:
+            return {"aplicavel": False, "motivo": "sem tabela de memória"}
+        finally:
+            if proprio:
+                conn.close()
+        n = len(rows)
+        if not n:
+            return {"aplicavel": False,
+                    "motivo": "a Magna ainda não conferiu um concurso com "
+                             "palpite de abertura registrado",
+                    "provas": 0}
+        t1 = t2 = t3 = 0
+        for r in rows:
+            try:
+                det = json.loads(r[3] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                det = {}
+            t1 += 1 if det.get("acerto_top1") else 0
+            t2 += 1 if det.get("acerto_top2") else 0
+            t3 += 1 if det.get("acerto_top3") else 0
+        teto = {
+            "top1": self.acervo.p_teorica("minima", 1),
+            "top2": (self.acervo.p_teorica("minima", 1)
+                     + self.acervo.p_teorica("minima", 2)),
+            "top3": sum(self.acervo.p_teorica("minima", k) for k in (1, 2, 3)),
+        }
+        return {
+            "aplicavel": True, "provas": n,
+            "acerto_top1": round(t1 / n, 4), "acerto_top2": round(t2 / n, 4),
+            "acerto_top3": round(t3 / n, 4),
+            "margem_teorica": {k: round(v, 4) for k, v in teto.items()},
+            "leitura": ("o palpite da Magna fica na margem teórica — isso é "
+                        "o teto do que existe para prever abertura sob "
+                        "independência" if abs(t3 / n - teto["top3"]) < 0.05
+                        else "desvio da margem na amostra pequena: aguardar"),
+        }
+
+    def calibrar_pesos_walkforward(self, n_passos: Optional[int] = None,
+                                   limite_segundos: float = 25.0,
+                                   callback=None) -> Dict[str, Any]:
+        """Aprenda o peso de cada fonte olhando o passado, sem vazamento.
+
+        Para cada concurso-t do histórico, a Magna refaz o próprio consenso
+        usando SOMENTE os concursos < t e mede quantas das 15 dezenas do
+        top-15 de cada fonte caíram no sorteio real. Baseline de qualquer
+        escolha de 15 dezenas: 9,0 acertos (15·15/25). O peso evolui com a
+        MESMA regra bayesiana usada online — assim a Magna não começa do zero
+        no concurso 3774: ela começa calibrada com a própria história.
+        """
+        def cb(msg):
+            self._log("CALIBRAÇÃO", msg)
+            if callback:
+                callback(msg)
+
+        matriz_original, raw_original = self.matriz.copy(), list(self.raw)
+        pesos_originais = dict(self.pesos_fontes_magna)
+        n_total = len(matriz_original)
+        if n_total < 120:
+            return {"status": "ignorado", "motivo": "base pequena",
+                    "concursos": n_total}
+
+        passos = int(n_passos or 0)
+        t0 = time.time()
+        if passos <= 0:
+            passos = 8
+            while passos < 48 and (time.time() - t0) < limite_segundos * 0.25:
+                passos += 4
+        inicio = max(60, n_total - passos * max(1, (n_total - 60) // passos))
+        passo = max(1, (n_total - inicio) // passos)
+        checkpoints = list(range(inicio, n_total - 1, passo))[:passos]
+        if not checkpoints:
+            return {"status": "ignorado", "motivo": "sem checkpoints"}
+
+        nome_fontes = list(self._FONTES_MAGNA_DEFAULT)
+        acertos_fontes = {n: 0 for n in nome_fontes}
+        provas = 0
+        pesos_passo: List[Dict[str, float]] = []
+        bayes: Dict[str, float] = dict(pesos_originais)
+        try:
+            for t in checkpoints:
+                if time.time() - t0 > limite_segundos:
+                    cb("Orçamento de {:.0f}s atingido no passo {} de {} — a "
+                       "calibração para aqui e fica registrada como parcial."
+                       .format(limite_segundos, provas, len(checkpoints)))
+                    break
+                self.treinar(
+                    matriz_override=matriz_original[:t],
+                    raw_override=raw_original[:t])
+                fontes, *_ = self._fontes_assimiladas_magna()
+                real = {int(d) + 1 for d in np.where(
+                    matriz_original[t] > 0)[0]}
+                if len(real) != 15:
+                    continue
+                acertos = {}
+                for nome, vetor in fontes.items():
+                    top15 = [int(x) + 1 for x in
+                             (np.argsort(vetor)[::-1][:15])]
+                    acertos[nome] = len(set(top15) & real)
+                    acertos_fontes[nome] += acertos[nome]
+                if AprendizadoBayesianoMagno is not None:
+                    try:
+                        if not hasattr(self, "_bayes_acervo"):
+                            self._bayes_acervo = AprendizadoBayesianoMagno(
+                                pesos_originais, alpha_prior=60.0)
+                        bayes = self._bayes_acervo.atualizar(
+                            acertos, lr=0.10, momentum_beta=0.5)
+                    except Exception:
+                        pass
+                pesos_passo.append({"t": int(t), "acertos": acertos,
+                                    "pesos": dict(bayes)})
+                provas += 1
+                cb("passo {}/{} (concurso {}): {}".format(
+                    provas, len(checkpoints), t,
+                    " · ".join("{} {}".format(n, a)
+                               for n, a in acertos.items())))
+        finally:
+            self._rng_vetor = None
+            if (self.matriz.shape != matriz_original.shape
+                    or not np.array_equal(self.matriz, matriz_original)):
+                self.treinar(matriz_override=matriz_original,
+                             raw_override=raw_original)
+
+        if not provas:
+            return {"status": "ignorado", "motivo": "nenhuma prova válida"}
+
+        linha_base = 15.0 * 15.0 / TOTAL_DEZENAS      # 9 acertos esperados
+        medicao = {}
+        for nome in nome_fontes:
+            media = acertos_fontes[nome] / provas
+            medicao[nome] = {
+                "acertos_totais": int(acertos_fontes[nome]),
+                "media_top15": round(media, 4),
+                "linha_de_base": round(linha_base, 4),
+                "lift": round(media / linha_base, 4),
+            }
+        calibrados = {n: max(0.01, float(bayes.get(n, pesos_originais[n])))
+                      for n in nome_fontes}
+        soma = sum(calibrados.values())
+        calibrados = {n: round(v / soma, 6) for n, v in calibrados.items()}
+        base_historica = self._estado_base_historica()
+        carimbo = self._acervo_carimbo(base_historica)
+        conn = self.db.get_conn()
+        try:
+            self._gravar_conhecimento(conn, "fontes", {
+                "provas": provas,
+                "concursos_cobertos": [int(checkpoints[0]),
+                                       int(checkpoints[-1] + 1)],
+                "cobertura": ("{} passos de walk-forward cobrindo os "
+                              "concursos {}-{} de {} (prefixo limpo, sem "
+                              "vazamento)".format(
+                                  provas, checkpoints[0], checkpoints[-1] + 1,
+                                  n_total)),
+                "medicao": medicao,
+                "pesos_calibrados": calibrados,
+                "pesos_anteriores": pesos_originais,
+                "parcial": bool(provas < len(checkpoints)),
+                "limite_segundos": round(float(limite_segundos), 2),
+                "leitura": ("nenhuma fonte saiu do acaso em walk-forward: os "
+                            "pesos ficam nos defaults e a Magna não finge ter "
+                            "aprendido o que a base não mostrou"
+                            if all(abs(v["lift"] - 1.0) < 0.05
+                                   for v in medicao.values()) else
+                            "há fontes acima da linha de base fora-da-amostra; "
+                            "o peso recalibrado reflete isso"),
+            }, concurso_ate=carimbo, n_provas=provas,
+                veredito="CALIBRADO", origem="fundante")
+            self._registrar_memoria(conn, "fontes", "calibrado",
+                                    concurso=carimbo,
+                                    provas=provas,
+                                    detalhe={"pesos": calibrados,
+                                             "medicao": medicao})
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.pesos_fontes_magna = calibrados
+        conn = self.db.get_conn()
+        try:
+            self._salvar_pesos_fontes_magna(conn)
+            conn.commit()
+        finally:
+            conn.close()
+        self._acervo_calibrado = True
+        tempo = round(time.time() - t0, 2)
+        cb("Pesos calibrados com {} provas fora-da-amostra em {}s · {}".format(
+            provas, tempo, " · ".join("{} {:.3f}".format(n, calibrados[n])
+                                      for n in nome_fontes)))
+        return {"status": "ok", "provas": provas, "tempo_seg": tempo,
+                "medicao": medicao, "pesos_calibrados": calibrados,
+                "parcial": bool(provas < len(checkpoints)),
+                "cobertura": [int(checkpoints[0]), int(checkpoints[-1] + 1)]}
+
+    def _garantir_acervo(self, callback=None, orcamento_segundos=12.0) -> None:
+        """Chamado por TODA decisão: a Magna nunca decide com memória velha.
+
+        O custo é ~0 quando o carimbo do acervo bate com o da base histórica.
+        Quando a base cresceu (concurso novo, ordem real ingerida, decisão depois
+        de instalar o aprendizado), a Magna reassimila o conhecimento de abertura
+        e o repersiste — decisão alguma é tomada com memória velha.
+
+        A calibração fundante (pesos das 8 fontes em walk-forward sobre a base
+        inteira) é a parte cara e NÃO é disparada aqui: ela roda no preload do
+        `python app.py`, no botão da UI, na CLI (`--assimilar`) ou quando a
+        conferência pede. O `orcamento_segundos` continua no contrato para o dia
+        em que a Magna decidir calibrar dentro do próprio ciclo.
+        """
+        try:
+            if not hasattr(self, "acervo"):
+                self.acervo = self._montar_acervo_abertura()
+            self.assimilar_acervo(auto=True, callback=callback,
+                                  calibrar_fontes=False,
+                                  limite_segundos=float(orcamento_segundos))
+        except Exception as exc:  # a decisão nunca trava por leitura de acervo
+            self._log("AVISO", "acervo não reassimilado: {}".format(exc))
+
+    def evidencia_abertura(self) -> Dict[str, Any]:
+        """Síntese do conhecimento de abertura usada por TODA decisão.
+
+        É o mesmo objeto que o Juiz recebe, que a interpretação de cada cartela
+        cita e que a conferência vai julgar — uma única fonte, dentro da Magna.
+        """
+        acervo = self.acervo
+        prev = acervo.previsao("minima")
+        est = acervo.estado()
+        probs = {int(k): float(v) for k, v in
+                 (prev.get("probabilidades") or {}).items()}
+        return {
+            "digest": est["digest"],
+            "versao": self.ACERVO_VERSAO,
+            "aprendido_ate": est["aprendido_ate_concurso"],
+            "concursos_da_base": est["concursos_da_base"],
+            "concursos_com_ordem_real": est["concursos_com_ordem_real"],
+            "abertura_atual": est["abertura_atual"],
+            "veredito": est["veredito"],
+            "fator_confianca": est["fator_confianca"],
+            "ranking": [r["dezena"] for r in prev.get("ranking") or []],
+            "ranking_completo": prev.get("ranking") or [],
+            "probabilidades": {str(k): round(v, 5) for k, v in probs.items()},
+            "palpite_top3": prev.get("proximo_palpite_top3") or [],
+            "recorde": acervo.streaks("minima").get("recorde_historico"),
+            "placar": acervo.placar_walkforward("minima"),
+            "auto_auditoria": acervo.auto_auditoria("minima"),
+            "pergunta_decisiva": prev.get("pergunta_decisiva"),
+            "leitura": acervo.leitura(),
+        }
+
+    def aprender_abertura_medida(self, concurso: int, abertura: int,
+                                 origem: str = "conferencia",
+                                 gravar: bool = True) -> Dict[str, Any]:
+        """Memoriza a abertura REAL de um concurso acabado de conferir.
+
+        É aqui que o "aprender" da Magna acontece no fim do ciclo: o concurso
+        entra na série viva do acervo, o palpite anterior é julgado e o
+        conhecimento é repersistido com novo carimbo — sem nenhum outro módulo
+        envolvido.
+        """
+        concurso, abertura = int(concurso), int(abertura)
+        if not 1 <= abertura <= TOTAL_DEZENAS:
+            raise ValueError("abertura fora da faixa 1-25")
+        res = self.acervo.aprender("minima", concurso, abertura)
+        vivas = getattr(self, "_aberturas_vivas", None)
+        if vivas is None:
+            vivas = self._aberturas_vivas = {}
+        vivas[concurso] = abertura
+        if gravar:
+            self._assimilar_acervo_sem_lock(auto=True, calibrar_fontes=False)
+            conn = self.db.get_conn()
+            try:
+                self._registrar_memoria(conn, "abertura", "aprendido",
+                                        concurso=concurso,
+                                        detalhe={"abertura": abertura,
+                                                 "origem": origem})
+                conn.commit()
+            finally:
+                conn.close()
+        res["origem"] = origem
+        return res
+
+    def _julgar_palpite_abertura(self, conn, concurso: int,
+                                 row: Dict[str, Any],
+                                 real: set) -> Optional[Dict[str, Any]]:
+        """Julga o que a Magna previu de abertura para ESTE concurso.
+
+        O palpite está gravado em `analise_json.memoria.palpite_abertura` desde
+        a decisão; aqui ele é confrontado com a abertura real e vira memória
+        auditável (dominio `abertura`, evento `palpite`) — o placar do
+        /api/magna/conhecimento é montado a partir desses registros.
+        """
+        try:
+            analise = json.loads(row["analise_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return None
+        palpite = ((analise.get("memoria") or {}).get("palpite_abertura") or {})
+        ranking = [int(d) for d in (palpite.get("ranking") or [])]
+        abertura_real = int(min(int(d) for d in real))
+        julgamento = AcervoAberturaMagna.avaliar_palpite(
+            ranking, abertura_real) if ranking else {
+                "abertura_real": abertura_real, "posicao_no_ranking": None,
+                "acerto_top1": None, "acerto_top2": None, "acerto_top3": None,
+                "motivo": "decisão anterior ao acervo: sem palpite gravado"}
+        julgamento.update({"concurso": int(concurso),
+                           "digest_acervo": palpite.get("digest"),
+                           "abertura_prevista_top3": ranking[:3]})
+        self._registrar_memoria(
+            conn, "abertura", "palpite", concurso=concurso,
+            acertos=(1 if julgamento.get("acerto_top1") else 0),
+            provas=1,
+            taxa=(1.0 if julgamento.get("acerto_top3") else 0.0),
+            detalhe=julgamento)
+        return julgamento
+
+    def ancoras_do_acervo(self, k: int = 3) -> List[int]:
+        """As k dezenas que a Magna escolhe para ancorar cartelas.
+
+        Vêm do acervo de abertura (aprendido da base histórica inteira e
+        memorizado), não de um trio chumbado no código. Como o conhecimento
+        medido aponta 01 > 02 > 03, o resultado coincide com a intuição
+        popular — com a diferença de que agora há origem, placar e digest.
+        """
+        k = max(1, int(k))
+        try:
+            top = [int(d) for d in self.acervo.proximas_aberturas(k)]
+        except Exception:
+            top = []
+        for d in (1, 2, 3):
+            if len(top) >= k:
+                break
+            if d not in top:
+                top.append(int(d))
+        return (top[:k] or [1, 2, 3])
+
+    def abertura_para_o_juiz(self, cartelas: Optional[List[List[int]]] = None
+                             ) -> Dict[str, Any]:
+        """Recorte do acervo que o Juiz Magna usa como 9º critério."""
+        prev = self.acervo.previsao("minima")
+        return {
+            "probabilidades": prev.get("probabilidades") or {},
+            "ranking": prev.get("proximo_palpite_top3") or [],
+            "n_registros": prev.get("n_registros"),
+            "fator_confianca": self.acervo.fator_confianca(),
+        }
+
+    def conhecimento(self, dominio: Optional[str] = None,
+                     detalhes: bool = True) -> Dict[str, Any]:
+        """O que a Magna sabe, como aprendeu e onde isso está memorizado."""
+        if dominio:
+            gravado = self._ler_conhecimento(dominio)
+            if not gravado:
+                return {"status": "vazio", "dominio": dominio,
+                        "msg": "a Magna ainda não assimilou este domínio"}
+            return {"status": "ok", **gravado}
+        gravados = {}
+        try:
+            conn = self.db.get_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT dominio, versao, concurso_ate, n_provas, veredito, "
+                    "fator_confianca, origem, atualizado_em, snapshot_json "
+                    "FROM magna_conhecimento ORDER BY dominio").fetchall()
+                eventos = conn.execute(
+                    "SELECT dominio, evento, concurso, acertos, provas, taxa, "
+                    "timestamp FROM magna_memoria ORDER BY id DESC LIMIT 30"
+                ).fetchall()
+            finally:
+                conn.close()
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["snapshot"] = json.loads(d.pop("snapshot_json"))
+                except (TypeError, json.JSONDecodeError):
+                    d["snapshot"] = {}
+                gravados[d["dominio"]] = d
+            memoria = [dict(r) for r in eventos]
+        except sqlite3.Error as exc:
+            gravados, memoria = {}, [{"erro": str(exc)}]
+        out = {
+            "status": "ok",
+            "identidade": "Inteligência Magna — acervo de conhecimento v11.4",
+            "versao_acervo": self.ACERVO_VERSAO,
+            "base": self._estado_base_historica(),
+            "fontes_do_consenso": list(self._FONTES_MAGNA_DEFAULT),
+            "pesos_fontes": dict(self.pesos_fontes_magna),
+            "calibrado": bool(self._ler_conhecimento("fontes")),
+            "dominios": {k: {kk: vv for kk, vv in v.items()
+                              if kk != "snapshot"}
+                         for k, v in gravados.items()},
+            "memoria_recente": memoria,
+            "abertura": self.acervo.estado(),
+            "leitura": self.acervo.leitura(),
+            "placar_abertura": self.placar_abertura_memoria(),
+            "honestidade": (
+                "O acervo é memória e julgamento, não bola de cristal: mede, "
+                "atenua e publica. As probabilidades hipergeométricas de cada "
+                "cartela e as garantias do fechamento permanecem as mesmas."),
+        }
+        if detalhes:
+            out["abertura_relatorio"] = self.acervo.relatorio()
+        return out
+
+    def aprender_ordem_sorteio(self, concurso: int,
+                              ordem: Sequence[int]) -> Dict[str, Any]:
+        """Entrada única da ordem real das bolas (o que a Magna memoriza).
+
+        Substitui o antigo POST /api/magna/ordem/ingestao: o dado entra pela
+        mão da própria Magna, que valida, grava em `ordem_sorteio`, atualiza o
+        acervo e reassimila o conhecimento no mesmo passo.
+        """
+        vals = AcervoAberturaMagna.validar_ordem(ordem)
+        concurso = int(concurso)
+        if concurso < 1:
+            raise ValueError("concurso inválido")
+        persistido = False
+        try:
+            persistido = bool(self.db.salvar_ordem(concurso, list(vals)))
+        except (ValueError, sqlite3.Error) as exc:
+            self._log("AVISO", "ordem {}: {}".format(concurso, exc))
+        res = self.acervo.aprender_ordem(concurso, vals)
+        rel = self.assimilar_acervo(forcar=True, calibrar_fontes=False)
+        res.update({"persistido": persistido,
+                    "abertura_real": vals[0],
+                    "acervo": {"digest": rel.get("digest"),
+                               "aprendido_ate": rel.get("aprendido_ate"),
+                               "reassimilado": rel.get("reassimilado")}})
+        self._log("ACERVO", "ordem real do {} memorizada (1ª bola {:02d})"
+                  .format(concurso, vals[0]))
+        return res
+
 
     def decidir_e_gerar(self, quantidade=1, orcamento=None, callback=None,
                          registrar=True, concurso_alvo=None, alvo=None,
@@ -2062,6 +3652,13 @@ class CerebroIA:
             cb("Assimilando histórico e treinando a memória única...")
             self.treinar(callback=callback)
 
+        # v11.4 — antes de decidir, a Magna reassegura o PRÓPRIO acervo: nada
+        # de consultar um módulo separado. O conhecimento de abertura é dela,
+        # aprendido da base histórica inteira e memorizado no banco.
+        cb("Reassegurando o acervo de conhecimento (base histórica)...")
+        self._garantir_acervo(callback=callback)
+        evidencia_abertura = self.evidencia_abertura()
+
         cb("Unificando motores, oráculos, espectro, informação e análise recente...")
         fontes, consulta, espectro, informacao, entropias = \
             self._fontes_assimiladas_magna()
@@ -2114,7 +3711,13 @@ class CerebroIA:
                     float(np.mean([votos[d - 1] for d in dezenas])) / 15.0,
                     4,
                 ),
+                # v11.4 — como esta cartela se relaciona com o conhecimento de
+                # abertura que a Magna memorizou (abrir com 01 não aumenta a
+                # chance de nada: é coerência estrutural, registrada à vista).
+                "abertura": self.acervo.afinidade_cartela(dezenas),
             }
+            cartela["scores"]["afinidade_abertura"] = float(
+                cartela["interpretacao_magna"]["abertura"]["afinidade"])
 
         hurst = [
             round(float(espectro.expoente_hurst(self.matriz[:, d])), 4)
@@ -2188,13 +3791,16 @@ class CerebroIA:
             "status": "ok",
             "identidade": "Inteligência Magna",
             "decisao_unica": True,
-            "justificativa_magna": justificativa,
+            "justificativa_magna": (
+                justificativa + " " + evidencia_abertura["leitura"]),
             "fontes_assimiladas": [
                 "geração combinatória", "consenso dos oráculos",
                 "wheeling 14/15", "análise histórica e recente",
                 "singularidade e filtros avançados", "auditoria e aprendizado",
+                "acervo de abertura (base histórica inteira)",
             ],
             "pesos_fontes": pesos,
+            "acervo_magna": evidencia_abertura,
             "top15_magna": [
                 int(x) for x in (np.argsort(vetor_final)[::-1][:15] + 1)
             ],
@@ -2206,6 +3812,28 @@ class CerebroIA:
                 "top15_fontes": top15_fontes,
                 "vetor_final": [round(float(x), 10) for x in vetor_final],
                 "pesos_fontes": pesos,
+                # v11.4 — a decisão passa a citar OBRIGATORIAMENTE o acervo que
+                # a produziu: carimbo da base, hash do conhecimento e o palpite
+                # de abertura que será julgado na conferência.
+                "acervo": {
+                    "versao": self.ACERVO_VERSAO,
+                    "digest": evidencia_abertura["digest"],
+                    "aprendido_ate": evidencia_abertura["aprendido_ate"],
+                    "concursos_da_base": evidencia_abertura["concursos_da_base"],
+                    "veredito": evidencia_abertura["veredito"],
+                    "fator_confianca": evidencia_abertura["fator_confianca"],
+                    "leitura": evidencia_abertura["leitura"],
+                    "placar_walkforward": evidencia_abertura["placar"],
+                },
+                "palpite_abertura": {
+                    "concurso": (int(concurso_alvo) if concurso_alvo is not None
+                                 else None),
+                    "digest": evidencia_abertura["digest"],
+                    "ranking": evidencia_abertura["ranking"],
+                    "probabilidades": evidencia_abertura["probabilidades"],
+                    "abertura_atual": evidencia_abertura["abertura_atual"],
+                    "recorde": evidencia_abertura["recorde"],
+                },
             },
             "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None
                                 else (self.db.get_ultimo_concurso() or 0) + 1),
@@ -2346,20 +3974,44 @@ class CerebroIA:
                         nome, int(acertos), float(antes[nome]),
                         float(depois[nome]),
                     ))
+                # v11.4 — a Magna julga também o que previu sobre a ABERTURA
+                # deste concurso e memoriza o resultado no próprio acervo.
+                julgamento_abertura = self._julgar_palpite_abertura(
+                    conn, concurso, dict(row), real)
                 aprendidas.append({
                     "decisao_id": row["id"], "melhor_acertos": melhor,
                     "media_acertos": round(media, 2),
                     "acertos_fontes": acertos_fontes,
+                    "abertura": julgamento_abertura,
                 })
 
             if aprendidas:
                 self._salvar_pesos_fontes_magna(conn)
                 self._checkpoint_ou_rollback(conn)
+                conn.commit()
+                # o concurso que acabou de ser conferido entra na série viva do
+                # acervo (abertura real) e o conhecimento é repersistido com o
+                # novo carimbo — aprendizado e memória no mesmo fechamento de ciclo
+                abertura_real = int(min(real))
+                self.acervo.aprender("minima", concurso, abertura_real)
+                vivas = getattr(self, "_aberturas_vivas", None)
+                if vivas is None:
+                    vivas = self._aberturas_vivas = {}
+                vivas[concurso] = abertura_real
+                self._registrar_memoria(
+                    conn, "abertura", "aprendido", concurso=concurso,
+                    detalhe={"abertura": abertura_real,
+                             "origem": "conferencia"})
+                conn.commit()
+                self._assimilar_acervo_sem_lock(auto=True,
+                                                calibrar_fontes=False)
             conn.commit()
             return {
                 "status": "ok", "concurso": concurso,
                 "decisoes_aprendidas": aprendidas,
                 "pesos_fontes": dict(self.pesos_fontes_magna),
+                "acervo": self.acervo.estado(),
+                "placar_abertura": self.placar_abertura_memoria(),
             }
         except Exception:
             conn.rollback()
@@ -2404,13 +4056,22 @@ class CerebroIA:
                     except Exception as exc:
                         self._log("AVISO", "Ajuste de motores: {}".format(exc))
 
+            # v11.4 — o acervo é reassegurado no mesmo ciclo: a Magna aprende o
+            # concurso que acabou de sair ANTES de planejar o próximo
+            try:
+                self._garantir_acervo(callback=callback)
+            except Exception as exc:
+                cb("aviso: acervo não reassimilado ({})".format(exc))
             plano = self._planejar_alvo_13_14_15()
             critica = self._autocriticar_memoria()
-            cb("Ciclo pós-sorteio concluído · concurso {}".format(ultimo))
+            cb("Ciclo pós-sorteio concluído · concurso {} · {}".format(
+                ultimo, self.acervo.leitura()))
             return {
                 "status": "ok",
                 "concurso": ultimo,
                 "treino": treino,
+                "acervo": self.acervo.estado(),
+                "placar_abertura": self.placar_abertura_memoria(),
                 "aprendizado": aprendizado,
                 "plano": plano,
                 "autocritica": critica,
@@ -2574,6 +4235,14 @@ class CerebroIA:
         if last:
             try:
                 gravados = json.loads(last[0])
+                if isinstance(gravados, dict) and "ordem" in gravados \
+                        and "abertura" not in gravados:
+                    # v11.4 — checkpoint anterior à unificação: o peso da fonte
+                    # `ordem` é o MESMO conhecimento da fonte `abertura` (o
+                    # default não mudou de tamanho), então ele é reaproveitado
+                    # em vez de descartado por divergência de nomes.
+                    gravados = dict(gravados)
+                    gravados["abertura"] = gravados.pop("ordem")
                 if set(gravados) == set(self.pesos_fontes_magna):
                     self.pesos_fontes_magna = {
                         k: max(0.01, float(gravados[k]))
@@ -2620,19 +4289,35 @@ class CerebroIA:
                                   orcamento: float = 100.0, perfil: str = "equilibrado"):
         """Opção extra: 3 cartelas âncora exclusivas + 14 dezenas da Magna — MESMO PROCESSO SUPREMO.
 
-        Regras:
-        - Cartela 1: 01 + 14 dezenas ranking Magna
-        - Cartela 2: 02 + 14 dezenas, SEM 01
-        - Cartela 3: 03 + 14 dezenas, SEM 01 e 02
-        Usa TODO pipeline supremo: regime adaptativo, memória vetorial, EWC, meta por regime,
-        perfil risco, MCTS, juiz 8 critérios + adversarial + NIST + p-value, fingerprint SHA256,
+        Regras (v11.4 — âncoras decididas pelo acervo, não chumbadas):
+        - as 3 âncoras são as aberturas mais prováveis QUE A MAGNA APRENDEU da
+          base histórica (hoje: 01, 02 e 03 — porque a medição confirma a
+          intuição, não porque o código a repete);
+        - Cartela 1: âncora 1 + 14 dezenas ranking Magna
+        - Cartela 2: âncora 2 + 14 dezenas, SEM a âncora 1
+        - Cartela 3: âncora 3 + 14 dezenas, SEM as âncoras 1 e 2
+        Usa todo o pipeline supremo: regime adaptativo, memória vetorial, EWC, meta por regime,
+        perfil risco, MCTS, juiz 9 critérios + adversarial + NIST + p-value, fingerprint SHA256,
         backtest walk-forward, binomial, curva aprendizado, verificação exaustiva, explainability.
         Único gerador: Inteligência Magna.
         """
         with self._magna_lock:
             if not self.treinado:
                 self.treinar()
-            # Usa processo único supremo para obter vetor, regime, etc
+            # v11.4 — as âncoras deixaram de ser um trio chumbado no código: a
+            # Magna decide quais dezenas ancoram o lote a partir do próprio
+            # acervo de abertura (aprendido da base histórica e memorizado).
+            # Como o conhecimento medido aponta exatamente 01 > 02 > 03, o
+            # resultado coincide com a intuição do usuário — mas agora com
+            # origem, placar walk-forward e digest auditáveis.
+            self._garantir_acervo()
+            evidencia_abertura = self.evidencia_abertura()
+            ancoras_do_acervo = self.ancoras_do_acervo(3)
+            self._log("ANCORAS", "âncoras decididas pelo acervo: {} — {}".format(
+                ancoras_do_acervo, self.acervo.leitura()))
+            # Usa o MESMO processo supremo da decisão única (regime, memória,
+            # EWC, MCTS, juiz, fingerprint, backtest, verificação exaustiva).
+
             # 1. Regime adaptativo
             regime = {}
             try:
@@ -2678,10 +4363,12 @@ class CerebroIA:
             # 5. Geração âncoras com mesmo rigor supremo (pool extraordinário + MCTS opcional)
             bloqueadas = self._carregar_episodios("repulsao", 150)
             sets_ruins = [set(e["dezenas"]) for e in bloqueadas]
-            excluidas_por_ancora = {1: set(), 2: {1}, 3: {1, 2}}
+            ancoras = list(ancoras_do_acervo)
+            excluidas_por_ancora = {pos: set(ancoras[:pos - 1])
+                                    for pos in range(1, len(ancoras) + 1)}
             cartelas_raw = []
             usadas = []
-            for ancora in (1, 2, 3):
+            for ancora in ancoras:
                 excluidas = excluidas_por_ancora[ancora]
                 escolhidas = [ancora]
                 for d in ranking:
@@ -2732,7 +4419,10 @@ class CerebroIA:
             pval = {}
             try:
                 if JuizMagna is not None:
-                    julgamento = JuizMagna(self.matriz).julgar(cartelas_raw, pool_elite, analise, vetor, self._mascaras_sorteios_15())
+                    julgamento = JuizMagna(self.matriz).julgar(
+                        cartelas_raw, pool_elite, analise, vetor,
+                        self._mascaras_sorteios_15(),
+                        abertura=self.abertura_para_o_juiz())
                 if JuizAdversarial is not None:
                     adv = JuizAdversarial().julgar(cartelas_raw, pool_elite)
                 if TesteNIST is not None:
@@ -2776,8 +4466,10 @@ class CerebroIA:
                 _, det = self._gaussiano.filtrar(dez)
                 cartelas.append({
                     "dezenas": dez,
-                    "ancora": [1,2,3][idx],
-                    "dezenas_excluidas": sorted(excluidas_por_ancora[[1,2,3][idx]]),
+                    "ancora": ancoras[idx] if idx < len(ancoras) else None,
+                    "ancora_escolhida_por": "acervo de abertura da Magna",
+                    "dezenas_excluidas": sorted(
+                        excluidas_por_ancora.get(idx + 1, set())),
                     "bitmask": self._mask_de_dezenas(dez),
                     "score_total": round(float(sum(vetor[d - 1] for d in dez)), 6),
                     "soma": det.get("soma"), "pares": det.get("pares"),
@@ -2789,6 +4481,7 @@ class CerebroIA:
                         "contribuicoes_fontes": {},
                         "votos_oraculo": {},
                         "convergencia_media": 0.0,
+                        "abertura": self.acervo.afinidade_cartela(dez),
                     },
                     "explicacao": explicacoes[idx] if idx < len(explicacoes) else {},
                 })
@@ -2800,23 +4493,34 @@ class CerebroIA:
                 "decisao_unica": True,
                 "potencia_maxima": True,
                 "uso_pessoal": True,
-                "estrategia": "ancoradas-01-02-03-suprema",
+                "estrategia": "ancoradas-{}-suprema".format(
+                    "-".join("{:02d}".format(d) for d in ancoras)),
                 "n_cartelas": 3,
                 "cartelas": cartelas,
                 "pool_elite": pool_elite,
                 "custo": round(3 * VALOR_APOSTA, 2),
                 "analise": analise,
                 "justificativa_magna": (
-                    "Âncoras 01/02/03 via MESMO processo supremo: regime adaptativo K-means, "
-                    "memória vetorial atenção, EWC, meta por regime, perfil risco, MCTS pool, "
-                    "juiz 8 critérios + adversarial + NIST + p-value, fingerprint SHA256, "
-                    "backtest 50, verificação exaustiva. Cartela 1=01+14, 2=02+14 sem 01, 3=03+14 sem 01/02. "
-                    "Único gerador Magna."
+                    "Âncoras {} decididas pelo ACERVO de abertura da Magna "
+                    "(não são um trio chumbado: vêm do que a base histórica "
+                    "ensinou) via MESMO processo supremo: regime adaptativo "
+                    "K-means, memória vetorial atenção, EWC, meta por regime, "
+                    "perfil risco, MCTS pool, juiz 9 critérios + adversarial "
+                    "+ NIST + p-value, fingerprint SHA256, backtest 50, "
+                    "verificação exaustiva. Cartela i = âncora + 14 dezenas "
+                    "do ranking, sem as âncoras anteriores. Único gerador Magna."
+                    .format("/".join("{:02d}".format(d) for d in ancoras))
                 ),
                 "validacao_ancoras": {
-                    "cartela_1_inicia_em_01": cartelas[0]["dezenas"][0] == 1,
-                    "cartela_2_inicia_em_02_sem_01": (cartelas[1]["dezenas"][0] == 2 and 1 not in cartelas[1]["dezenas"]),
-                    "cartela_3_inicia_em_03_sem_01_02": (cartelas[2]["dezenas"][0] == 3 and 1 not in cartelas[2]["dezenas"] and 2 not in cartelas[2]["dezenas"]),
+                    "ancoras_vem_do_acervo": True,
+                    "cada_cartela_abre_com_sua_ancora": all(
+                        cartelas[i]["dezenas"][0] == ancoras[i]
+                        for i in range(len(cartelas))),
+                    "ancoras_anteriores_excluidas": all(
+                        all(prev not in cartelas[i]["dezenas"]
+                            for prev in ancoras[:i])
+                        for i in range(len(cartelas))),
+                    "abertura_da_base": self.acervo.estado(),
                 },
                 "regime": regime,
                 "julgamento": julgamento,
@@ -2829,7 +4533,7 @@ class CerebroIA:
                 "explicacoes": explicacoes,
                 "fingerprint": fp.relatorio() if fp else {},
                 "perfil_risco": perfil_obj.relatorio() if perfil_obj else {},
-                "fontes_assimiladas": ["geração combinatória", "consenso dos oráculos", "wheeling 14/15", "análise histórica e recente", "singularidade e filtros avançados", "auditoria e aprendizado", "memoria_vetorial", "regime", "ewc", "meta_regime", "mcts", "perfil_risco"],
+                "fontes_assimiladas": ["geração combinatória", "consenso dos oráculos", "wheeling 14/15", "análise histórica e recente", "singularidade e filtros avançados", "auditoria e aprendizado", "memoria_vetorial", "regime", "ewc", "meta_regime", "mcts", "perfil_risco", "acervo de abertura (base histórica inteira)"],
                 "pesos_fontes": pesos,
                 "top15_magna": ranking[:15],
                 "diagnostico_magna": {
@@ -2842,9 +4546,27 @@ class CerebroIA:
                     "top15_fontes": {n: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)] for n, v in fontes.items()},
                     "vetor_final": [round(float(x), 10) for x in vetor],
                     "pesos_fontes": pesos,
+                    "acervo": {
+                        "versao": self.ACERVO_VERSAO,
+                        "digest": evidencia_abertura["digest"],
+                        "aprendido_ate": evidencia_abertura["aprendido_ate"],
+                        "concursos_da_base": evidencia_abertura["concursos_da_base"],
+                        "veredito": evidencia_abertura["veredito"],
+                        "fator_confianca": evidencia_abertura["fator_confianca"],
+                        "leitura": evidencia_abertura["leitura"],
+                        "placar_walkforward": evidencia_abertura["placar"],
+                        "ancoras": ancoras,
+                    },
+                    "palpite_abertura": {
+                        "digest": evidencia_abertura["digest"],
+                        "ranking": evidencia_abertura["ranking"],
+                        "probabilidades": evidencia_abertura["probabilidades"],
+                        "abertura_atual": evidencia_abertura["abertura_atual"],
+                        "recorde": evidencia_abertura["recorde"],
+                    },
                 },
                 "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0) + 1),
-                "verdade_honesta": "Âncoras 01/02/03 não alteram hipergeométrica: 13≈1/692, 14≈1/21.800, 15=1/3.268.760. Mesmo processo supremo da decisão única.",
+                "verdade_honesta": "Âncoras escolhidas pelo acervo de abertura não alteram a hipergeométrica: 13≈1/692, 14≈1/21.800, 15=1/3.268.760. Mesmo processo supremo da decisão única — a âncora é estrutura, não vantagem.",
             }
             # agentes
             try:
@@ -2932,16 +4654,46 @@ class CerebroIA:
         return out
 
     def diagnostico_aprendizado(self) -> Dict[str, Any]:
-        """O que a Magna já aprendeu, como aprende e o que ainda falta."""
+        """O que a Magna já aprendeu, como aprende e o que ainda falta.
+
+        v11.4 — o acervo de conhecimento é a primeira resposta: a Magna já
+        aprendeu da base histórica inteira ANTES de existir qualquer decisão
+        conferida, e é o mesmo acervo que alimenta o vetor, o Juiz e as
+        âncoras de cada cartela.
+        """
         ret = self.get_retencao(20)
         pesos = dict(self.pesos_fontes_magna)
         historico = self.get_historico_magna(50)
         conferidas = [d for d in historico if d.get("status") == "conferida"]
         n_15_hist = len(self._mascaras_sorteios_15())
+        conhecimento = self.conhecimento(detalhes=False)
+        base = conhecimento["base"]
+        sem_ordem = max(0, int(base.get("concursos") or 0)
+                         - (self.acervo.n("real")
+                            if hasattr(self, "acervo") else 0))
+        faltam = [
+            "amostra maior de decisões conferidas (n={})".format(
+                len(conferidas)),
+            "calibração fundante das fontes em walk-forward"
+            if not self._ler_conhecimento("fontes")
+            else "calibração das fontes já memorizada",
+            "ordem real das bolas em {} concursos da base — rode `python "
+            "backfill_ordem.py` para o canal 'real' do acervo ganhar força"
+            .format(sem_ordem) if sem_ordem else
+            "ordem real das bolas já coberta na base inteira",
+            "calibração física com medidas reais das bolas"
+            if not self.fisica.get_status().get("tem_dados_reais")
+            else "física já com dados reais",
+        ]
         return {
             "o_que_aprende": [
-                "pesos das 6 fontes (motores, oráculos, espectro, "
-                "informação, recente, física) via top-15 vs resultado real",
+                "acervo de abertura: frequências, streaks, recorde, repetição "
+                "por dezena e posterior do próximo início — medidos na base "
+                "histórica inteira e memorizados em magna_conhecimento",
+                "peso de cada fonte do consenso calibrado em walk-forward "
+                "fora-da-amostra (magna_conhecimento 'fontes')",
+                "pesos das {} fontes ({}) via top-15 vs resultado real".format(
+                    len(pesos), ", ".join(pesos)),
                 "pesos dos 14 módulos via mediana de acertos fora da amostra",
                 "episódios protótipo (≥12) e repulsão (≤9)",
                 "checkpoint/rollback se a média de 10 decisões cair",
@@ -2949,18 +4701,22 @@ class CerebroIA:
                 "cartelas conferidas arquivadas em memoria_cartelas_aprendidas",
             ],
             "como_aprende": (
-                "Após cada conferência oficial, fecha magna_decisoes, "
-                "grava magna_aprendizado, ajusta pesos suavemente (±2% por "
-                "fonte) e persiste episódios. Exclusão da tela não apaga "
-                "a memória de aprendizado."
+                "Na inicialização e antes de cada decisão a Magna reassimila a "
+                "base (carimbo em magna_conhecimento); após cada conferência "
+                "oficial ela fecha magna_decisoes, grava magna_aprendizado, "
+                "julga o próprio palpite de abertura em magna_memoria, ajusta "
+                "pesos suavemente e persiste episódios. Excluir da tela não "
+                "apaga a memória de aprendizado."
             ),
-            "o_que_falta": [
-                "amostra maior de decisões conferidas (n={})".format(
-                    len(conferidas)),
-                "calibração física com medidas reais das bolas"
-                if not self.fisica.get_status().get("tem_dados_reais")
-                else "física já com dados reais",
-            ],
+            "o_que_falta": faltam,
+            "acervo": {
+                "versao": self.ACERVO_VERSAO,
+                "base": base,
+                "abertura": conhecimento["abertura"],
+                "leitura": conhecimento["leitura"],
+                "placar_abertura": conhecimento["placar_abertura"],
+                "dominios_gravados": list(conhecimento["dominios"].keys()),
+            },
             "pesos_fontes": pesos,
             "pesos_modulos": dict(self.pesos),
             "n_sorteios_15_bloqueados": n_15_hist,
@@ -3157,13 +4913,19 @@ class CerebroIA:
 
     def julgar_lote(self, cartelas: List[List[int]], pool: List[int],
                     analise: Dict[str, Any], vf: np.ndarray) -> Dict[str, Any]:
-        """Julga lote com 8 critérios — Juiz Magna v10."""
+        """Julga lote com 9 critérios — Juiz Magna v11.4.
+
+        O nono critério (cobertura de abertura) vem do acervo da própria Magna:
+        o lote é julgado também por quanta da massa de abertura aprendida ele
+        cobre. É estrutura, não previsão — a hipergeométrica não muda.
+        """
         try:
             if JuizMagna is None:
                 return {"veredito": "APROVADO", "nota": 1.0, "criterios": {}}
             juiz = JuizMagna(self.matriz)
             masks_15 = self._mascaras_sorteios_15()
-            veredito = juiz.julgar(cartelas, pool, analise, vf, masks_15)
+            veredito = juiz.julgar(cartelas, pool, analise, vf, masks_15,
+                                   abertura=self.abertura_para_o_juiz(cartelas))
             self._log("JUIZ", f"Veredito: {veredito.get('veredito')} nota {veredito.get('nota')} reprovados {veredito.get('reprovados')}")
             return veredito
         except Exception as exc:
@@ -3203,7 +4965,9 @@ class CerebroIA:
         Evoluções completas:
         - Aprender: EWC continual, meta por regime, clustering adaptativo, balança 0.001g
         - Decidir: perfil risco pessoal, MCTS pool, multi-rota 60/30/10, utilidade esperada prêmios reais
-        - Julgar: juiz 8 critérios + adversarial + NIST + p-value + juiz que aprende
+        - Julgar: juiz 9 critérios + adversarial + NIST + p-value + juiz que aprende
+          (o 9º é `cobertura_abertura`: o quanto do que o ACERVO aprendeu sobre
+          a abertura o lote efetivamente cobre — estrutura, não previsão)
         - Entender: explainability LLM, fingerprint SHA256
         - Verificar: backtest walk-forward lote 50, binomial significância, curva aprendizado
 
@@ -3213,7 +4977,7 @@ class CerebroIA:
         3. Vetor supremo com memória vetorial atenção
         4. Perfil risco + alocação multi-rota + MCTS pool
         5. Forja suprema 60s 7 seeds k=7
-        6. Juiz 8 critérios + adversarial + NIST + p-value — regenera se reprovar
+        6. Juiz 9 critérios + adversarial + NIST + p-value — regenera se reprovar
         7. Fingerprint SHA256 anti-repetição pessoal
         8. Backtest 50 + binomial + curva + verificação exaustiva + explainability
         9. Utilidade esperada com prêmios reais médios
@@ -3236,6 +5000,18 @@ class CerebroIA:
             if not self.treinado:
                 cb("Treinando em potência máxima v11...")
                 self.treinar(callback=callback)
+
+            # 0. v11.4 — ACERVO DE CONHECIMENTO. Antes de qualquer julgamento a
+            # Magna reassimila a base histórica (abertura, placar walk-forward,
+            # posterior do próximo início) e memoriza o que aprendeu. Não existe
+            # módulo de turno: é a própria inteligência que aprende, memoriza,
+            # decide e depois se julga.
+            cb("Reassegurando o acervo de conhecimento (base histórica)...")
+            self._garantir_acervo(callback=callback)
+            evidencia_abertura = self.evidencia_abertura()
+            cb("Acervo v11.4 · {} concursos · {}".format(
+                evidencia_abertura["concursos_da_base"],
+                evidencia_abertura["leitura"]))
 
             # 1. Regime adaptativo
             regime = {}
@@ -3370,7 +5146,7 @@ class CerebroIA:
                         "analise": analise,
                         "forja": forja_res,
                         "tempo": forja_res.get("tempo_total", forja_res.get("tempo",0)),
-                        "verdade_honesta": "Suprema v11: 60s 7 seeds k=7 25 candidatas + MCTS pool + memória vetorial + EWC + meta regime + perfil risco + juiz 8 critérios + adversarial + NIST + p-value + fingerprint + backtest 50 + binomial + curva + verificação exaustiva + utilidade esperada. Ganho combinatório, nunca preditivo.",
+                        "verdade_honesta": "Suprema v11: 60s 7 seeds k=7 25 candidatas + MCTS pool + memória vetorial + EWC + meta regime + perfil risco + juiz 9 critérios + adversarial + NIST + p-value + fingerprint + backtest 50 + binomial + curva + verificação exaustiva + utilidade esperada. Ganho combinatório, nunca preditivo.",
                     }
                     for c in cartelas_raw:
                         _, det = self._gaussiano.filtrar(c)
@@ -3399,7 +5175,10 @@ class CerebroIA:
                 pval = {}
                 try:
                     if JuizMagna is not None:
-                        julgamento = JuizMagna(self.matriz).julgar(cartelas_raw, pool_sup, analise, vetor, self._mascaras_sorteios_15())
+                        julgamento = JuizMagna(self.matriz).julgar(
+                            cartelas_raw, pool_sup, analise, vetor,
+                            self._mascaras_sorteios_15(),
+                            abertura=self.abertura_para_o_juiz())
                     if JuizAdversarial is not None:
                         adv = JuizAdversarial().julgar(cartelas_raw, pool_sup)
                     if TesteNIST is not None:
@@ -3498,16 +5277,19 @@ class CerebroIA:
                 "uso_pessoal": True,
                 "unico_gerador": True,
                 "regime": regime,
+                "acervo_magna": evidencia_abertura,
                 "alocacao_orcamento": aloc_multi,
                 "justificativa_magna": (
                     f"Suprema v11 única pessoal evoluída: regime adaptativo k_otimo={regime.get('k_otimo')} sil={regime.get('silhouette')} atual={regime.get('regime_atual')}, "
                     f"meta por regime, EWC, memória vetorial atenção, perfil {perfil}, MCTS pool, "
-                    f"forja suprema 60s 7 seeds k=7, juiz 8 critérios nota {melhor_nota:.3f} + adversarial {resultado.get('julgamento_adversarial',{}).get('veredito')} + NIST {resultado.get('teste_nist',{}).get('veredito')} + p-value {resultado.get('p_value_random',{}).get('veredito')}, "
+                    f"forja suprema 60s 7 seeds k=7, juiz 9 critérios nota {melhor_nota:.3f} + adversarial {resultado.get('julgamento_adversarial',{}).get('veredito')} + NIST {resultado.get('teste_nist',{}).get('veredito')} + p-value {resultado.get('p_value_random',{}).get('veredito')}, "
                     f"fingerprint SHA256 {len(fp.cache) if fp else 0} hashes, backtest 50 média {resultado.get('backtest_lote',{}).get('media_acertos_lote')}, "
                     f"utilidade esperada EV real R${resultado.get('utilidade_esperada',{}).get('ev_real_premios_medios')} ROI {resultado.get('utilidade_esperada',{}).get('roi')}%, "
-                    f"verificação exaustiva P≥13={resultado.get('verificacao_exaustiva',{}).get('p13_exata')} — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
+                    f"verificação exaustiva P≥13={resultado.get('verificacao_exaustiva',{}).get('p13_exata')}, "
+                    f"acervo de conhecimento {evidencia_abertura['digest']} aprendido até o concurso {evidencia_abertura['aprendido_ate']} "
+                    f"(veredito {evidencia_abertura['veredito']}, fator {evidencia_abertura['fator_confianca']}) — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","ordem","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -3526,12 +5308,38 @@ class CerebroIA:
                         "contribuicoes_fontes": contrib,
                         "votos_oraculo": {str(d): int(votos[d-1]) for d in dezenas},
                         "convergencia_media": round(float(np.mean([votos[d-1] for d in dezenas]))/15.0,4),
+                        "abertura": self.acervo.afinidade_cartela(dezenas),
                     }
                     if idx < len(resultado.get("explicacoes",[])):
                         cartela["explicacao_llm"] = resultado["explicacoes"][idx]
             except Exception:
                 pass
 
+            resultado["memoria_magna"] = {
+                "top15_fontes": {
+                    nome: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)]
+                    for nome, v in fontes.items()},
+                "vetor_final": [round(float(x), 10) for x in vetor],
+                "pesos_fontes": pesos,
+                "acervo": {
+                    "versao": self.ACERVO_VERSAO,
+                    "digest": evidencia_abertura["digest"],
+                    "aprendido_ate": evidencia_abertura["aprendido_ate"],
+                    "concursos_da_base": evidencia_abertura["concursos_da_base"],
+                    "veredito": evidencia_abertura["veredito"],
+                    "fator_confianca": evidencia_abertura["fator_confianca"],
+                    "leitura": evidencia_abertura["leitura"],
+                    "placar_walkforward": evidencia_abertura["placar"],
+                },
+                "palpite_abertura": {
+                    "concurso": resultado["concurso_alvo"],
+                    "digest": evidencia_abertura["digest"],
+                    "ranking": evidencia_abertura["ranking"],
+                    "probabilidades": evidencia_abertura["probabilidades"],
+                    "abertura_atual": evidencia_abertura["abertura_atual"],
+                    "recorde": evidencia_abertura["recorde"],
+                },
+            }
             resultado["decisao_id"] = self._registrar_decisao_magna(resultado) if registrar else None
             cb(f"Decisão Suprema v11 concluída: {resultado['estrategia']} nota {melhor_nota:.3f} util {melhor_utilidade:.3f} auditoria #{resultado['decisao_id'] or 'pessoal'}")
             return self._json_seguro(resultado)
@@ -3610,14 +5418,13 @@ class CerebroIA:
             dezenas_reais = self._ingestor.extrair_dezenas(data_json)
             premios_reais = self._ingestor.extrair_premios(data_json)
 
-            # 1.5) v11.3 — captura a ordem real das bolas do concurso que
-            # acabou de sair (fonte dos padrões de ordem da Magna).
+            # 1.5) v11.4 — a ordem real das bolas do concurso que acabou de
+            # sair entra pelo acervo da Magna: grava, memoriza e reassimila o
+            # conhecimento de abertura no mesmo passo (não há módulo à parte).
             ordem_sorteio = data_json.get("ordem_sorteio")
             if ordem_sorteio:
                 try:
-                    self.db.salvar_ordem(concurso, ordem_sorteio)
-                    if hasattr(self, "ordem_motor"):
-                        self.ordem_motor.aprender(concurso, ordem_sorteio)
+                    self.aprender_ordem_sorteio(concurso, ordem_sorteio)
                 except (ValueError, sqlite3.Error) as exc:
                     self._log("AVISO", "Ordem {}: {}".format(concurso, exc))
 
@@ -3881,15 +5688,15 @@ class CerebroIA:
                     self.clima.top5_clima(usar_web=False)
                     if self.clima.n_registros else None),
             },
-            "ordem": {
-                "registros_ordem_real": self.ordem_motor.n_registros,
-                "registros_menor_dezena": self.minimo_motor.n_registros,
-                "auto_auditoria_1a_bola": (
-                    self.ordem_motor.auto_ponderacao()
-                    if self.ordem_motor.n_registros else None),
-                "auto_auditoria_menor_dezena": (
-                    self.minimo_motor.auto_ponderacao()
-                    if self.minimo_motor.n_registros else None),
+            # v11.4 — o acervo da própria Magna (aprendizado + memória viva)
+            "acervo": {
+                "versao": self.ACERVO_VERSAO,
+                "estado": (self.acervo.estado()
+                           if hasattr(self, "acervo")
+                           else {"status": "indisponível"}),
+                "placar_abertura": self.placar_abertura_memoria(),
+                "calibrado": bool(getattr(self, "_acervo_calibrado", False)),
+                "pesos_fontes": dict(self.pesos_fontes_magna),
             },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],
