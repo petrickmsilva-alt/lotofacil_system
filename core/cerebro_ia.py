@@ -35,7 +35,7 @@ except Exception as _e_clima:
     print(f"[AVISO] clima_lotofacil import: {_e_clima}")
 
 try:
-    from .padroes_ordem import MotorOrdemSorteio
+    from .padroes_ordem import MotorOrdemSorteio, MotorPadroesMinimo
 except Exception as _e_ordem:
     print(f"[AVISO] padroes_ordem import: {_e_ordem}")
     MotorClima = None
@@ -847,6 +847,29 @@ class CerebroIA:
             self.ordem_motor = _OrdemNeutra()
         self._log("INIT", "Ordem de Sorteio v11.3: {} concursos com ordem real"
                   .format(self.ordem_motor.n_registros))
+
+        # v11.3b — Padrões da MENOR dezena (o "início" da lista ordenada).
+        # Distribuição fortemente enviesada (01=60%, 02=25%, 03=9,8%);
+        # prediz o próximo início com a margem + placar walk-forward.
+        if MotorPadroesMinimo is not None:
+            self.minimo_motor = MotorPadroesMinimo(db_path=self.db_path)
+        else:  # pragma: no cover
+            class _MinimoNeutro:
+                n_registros = 0
+
+                def vetor_preferencia_minimo(self):
+                    return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+
+                def auto_ponderacao(self, *a, **k):
+                    return {"aplicavel": False, "fator_confianca": 0.5}
+
+                def relatorio_minimo(self):
+                    return {"status": "erro",
+                            "msg": "motor de mínimo indisponível"}
+
+            self.minimo_motor = _MinimoNeutro()
+        self._log("INIT", "Padrões do Início (menor dezena): {} concursos"
+                  .format(self.minimo_motor.n_registros))
 
         # Carregar dados
         self._ingestor = IngestorDados(self.db_path, client=client)
@@ -1951,6 +1974,23 @@ class CerebroIA:
         except Exception:
             vetor_ordem = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS)
+
+        # v11.3b — Padrões da menor dezena (início do concurso): posterior
+        # da margem hipergeométrica (01=60%, 02=25%, 03=9,8%), atenuada
+        # pela auto-auditoria (teto = a própria margem). Misturada 50/50
+        # com a 1ª bola física na fonte 'ordem'.
+        try:
+            fator_min = float(
+                self.minimo_motor.auto_ponderacao().get(
+                    "fator_confianca", 0.5))
+            v_min = self.minimo_motor.vetor_preferencia_minimo()
+            uniforme_min = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
+            v_min_atenuado = ((1.0 - fator_min) * uniforme_min +
+                              fator_min * v_min)
+            vetor_ordem = self._normalizar_vetor(
+                (vetor_ordem + self._normalizar_vetor(v_min_atenuado)) / 2.0)
+        except Exception:
+            pass
 
         fontes = {
             "motores": vetor_motores,
@@ -3842,10 +3882,14 @@ class CerebroIA:
                     if self.clima.n_registros else None),
             },
             "ordem": {
-                "registros": self.ordem_motor.n_registros,
-                "auto_auditoria": (
+                "registros_ordem_real": self.ordem_motor.n_registros,
+                "registros_menor_dezena": self.minimo_motor.n_registros,
+                "auto_auditoria_1a_bola": (
                     self.ordem_motor.auto_ponderacao()
                     if self.ordem_motor.n_registros else None),
+                "auto_auditoria_menor_dezena": (
+                    self.minimo_motor.auto_ponderacao()
+                    if self.minimo_motor.n_registros else None),
             },
             "filtros": {
                 "soma": [self._gaussiano.SOMA_MIN, self._gaussiano.SOMA_MAX],

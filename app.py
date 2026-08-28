@@ -766,9 +766,16 @@ def api_magna_clima_ingestao():
 def api_magna_ordem():
     """v11.3 — Padrões da ORDEM REAL de sorteio (1ª bola, streaks,
     repetição condicional, trio 01/02/03, regra de exclusão do usuário,
-    auto-auditoria walk-forward)."""
+    auto-auditoria walk-forward) + v11.3b padrões da MENOR dezena
+    (o 'início' da lista ordenada: distribuição 60/25/10, streaks,
+    placar walk-forward das regras)."""
     try:
-        return jsonify(magna.ordem_motor.relatorio())
+        relatorio = magna.ordem_motor.relatorio()
+        try:
+            relatorio["menor_dezena"] = magna.minimo_motor.relatorio_minimo()
+        except Exception as exc2:
+            relatorio["menor_dezena"] = {"status": "erro", "msg": str(exc2)}
+        return jsonify(relatorio)
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500

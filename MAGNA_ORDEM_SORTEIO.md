@@ -110,11 +110,59 @@ auto-auditoria walk-forward — com lift ~1 (acaso), o vetor é quase
 uniforme e não distorce a decisão; as cartelas seguem nascendo da
 estrutura combinatória, agora também informada pela ordem real.
 
-## 5. Arquivos
+## 5. A SUA LÓGICA, MEDIDA SOBRE O HISTÓRICO COMPLETO (v11.3b)
+
+Você esclareceu: o "início do sorteio" é a **menor dezena da lista ordenada**
+(a primeira que os sites exibem). Exemplos seus confirmados no banco:
+
+- ✅ 3676 = última vez que a **04** abriu o concurso;
+- ✅ em seguida o **01** abriu **6× seguidas** (3677–3682);
+- ✅ no **3683** o **02** assumiu;
+- ✅ 01/02/03 dominam as aberturas: **60,7% / 24,6% / 9,8%** (teórico:
+  60,0% / 25,0% / 9,8% — `P(menor=k) = C(25−k,14)/C(25,15)`);
+- ✅ o recorde de aberturas seguidas do 01 é **17 concursos** (1750–1766).
+
+Implementado em `MotorPadroesMinimo` (mesmo módulo), com o banco atualizado
+até o concurso **3773** (seus dados: 3771 abriu 02, 3772 e 3773 abriram 03).
+
+### A sua pergunta: "03 saiu 2×, a chance de repetir é muito pequena?"
+
+| Medida (histórico completo) | Resultado |
+|---|---|
+| P(3º 03 depois de 03+03) | **4/42 = 9,5%** — igual aos 9,8% de sempre |
+| 03 abriu 3× seguidas | **4 vezes** (concursos 419–421, 1972–1974, 2361–2363, 2544–2546) |
+| P(abertura repetir em geral) | 43,4% observado vs 43,3% teórico |
+
+**Conclusão honesta:** a chance do 03 abrir o 3774 é **9,8% — a mesma de
+sempre**. "Muito pequena" em termos absolutos, sim; mas não POR ter
+repetido. O placar walk-forward (3.771 provas sem vazamento) mostra:
+
+| Regra | Acerto | Teto teórico |
+|---|---|---|
+| Sempre prever 01 | **60,6%** | 60,0% |
+| Prever {01, 02} | **85,3%** | 85,0% |
+| Excluir a atual quando streak ≥ 2 (sua regra) | **51,7%** | — |
+
+A regra de exclusão **perde 9 pontos**: quando o 01 está em sequência
+(o caso mais comum), excluir o 01 força prever o 02 (25%) em vez de
+manter o 01 (60%). **Streak não altera probabilidade — e o placar prova.**
+
+O que o sistema passa a fazer: prever o próximo "início" pela margem
+hipergeométrica (o melhor preditor possível, validado fora-da-amostra),
+publicar streaks/recorde/pergunta-resposta no painel, e alimentar a fonte
+`ordem` da Magna com essa posterior. No 3774, a leitura do sistema é:
+**01 (60%) > 02 (25%) > 03 (9,8%)** — sem excluir ninguém.
+
+> Armadilha evitada: agregando todas as dezenas, "P(repetir | streak
+> longo)" parece subir (58% após 3+). É composição, não causa — streaks
+> longos são quase sempre do 01, que repete 60% por natureza. A medição
+> por dezena elimina a ilusão.
+
+## 6. Arquivos
 
 - `core/padroes_ordem.py` — motor completo (estatísticas, previsão, placar)
 - `backfill_ordem.py` — preenchimento retomável do histórico
 - `database/db_manager.py` — tabela `ordem_sorteio` (CHECK 1–25, upsert)
 - `core/caixa_client.py` — captura de `dezenasSorteadasOrdemSorteio` com validação
 - `core/data_loader.py` / ciclo autônomo — captura automática dos novos concursos
-- `tests/test_padroes_ordem.py` — 17 testes travando o comportamento
+- `tests/test_padroes_ordem.py` — 28 testes (17 ordem real + 11 menor dezena)

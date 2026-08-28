@@ -371,22 +371,33 @@ que a percepção vinha da lista ordenada dos sites, não da ordem das bolas:
   e previsão bayesiana com painel do trio;
 - fonte `ordem` no consenso da Magna (4%), atenuada pela auto-auditoria
   walk-forward (veredito REAL/RUÍDO com p-valor binomial);
-- 17 testes novos — **suíte completa: 111/111 passando**;
+- +11 testes da menor dezena — **suíte completa: 122/122 passando**;
 - `MAGNA_ORDEM_SORTEIO.md` com a documentação honesta: sob independência,
   P(1ª bola = d) = 4% sempre; repetições duplas ~151 em 3.770 concursos e
   triplas ~6 — o placar medirá e publicará isso sobre os dados reais.
 
 | Arquivo | Mudança |
 |---|---|
-| `core/padroes_ordem.py` | NOVO — motor de padrões da ordem |
+| `core/padroes_ordem.py` | NOVO — motor de padrões da ordem + MotorPadroesMinimo |
 | `backfill_ordem.py` | NOVO — preenchimento retomável do histórico |
 | `core/cerebro_ia.py` | fonte `ordem` (peso, vetor, status, captura no ciclo) |
 | `core/caixa_client.py` | extração validada da ordem de sorteio |
 | `core/data_loader.py` | captura na sincronização do histórico |
 | `database/db_manager.py` | tabela + upsert/consultas de ordem |
 | `app.py` | GET `/api/magna/ordem` + POST ingestão |
-| `tests/test_padroes_ordem.py` | 17 testes |
+| `tests/test_padroes_ordem.py` | 28 testes |
 | `MAGNA_ORDEM_SORTEIO.md` | documentação da evolução |
+
+**Adendo 2 — a lógica do autor esclarecida e medida (v11.3b).** O "início"
+é a MENOR dezena da lista ordenada. Validado no banco: 3676 última abertura
+da 04; 01 abriu 6× (3677–3682); 02 assumiu no 3683; recorde do 01 = 17
+aberturas seguidas (1750–1766). Frequências cravam a hipergeométrica
+(60/25/9,8%). Banco atualizado até o concurso 3773 (03 abriu 2×). Medido
+walk-forward: prever sempre 01 acerta 60,6% (teto 60,0%); {01,02} acerta
+85,3% (teto 85,0%); excluir a atual com streak≥2 cai para 51,7% — a regra
+de exclusão perde precisão porque streak não altera probabilidades
+(P(3º 03 | 03+03) = 4/42 = 9,5% ≈ margem 9,8%). O sistema agora responde
+a pergunta "quem abre o próximo?" com a margem + placar publicado.
 
 | Arquivo | Mudança |
 |---|---|

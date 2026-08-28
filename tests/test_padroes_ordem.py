@@ -249,3 +249,123 @@ def test_magna_ordem_motor_carrega_banco():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ============================================================
+# v11.3b — MotorPadroesMinimo (menor dezena = "início" ordenado)
+# ============================================================
+from core.padroes_ordem import MotorPadroesMinimo  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def minimo_sintetico():
+    """Série fabricada: 04 no início, depois 01 cinco vezes, depois 02."""
+    serie = [(3000, 4)] + [(3000 + i, 1) for i in range(1, 6)] + \
+            [(3006, 2), (3007, 1)]
+    return MotorPadroesMinimo(serie=serie)
+
+
+def test_p_menor_teorica_soma_e_valores():
+    assert abs(MotorPadroesMinimo.p_menor_teorica(1) - 0.60) < 1e-6
+    assert abs(MotorPadroesMinimo.p_menor_teorica(2) - 0.25) < 1e-6
+    assert abs(MotorPadroesMinimo.p_menor_teorica(3) - 0.0978) < 1e-3
+    soma = sum(MotorPadroesMinimo.p_menor_teorica(k)
+               for k in range(1, 26))
+    assert abs(soma - 1.0) < 1e-9
+
+
+def test_minimo_streaks_sinteticos(minimo_sintetico):
+    st = minimo_sintetico.streaks_minimo()
+    assert st["run_atual"]["dezena"] == 1
+    assert st["run_atual"]["comprimento"] == 1  # a última é 01 (3007)
+    info1 = st["por_dezena"][1]
+    assert info1["maximo"] == 5
+    assert (info1["maximo_inicio"], info1["maximo_fim"]) == (3001, 3005)
+
+
+def test_minimo_frequencias_vs_teorico(minimo_sintetico):
+    f = minimo_sintetico.frequencias_minimo()
+    assert f["n"] == 8
+    por = {linha["dezena"]: linha["vezes"] for linha in f["tabela"]}
+    assert por[1] == 6 and por[2] == 1 and por[4] == 1
+
+
+def test_minimo_repeticao_por_dezena_estrutura(minimo_sintetico):
+    t = minimo_sintetico.taxa_repeticao_minimo()
+    assert t["aplicavel"] is True
+    assert "global" in t and "por_dezena" in t
+    # esperado global = soma p_k² ≈ 0.433
+    assert abs(t["global"]["taxa_esperada_soma_p2"] - 0.433) < 0.01
+
+
+def test_minimo_repeticao_apos_streak(minimo_sintetico):
+    r = minimo_sintetico.repeticao_apos_streak(1, 2)
+    assert r["provas"] >= 1  # runs 3001-3005 oferecem transições saindo de 2+
+    assert r["taxa_teorica"] == 0.6
+
+
+def test_minimo_previsao_estrutura(minimo_sintetico):
+    prev = minimo_sintetico.previsao_proximo_minimo()
+    assert prev["run_atual"]["dezena"] == 1
+    # o 01 lidera a posterior (6 de 8 concursos)
+    assert prev["top3_proximo_inicio"][0] == 1
+    regra = prev["regra_do_usuario"]
+    assert regra["excluida"] == 1
+    assert 1 not in regra["candidatas_restantes_top2"]
+
+
+def test_minimo_placar_walkforward_bate_teto_da_margem():
+    m = MotorPadroesMinimo(db_path=DATABASE_PATH)
+    if m.n_registros < 100:
+        pytest.skip("histórico insuficiente no banco de produção")
+    pl = m.placar_regras_walkforward()
+    assert pl["aplicavel"] is True
+    # sempre-01 acerta perto do teto (60%) — nunca 100% (bug de contagem)
+    assert 0.55 < pl["sempre_01"]["taxa"] < 0.66
+    assert 0.80 < pl["top2"]["taxa"] < 0.90
+    # a regra de exclusão NÃO supera o teto da margem
+    assert pl["regra_usuario"]["taxa"] <= pl["sempre_01"]["taxa"] + 0.02
+
+
+def test_minimo_auto_ponderacao_real():
+    m = MotorPadroesMinimo(db_path=DATABASE_PATH)
+    a = m.auto_ponderacao()
+    if not a["aplicavel"]:
+        pytest.skip("histórico insuficiente")
+    # o posterior ≈ margem: lift ~1 → veredito RUÍDO e fator mínimo
+    assert a["veredito"] == "RUÍDO"
+    assert a["fator_confianca"] == 0.5
+    assert abs(a["taxa"] - a["teto_teorico"]) < 0.05
+
+
+def test_minimo_vetor_preferencia_minimo():
+    m = MotorPadroesMinimo(db_path=DATABASE_PATH)
+    v = m.vetor_preferencia_minimo()
+    assert v.shape == (25,)
+    assert abs(float(v.sum()) - 1.0) < 1e-6
+    assert (v > 0).all()
+    # 01 tem a maior massa (a menor dezena mais frequente)
+    assert int(v.argmax()) == 0
+
+
+def test_minimo_relatorio_completo(minimo_sintetico):
+    rel = minimo_sintetico.relatorio_minimo()
+    for chave in ("n_registros", "frequencias", "streaks", "taxa_repeticao",
+                  "previsao", "placar_walkforward", "auto_auditoria",
+                  "honestidade"):
+        assert chave in rel
+
+
+def test_api_magna_ordem_inclui_menor_dezena():
+    from app import app as flask_app
+    client = flask_app.test_client()
+    r = client.get("/api/magna/ordem")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert "menor_dezena" in d
+    md = d["menor_dezena"]
+    assert md["status"] == "ok"
+    assert md["n_registros"] >= 100
+    # run atual coerente com o banco (03 nos concursos 3772-3773)
+    atual = md["streaks"]["run_atual"]
+    assert atual["dezena"] in (1, 2, 3)
