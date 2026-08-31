@@ -943,6 +943,122 @@ def api_magna_captura():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+# ============================================================
+# FECHAMENTOS VERIFICADOS (prova exaustiva no espaço dual)
+# ============================================================
+@app.route("/api/fechamentos/tabela")
+def api_fechamentos_tabela():
+    """Escada de fechamentos com garantia PROVADA POR VERIFICAÇÃO EXAUSTIVA."""
+    try:
+        from core.forja_lotes import menu_captura
+        return jsonify({
+            "status": "ok",
+            "valor_aposta": 3.50,
+            "escada": menu_captura(),
+            "nota": (
+                "Cada fechamento verificado garante a pontuação indicada SE "
+                "as 15 sorteadas estiverem no pool (n=25 = incondicional). "
+                "A prova enumera TODOS os sorteios possíveis dentro do pool; "
+                "não há verificação por amostragem. A fração hipergeométrica "
+                "por cartela (1/692, 1/21.792, 1/3.268.760) não muda."
+            ),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/fechamentos/construir", methods=["POST"])
+def api_fechamentos_construir():
+    """Constrói (ou busca do cache) um fechamento verificado.
+    Body: {"n_pool": 20, "garantia": 13, "pool": [dezenas...], "tempo": 60}"""
+    try:
+        from core import cobertura as cov
+        dados = request.get_json() or {}
+        n = int(dados["n_pool"])
+        t = int(dados["garantia"])
+        tempo = float(dados.get("tempo", 60))
+        res = cov.fechamento_verificado(n, t, tempo_max=tempo, sementes=2)
+        if not res.get("garantia_verificada"):
+            return jsonify({
+                "status": "parcial",
+                "msg": "fechamento não concluído no tempo concedido",
+                "cota_inferior": cov.cota_inferior(n, t),
+            }), 202
+        pool = dados.get("pool") or list(range(1, n + 1))
+        pool = sorted(int(d) for d in pool)
+        if len(pool) != n:
+            raise ValueError(f"pool precisa ter {n} dezenas")
+        cartelas = cov.blocos_para_cartelas(res["blocos"], pool)
+        p_cap = cov.prob_captura(n) if n < 25 else 1.0
+        return jsonify({
+            "status": "ok",
+            "n_pool": n, "garantia": t,
+            "cartelas": cartelas,
+            "n_cartelas": len(cartelas),
+            "custo": round(len(cartelas) * 3.50, 2),
+            "cota_inferior": res["cota_inferior"],
+            "tipo": "incondicional" if n == 25 else "condicional",
+            "p_captura_pool": p_cap,
+            "um_em_captura": round(1 / p_cap, 1) if n < 25 else 1,
+            "alvos_verificados": res["total_alvos"],
+            "do_cache": bool(res.get("do_cache")),
+        })
+    except (TypeError, ValueError, KeyError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/fechamentos/reverificar", methods=["POST"])
+def api_fechamentos_reverificar():
+    """Reexecuta a prova exaustiva de todos os fechamentos em cache."""
+    try:
+        from core import cobertura as cov
+        laudo = cov.reverificar_todo_cache()
+        return jsonify({
+            "status": "ok",
+            "laudo": laudo,
+            "todos_provados": all(l["verificado"] for l in laudo),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/odds/reais")
+def api_odds_reais():
+    """Probabilidades exatas por cartela, escada por orçamento e EV real."""
+    try:
+        from core import odds_reais as odds
+        premios = db.get_media_premios()
+        media_14 = float(premios["media_14"] or 1763.0)
+        media_15 = float(premios["media_15"] or 2_500_000.0)
+        return jsonify({
+            "status": "ok",
+            "concursos_na_base": db.get_total_concursos(),
+            "por_cartela": odds.tabela_cartela(),
+            "ev_cartela": odds.ev_cartela(media_14 or 1763.0,
+                                          media_15 or 2_500_000.0),
+            "escada_orcamento": {
+                "13": odds.escada_orcamento(13),
+                "14": odds.escada_orcamento(14),
+                "15": odds.escada_orcamento(15),
+            },
+            "verdade": (
+                "As frações 1/692, 1/21.792 e 1/3.268.760 são fixas por "
+                "cartela. Comprar mais cartelas aumenta a chance linearmente "
+                "(P≈m/3.268.760 para o 15); o EV permanece negativo. Não "
+                "existe método, na web ou em qualquer lugar, que altere a "
+                "hipergeométrica de um sorteio independente."
+            ),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/magna/lab")
 def api_magna_lab():
     """Estado do laboratório dinâmico: placar persistido, quarentena, pesos."""

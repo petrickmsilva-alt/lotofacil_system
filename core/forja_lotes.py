@@ -33,6 +33,7 @@ import numpy as np
 
 from config import TOTAL_DEZENAS, VALOR_APOSTA, QUADRANTES
 from .wheeling import MotorWheeling, _popcount, dezenas_para_mascara
+from . import cobertura as cov
 
 _N_UNIVERSO = math.comb(TOTAL_DEZENAS, 15)
 
@@ -600,16 +601,22 @@ class FechamentoDual:
 
     @staticmethod
     def cota_esfera(n_pool: int, t: int) -> int:
-        s = n_pool - 15
-        alpha = t + n_pool - 30
-        if alpha < 1:
-            return 1
-        bola = sum(math.comb(s, i) * math.comb(n_pool - s, s - i)
-                   for i in range(alpha, s + 1))
-        return math.ceil(math.comb(n_pool, s) / bola)
+        """Cota inferior por empacotamento de esferas de Johnson
+        (VER core/cobertura.py:cota_inferior — fórmula correta).
+        A versão antiga retornava o TAMANHO da esfera, não o número
+        mínimo de blocos, e subestimava fechamentos (ex.: 21/13 dava 30
+        quando o mínimo real é ≥ 33 e a construção verificada tem 113)."""
+        return cov.cota_inferior(n_pool, t)
 
-    def fechar(self, pool, t: int = 13, max_cartelas: int = 40,
-               limite_segundos: float = 20.0) -> Dict:
+    def fechar(self, pool, t: int = 13, max_cartelas: int = 400,
+               limite_segundos: float = 30.0) -> Dict:
+        """Fechamento com GARANTIA PROVADA POR VERIFICAÇÃO EXAUSTIVA.
+
+        Delegado para core/cobertura.py: todos os C(n,s) alvos do espaço
+        dual são enumerados e checados (nunca por amostragem). Resultados
+        bons ficam em cache (database/modelos/fechamentos_verificados.json)
+        e são reverificados a cada carga.
+        """
         t0 = time.time()
         pool = sorted(int(d) for d in pool)
         n = len(pool)
@@ -617,64 +624,28 @@ class FechamentoDual:
         alpha = t + n - 30
         if not (16 <= n <= TOTAL_DEZENAS):
             raise ValueError("pool deve ter 16 a 25 dezenas")
-        if alpha < 2:
-            raise ValueError("use a família exata do MotorWheeling (α < 2)")
+        if alpha < 1:
+            raise ValueError("use a família exata do MotorWheeling (α < 1)")
         if not (8 <= t <= 15):
             raise ValueError("garantia deve estar entre 8 e 15")
 
-        pw = (np.uint32(1) << np.arange(TOTAL_DEZENAS, dtype=np.uint32))
-        duals = np.array(
-            [np.bitwise_or.reduce(pw[np.array(c, dtype=np.int64) - 1])
-             for c in combinations(pool, s)], dtype=np.uint32)
-
-        coberto = np.zeros(len(duals), dtype=bool)
-        escolhidos: List[int] = []
-
-        # Força máxima: tabu list + 2-opt local search
-        tabu = set()
-        while not coberto.all() and len(escolhidos) < max_cartelas:
-            if time.time() - t0 > limite_segundos:
-                break
-            livres = duals[~coberto]
-            melhor_ganho, melhor_mask = 0, None
-            # varredura em blocos com jitter para escapar ótimo local
-            for i in range(0, len(duals), 512):
-                bloco = duals[i:i + 512]
-                # pula tabu
-                bloco_filtrado = [b for b in bloco if int(b) not in tabu]
-                if not bloco_filtrado:
-                    continue
-                bloco_arr = np.array(bloco_filtrado, dtype=np.uint32)
-                ands = (livres[:, None] & bloco_arr[None, :]).ravel()
-                hits = (_popcount(ands) >= alpha).reshape(
-                    len(livres), len(bloco_arr))
-                ganho = hits.sum(axis=0)
-                j = int(np.argmax(ganho))
-                if ganho[j] > melhor_ganho:
-                    melhor_ganho = int(ganho[j])
-                    melhor_mask = int(bloco_arr[j])
-            if melhor_ganho <= 0:
-                break
-            escolhidos.append(melhor_mask)
-            tabu.add(melhor_mask)
-            if len(tabu) > 100:
-                tabu.pop()
-            coberto |= _popcount(duals & np.uint32(melhor_mask)) >= alpha
-
-        cartelas = [sorted(set(pool) -
-                           {i + 1 for i in range(TOTAL_DEZENAS)
-                            if (mk >> i) & 1})
-                   for mk in escolhidos]
-        ok, exato = (self.wheeling.verificar(cartelas, pool, t)
-                     if cartelas else (False, True))
+        res = cov.fechamento_verificado(
+            n, t, tempo_max=float(limite_segundos), sementes=2)
+        cartelas = cov.blocos_para_cartelas(res.get("blocos", []), pool)
+        if max_cartelas and len(cartelas) > max_cartelas:
+            cartelas = cartelas[:max_cartelas]
+            res["garantia_verificada"] = False
+            res["truncado_max_cartelas"] = True
         return {
             "cartelas": cartelas,
             "garantia": t,
-            "garantia_verificada": bool(ok),
-            "verificacao_exata": bool(exato),
-            "cobertura_pct": round(100 * float(coberto.mean()), 3),
-            "metodo": "dual-cobertura-forca-maxima",
-            "cota_inferior_cartelas": self.cota_esfera(n, t),
+            "garantia_verificada": bool(res.get("garantia_verificada")),
+            "verificacao_exata": bool(res.get("garantia_verificada")),
+            "cobertura_pct": 100.0 if res.get("garantia_verificada") else 0.0,
+            "metodo": "cobertura-verificada-dual" + (
+                "-cache" if res.get("do_cache") else ""),
+            "cota_inferior_cartelas": res.get("cota_inferior",
+                                              cov.cota_inferior(n, t)),
             "tempo": round(time.time() - t0, 2),
         }
 
@@ -703,39 +674,65 @@ class FechamentoDual:
 # 6. MENU DE CAPTURA — a decisão 13 × 14 × 15 com força máxima
 # ----------------------------------------------------------------
 def menu_captura(orcamento: Optional[float] = None) -> List[Dict]:
-    """Menu com força máxima: custos e capturas exatas."""
-    opcoes = [
-        {"alvo": 15, "n_pool": 16, "metodo": "exato-alfa1",
-         "cartelas_teoricas": 16},
-        {"alvo": 14, "n_pool": 17, "metodo": "exato-alfa1",
-         "cartelas_teoricas": 8},
-        {"alvo": 13, "n_pool": 18, "metodo": "exato-alfa1",
-         "cartelas_teoricas": math.ceil(16 / 3)},
-        {"alvo": 13, "n_pool": 19, "metodo": "dual-cobertura-forca-maxima",
-         "cartelas_teoricas": 13},
-        {"alvo": 13, "n_pool": 20, "metodo": "dual-cobertura-forca-maxima",
-         "cartelas_teoricas": 20},
-        {"alvo": 13, "n_pool": 21, "metodo": "dual-cobertura-forca-maxima",
-         "cartelas_teoricas": 30},
+    """Menu da escada 13/14/15 com fechamentos VERIFICADOS POR PROVA
+    EXAUSTIVA (core/cobertura.py). Os números de cartelas vêm do cache
+    de construções provadas; quando um caso ainda não foi construído,
+    a cota inferior combinatória é exibida como piso honesto.
+
+    Cada linha informa:
+      - garantia condicional (pontos) SE o pool capturar as 15 sorteadas;
+      - prob. de captura do pool (hipergeométrica, exata) — para n=25 a
+        garantia é INCONDICIONAL;
+      - custo do fechamento vs. preço do desdobramento oficial (mesma
+        garantia) e a economia percentual.
+    """
+    linhas: List[Dict] = []
+    cache = cov.carregar_cache()
+
+    # casos que fazem parte da escada (ordem de apresentação)
+    casos = [
+        (16, 15), (17, 14), (18, 13), (19, 13), (20, 13), (21, 13),
+        (18, 14), (19, 14),
+        (19, 12), (20, 12), (21, 12), (22, 12), (23, 12),
+        (25, 12), (25, 11),
     ]
-    linhas = []
-    for op in opcoes:
-        n = op["n_pool"]
-        p_cap = MotorWheeling.prob_captura(n)
-        custo = ((op["cartelas_teoricas"] or 0) * VALOR_APOSTA) or None
+    vistos = set()
+    for n, t in casos:
+        if (n, t) in vistos:
+            continue
+        vistos.add((n, t))
+        p_cap = cov.prob_captura(n) if n < TOTAL_DEZENAS else 1.0
+        entrada = cache.get(f"{n}:{t}")
+        verificado = bool(entrada and entrada.get("garantia_verificada"))
+        cartelas = int(entrada["cartelas"]) if verificado else None
+        custo = round(cartelas * VALOR_APOSTA, 2) if cartelas else None
+        preco_oficial = None
+        if n in (16, 17, 18, 19, 20) and t == 15:
+            preco_oficial = {16: 56.0, 17: 476.0, 18: 2856.0,
+                             19: 13566.0, 20: 54264.0}.get(n)
+        economia_pct = None
+        if custo and preco_oficial:
+            economia_pct = round(100 * (1 - custo / preco_oficial), 1)
         linhas.append({
-            "alvo": op["alvo"],
+            "alvo": t,
             "n_pool": n,
-            "metodo": op["metodo"],
-            "garantia": op["alvo"],
-            "cartelas_teoricas": op["cartelas_teoricas"],
-            "custo_teorico": round(custo, 2) if custo else None,
-            "p_captura": round(p_cap, 8),
-            "um_em_captura": round(1 / p_cap, 1),
+            "garantia": t,
+            "metodo": ("cobertura-verificada" if verificado
+                       else "nao-construido (cota inferior exibida)"),
+            "cartelas_teoricas": cartelas,
+            "cartelas_verificadas": cartelas,
+            "cota_inferior": cov.cota_inferior(n, t),
+            "custo_teorico": custo,
+            "preco_desdobramento_oficial": preco_oficial,
+            "economia_vs_oficial_pct": economia_pct,
+            "garantia_verificada": verificado,
+            "p_captura": round(p_cap, 8) if n < TOTAL_DEZENAS else 1.0,
+            "um_em_captura": (round(1 / p_cap, 1)
+                              if n < TOTAL_DEZENAS else 1),
+            "tipo": "incondicional" if n == TOTAL_DEZENAS else "condicional",
             "dentro_do_orcamento": (
                 True if orcamento is None
-                else (custo <= orcamento if custo else None)
-            ),
+                else (custo <= orcamento if custo else False)),
         })
     return linhas
 
@@ -767,23 +764,10 @@ def melhor_rota_por_orcamento(vf: np.ndarray, orcamento: float,
         score = linha["p_captura"] * (1 + alvo/10.0)
         rotas.append((score, linha))
 
-    # adiciona forja como rota
-    # forja sempre cabe se n <= max_cartelas_orc
-    if n >= 1:
-        # estima P forja ~ 1.5x wheeling para 13, 1.2x para 14 (ganho combinatório)
-        p_forja_13 = (1/691) * min(n*1.8, 15)  # aproximação conservadora
-        rotas.append((p_forja_13 * 1.3, {
-            "alvo": 13,
-            "n_pool": 22,
-            "metodo": "forja-extraordinaria",
-            "garantia": None,
-            "cartelas_teoricas": n,
-            "custo_teorico": round(n * VALOR_APOSTA, 2),
-            "p_captura": None,
-            "um_em_captura": None,
-            "dentro_do_orcamento": True,
-        }))
-
+    # NOTA: a forja de lotes NÃO tem probabilidade 'estimada' honesta —
+    # P(lote≥13) é calculada de forma EXATA por RegiaoAltoAcerto/
+    # wheeling.analisar_lote quando as cartelas existem; não se inventam
+    # aproximações (a antiga 'p_forja_13 ≈ 1.8x' era ficção).
     if not rotas:
         return {
             "rota_escolhida": None,

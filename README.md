@@ -202,7 +202,58 @@ gravados são preservados quando a contingência fornece somente as dezenas. Cad
 execução fica auditada em `historico_atualizacoes`, com fonte, concursos antes e
 depois, recuperações e erros detalhados.
 
-## Escada de captura 13 · 14 · 15 e Forja Espacial
+## Fechamentos verificados (v12) — garantia por prova exaustiva
+
+`core/cobertura.py` resolve covering designs no **espaço dual**
+(`|c∩d| ≥ t ⟺ |c̄∩d̄| ≥ α`, α = t+N−30) e **prova exaustivamente** a
+garantia: todos os `C(N,s)` sorteios possíveis dentro do pool são
+enumerados e checados — **nunca por amostragem**. Para N=25 a garantia
+é **incondicional** (vale para qualquer sorteio do volante). Resultados
+bons ficam em cache (`database/modelos/fechamentos_verificados.json`)
+e são reverificados a cada carga.
+
+A escada anunciada é a que está **provada** (excertos, preços 2026):
+
+| Pool | Garante | Cartelas provadas | Custo | Captura do pool |
+|---:|---:|---:|---:|---:|
+| 18 | 13 | 6 | R$ 21,00 | 1 em 4.006 |
+| 19 | 13 | 13 | R$ 45,50 | 1 em 843 |
+| 20 | 13 | 42 | R$ 147,00 | 1 em 211 |
+| 21 | 13 | **113** (não 30 — a antiga afirmação era falsa) | R$ 395,50 | 1 em 60 |
+| 20 | 12 | 4 | R$ 14,00 | 1 em 211 |
+| 22 | 11 | 6 | R$ 21,00 | 1 em 19,2 |
+| **25** | **11** | **52** | **R$ 182,00** | **qualquer sorteio** |
+
+Cada linha informa também a **cota inferior combinatória** (piso de
+cartelas abaixo do qual a garantia é impossível). Detalhes, correções de
+bugs (fórmula da esfera de Johnson, rota com probabilidade inventada) e
+tabela completa em
+[`FECHAMENTOS_VERIFICADOS_2026-08-31.md`](FECHAMENTOS_VERIFICADOS_2026-08-31.md).
+
+```bash
+python fechamentos_cli.py tabela               # escada provada
+python fechamentos_cli.py fechar 21 11         # cartelas do fechamento
+python fechamentos_cli.py odds                 # frações exatas por cartela
+python fechamentos_cli.py chance 15 0.10       # cartelas p/ 10% de 15 pts
+python fechamentos_cli.py ev                   # valor esperado real
+python fechamentos_cli.py reverificar          # prova exaustiva do cache
+python construir_fechamentos.py                # pré-computa casos offline
+```
+
+```http
+GET  /api/fechamentos/tabela              # escada com status de prova
+POST /api/fechamentos/construir           # {n_pool, garantia, pool?, tempo?}
+POST /api/fechamentos/reverificar         # reprova tudo (laudo)
+GET  /api/odds/reais                      # frações, EV e escada por orçamento
+```
+
+> **A verdade imutável:** 13 pts = 1/691,8 · 14 pts = 1/21.792 ·
+> 15 pts = 1/3.268.760 **por cartela**. Nenhum método altera essas
+> frações. Fechamentos reduzem o **custo da garantia**; comprar mais
+> cartelas aumenta a chance linearmente; anti-popularidade reduz a
+> divisão do prêmio. O EV permanece negativo (~41–50% de retorno).
+
+## Escada de captura 13 · 14 · 15 e Forja Espacial (legado v11)
 
 A Magna decide agora também pelo **alvo de prêmio** (`alvo`: 13, 14 ou 15)
 e pelo **modo de construção** (`modo: "forja"`):
@@ -212,11 +263,14 @@ e pelo **modo de construção** (`modo: "forja"`):
 | 15 | 16 | família exata | 16 | R$ 56,00 | 1 em 204.297 |
 | 14 | 17 | família exata | 8 | R$ 28,00 | 1 em 24.035 |
 | 13 | 18 | família exata | 6 | R$ 21,00 | 1 em 4.006 |
-| 13 | 19 | fechamento dual | 13 | R$ 45,50 | 1 em 843 |
+| 13 | 19 | fechamento **verificado** | 13 | R$ 45,50 | 1 em 843 |
 
 Cada degrau acima multiplica a probabilidade de captura por ~8,4× e reduz
 em 1 o número de pontos garantidos. A garantia permanece condicional: vale
-somente se o pool contiver as 15 dezenas sorteadas.
+somente se o pool contiver as 15 dezenas sorteadas. **As garantias desta
+seção são provadas por verificação exaustiva (v12); números de cartelas
+não verificados não são mais anunciados — ver a tabela completa no início
+deste README.**
 
 A **Forja Espacial** (`core/forja_lotes.py`) é o novo instrumento para
 lotes livres: como o leque de alto acerto de uma cartela é minúsculo

@@ -135,10 +135,21 @@ def verificar_inmet():
 
 def verificar_escada():
     from core.forja_lotes import menu_captura
+    from core import cobertura as cov
     linhas = menu_captura()
     for r in linhas:
-        p = math.comb(r["n_pool"], 15) / N_UNIVERSO
-        assert abs(r["p_captura"] - p) < 1e-8, r
+        if r["n_pool"] < 25:
+            p = math.comb(r["n_pool"], 15) / N_UNIVERSO
+            assert abs(r["p_captura"] - p) < 1e-8, r
+        else:
+            assert r["p_captura"] == 1.0, r  # garantia incondicional
+        # REPROVA exaustivamente cada fechamento verificado do cache:
+        # toda cartela do fechamento precisa cumprir a garantia quando
+        # o pool captura as 15 sorteadas (espaço dual enumerado inteiro).
+        if r.get("garantia_verificada") and r.get("cartelas_verificadas"):
+            laudo = cov.fechamento_verificado(r["n_pool"], r["garantia"])
+            assert laudo["garantia_verificada"] is True, r
+            assert laudo["cartelas"] == r["cartelas_verificadas"], r
         r["checked"] = True
     return linhas
 
