@@ -846,11 +846,13 @@ def api_magna_ordem():
                     "msg": "v11.4: os padrões de abertura foram absorvidos pela "
                            "Inteligência Magna. Use /api/magna/conhecimento "
                            "(o acervo) e /api/magna/abertura (leitura + "
-                           "placar walk-forward).",
+                           "placar walk-forward); v11.8 — as cores das bolas "
+                           "ficam em /api/magna/cor.",
                     "novo_endereco": ["/api/magna/conhecimento",
                                       "/api/magna/conhecimento/assimilar",
                                       "/api/magna/abertura",
-                                      "/api/magna/ordem/ingestao"]}), 410
+                                      "/api/magna/ordem/ingestao",
+                                      "/api/magna/cor"]}), 410
 
 
 @app.route("/api/magna/popularidade")
@@ -1156,6 +1158,48 @@ def api_magna_abertura():
     """
     try:
         return jsonify(magna.evidencia_abertura())
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/cor")
+def api_magna_cor():
+    """v11.8 — o que a Magna sabe sobre as CORES das bolas.
+
+    Domínio de conhecimento derivado da tabela oficial (MazuSoft — a cor de
+    cada bola é o último dígito) e reaprendido da base histórica a cada
+    assimilação: ranking de cores (P de aparecer), cor forte (2+ bolas),
+    streaks da cor dominante, placar walk-forward, auto-auditoria e palpite
+    — a mesma evidência que entra no consenso e que a conferência julga.
+    """
+    try:
+        return jsonify(magna.evidencia_cor())
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/cor/tabela")
+def api_magna_cor_tabela():
+    """v11.8 — a tabela de cores por concurso (como a do MazuSoft).
+
+    Derivada das dezenas oficiais da base (a cor é determinística pelo último
+    dígito), com a cor dominante, o perfil completo e as cores ausentes de
+    cada sorteio. Parâmetros: `desde`, `ate` e `limite` (padrão 30, máx 200).
+    """
+    try:
+        desde = request.args.get("desde", type=int)
+        ate = request.args.get("ate", type=int)
+        limite = request.args.get("limite", 30, type=int)
+        return jsonify({
+            "status": "ok",
+            "fonte": "https://www.mazusoft.com.br/lotofacil/tabela-cor.php",
+            "regra": "a cor de cada bola é o último dígito: Grupo 1 "
+                     "(3 dezenas) vermelha/amarela/verde/marrom/azul; Grupo 2 "
+                     "(2 dezenas) rosa/preta/cinza/laranja/branca",
+            "linhas": magna.tabela_cores(desde=desde, ate=ate, limite=limite),
+        })
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"status": "erro", "msg": str(exc)}), 500

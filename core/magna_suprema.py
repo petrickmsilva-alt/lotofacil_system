@@ -17,6 +17,13 @@ import numpy as np
 
 from config import TOTAL_DEZENAS, QUADRANTES, VALOR_APOSTA, PRIMOS, FIBONACCI, BORDA
 
+# v11.8 — tabela oficial de cores das bolas (último dígito) para o critério
+# estrutural `cobertura_cor` do Juiz.
+try:
+    from .acervo_cor import COR_DEZENA as _COR_DEZENA
+except Exception:  # pragma: no cover — fallback neutro
+    _COR_DEZENA = {}
+
 # ----------------------------------------------------------------
 # Detector de Regime + Clustering Adaptativo
 # ----------------------------------------------------------------
@@ -484,13 +491,23 @@ class JuizMagna:
             # v11.4 — o acervo de abertura da própria Magna entrou como
             # critério de julgamento (peso baixo: é estrutura, não previsão).
             "cobertura_abertura": 0.6,
+            # v11.8 — o acervo de cores das bolas (tabela oficial MazuSoft)
+            # entrou como critério estrutural leve: o lote deve cobrir a cor
+            # que o conhecimento aponta como mais provável de aparecer.
+            "cobertura_cor": 0.4,
         }
         self.historico_falhas = {}  # critério -> vezes que falhou mas depois deu 13+
+
+    @staticmethod
+    def _cor_da_dezena(d: int) -> str:
+        """Cor oficial da bola (último dígito — tabela MazuSoft)."""
+        return _COR_DEZENA.get(int(d), "?")
 
     def julgar(self, cartelas: List[List[int]], pool: List[int],
                analise: Dict[str, Any], vf: np.ndarray,
                historico_15_masks: set,
-               abertura: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               abertura: Optional[Dict[str, Any]] = None,
+               cores: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         criterios = {}
         try:
             from .forja_lotes import MotorGrafos
@@ -629,6 +646,52 @@ class JuizMagna:
                 criterios["cobertura_abertura"] = {
                     "ok": True, "valor": str(exc),
                     "peso": self.pesos_criterios["cobertura_abertura"],
+                }
+
+        # v11.8 — cobertura de CORES (acervo de cores das bolas da própria
+        # Magna, tabela oficial MazuSoft). `cores` traz {"probabilidades":
+        # {cor: P(aparecer)}, "ranking": [cor...]}. O lote é julgado por cobrir
+        # a cor que o conhecimento aponta como mais provável de aparecer no
+        # sorteio — qualquer cartela de 15 dezenas usa 8-9 cores, então a
+        # cobertura é quase sempre natural; o critério existe para impedir
+        # lotes que fogem da estrutura de cores que a base ensinou. É critério
+        # de ESTRUTURA (peso 0,4) — não altera a hipergeométrica.
+        if cores:
+            try:
+                ranking_cor = [str(c) for c in (cores.get("ranking") or [])]
+                if ranking_cor and cartelas:
+                    cores_do_lote = set()
+                    for c in cartelas:
+                        for d in c:
+                            cores_do_lote.add(
+                                self._cor_da_dezena(int(d)))
+                    top1 = ranking_cor[0]
+                    cobertura = round(sum(
+                        float(v) for k, v in
+                        (cores.get("probabilidades") or {}).items()
+                        if k in cores_do_lote), 4)
+                    criterios["cobertura_cor"] = {
+                        "ok": bool(top1 in cores_do_lote),
+                        "valor": {
+                            "cores_do_lote": sorted(cores_do_lote),
+                            "massa_coberta": cobertura,
+                            "cobre_a_cor_mais_provavel": bool(
+                                top1 in cores_do_lote),
+                            "ranking_aprendido": ranking_cor,
+                        },
+                        "peso": self.pesos_criterios["cobertura_cor"],
+                        "leitura": (
+                            "o lote cobre {:.1f}% da massa de cores aprendida "
+                            "da base histórica{}".format(
+                                100 * cobertura,
+                                "" if top1 in cores_do_lote else
+                                " e nenhuma cartela usa a cor mais provável "
+                                "do conhecimento")),
+                    }
+            except Exception as exc:  # pragma: no cover — critério opcional
+                criterios["cobertura_cor"] = {
+                    "ok": True, "valor": str(exc),
+                    "peso": self.pesos_criterios["cobertura_cor"],
                 }
 
         reprovados = [k for k,v in criterios.items() if not v.get("ok")]

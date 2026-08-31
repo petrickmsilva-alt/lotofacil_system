@@ -106,6 +106,25 @@
             </form>
             <p class="acervo-aviso" id="acervo-aviso"></p>
         </div>
+
+        <div>
+            <h4><i class="fas fa-palette"></i> Cores das bolas
+                <small>(tabela oficial — último dígito)</small></h4>
+            <div id="cor-ranking" class="ordem-candidatas-lista">
+                <div class="ordem-loading">calculando…</div>
+            </div>
+            <div id="cor-placar" class="ordem-placar">
+                <div class="ordem-loading">calculando…</div>
+            </div>
+            <p class="ordem-nota">A cor de cada bola é o <strong>último
+                dígito</strong> (fonte: <code>mazusoft.com.br/lotofacil/
+                tabela-cor.php</code>): Grupo 1 tem 3 dezenas por cor
+                (vermelha, amarela, verde, marrom, azul) e o Grupo 2 tem 2
+                (rosa, preta, cinza, laranja, branca) — por isso toda análise
+                é proporcional à margem hipergeométrica. Veredito
+                <strong>RUÍDO</strong> → vetor atenuado; conhecimento
+                publicado, nunca promessa.</p>
+        </div>
     </div>
 
     <p class="ordem-honestidade">
@@ -1160,11 +1179,79 @@
         }
     }
 
+    function corChip(cor) {
+        const coresHex = {
+            vermelha: '#e74c3c', amarela: '#f1c40f', verde: '#2ecc71',
+            marrom: '#a0522d', azul: '#3498db', rosa: '#ff6b9d',
+            preta: '#2c3e50', cinza: '#95a5a6', laranja: '#e67e22',
+            branca: '#ecf0f1'
+        };
+        const hex = coresHex[cor] || '#888';
+        const escura = cor === 'branca' || cor === 'amarela' || cor === 'cinza';
+        return '<span class="cor-chip" style="display:inline-block;padding:3px 12px;margin:1px 0;' +
+            'border-radius:12px;background:' + hex + ';color:' + (escura ? '#222' : '#fff') +
+            ';font-size:10px;font-weight:700;border:1px solid rgba(255,255,255,.25);white-space:nowrap">' +
+            cor.charAt(0).toUpperCase() + cor.slice(1) + '</span>';
+    }
+
+    /* v11.8 — Cores das bolas: o acervo de cores da própria Magna
+       (tabela oficial MazuSoft — a cor é o último dígito da bola). */
+    function renderCores(evCor) {
+        const rank = document.getElementById('cor-ranking');
+        if (rank) {
+            const lista = (evCor && evCor.ranking_completo) || [];
+            rank.innerHTML = lista.length
+                ? lista.map(function (r, i) {
+                    const forca = Math.max(4, Math.round((r.prob || 0) / (lista[0].prob || 1) * 100));
+                    return '<div class="ordem-candidata' + (i === 0 ? ' lider' : '') + '">' +
+                        '<div class="ordem-dezena" style="background:none;padding:0">' + corChip(r.cor) + '</div>' +
+                        '<div class="ordem-candidata-info">' +
+                        '<div class="ordem-candidata-rotulo">' + r.nome + ' · Grupo ' + r.grupo +
+                        ' · P(aparecer no sorteio)</div>' +
+                        '<div class="ordem-bar"><div class="ordem-bar-fill' + (i === 0 ? ' verde' : '') +
+                        '" style="width:' + forca + '%"></div></div>' +
+                        '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div>' +
+                        '<div class="ordem-candidata-rotulo">teto ' + acPct(r.prob_teorica) +
+                        ' · ' + acNum(r.vezes_na_base) + '× na base</div>' +
+                        '</div></div>';
+                }).join('')
+                : '<div class="ordem-vazio">sem acervo de cores assimilado ainda</div>';
+        }
+        const plac = document.getElementById('cor-placar');
+        if (plac) {
+            const w = (evCor && evCor.placar) || {};
+            const aud = (evCor && evCor.auto_auditoria) || {};
+            const linhas = [];
+            if (w.margem_da_magna_top1) {
+                linhas.push(acLinhaPlacar('cor mais provável apareceu',
+                    w.margem_da_magna_top1.taxa, w.margem_da_magna_top1.teto_teorico, 'verde'));
+            }
+            if (w.cor_forte_top1) {
+                linhas.push(acLinhaPlacar('cor forte (2+ bolas) acertada',
+                    w.cor_forte_top1.taxa, w.cor_forte_top1.teto_teorico, 'roxo'));
+            }
+            if (w.regra_popular_da_repeticao) {
+                linhas.push(acLinhaPlacar('repetir a cor dominante (regra popular)',
+                    w.regra_popular_da_repeticao.taxa,
+                    w.regra_popular_da_repeticao.teto_teorico, 'tracejado'));
+            }
+            plac.innerHTML = (linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>') +
+                (aud.veredito ? '<div class="ordem-aud-nums">auto-auditoria: ' + aud.veredito +
+                    ' · lift ' + Number(aud.lift == null ? 0 : aud.lift).toFixed(4) +
+                    ' · p-valor ' + Number(aud.p_valor == null ? 1 : aud.p_valor).toFixed(3) +
+                    ' · ' + ((evCor && evCor.leitura) || '') + '</div>' : '');
+        }
+    }
+
     function carregarAcervo() {
         Promise.all([
             fetch('/api/magna/abertura').then(function (r) { return r.json(); }).catch(function () { return {}; }),
-            fetch('/api/magna/conhecimento?detalhes=1').then(function (r) { return r.json(); }).catch(function () { return {}; })
-        ]).then(function (res) { renderAcervo(res[0] || {}, res[1] || {}); });
+            fetch('/api/magna/conhecimento?detalhes=1').then(function (r) { return r.json(); }).catch(function () { return {}; }),
+            fetch('/api/magna/cor').then(function (r) { return r.json(); }).catch(function () { return {}; })
+        ]).then(function (res) {
+            renderAcervo(res[0] || {}, res[1] || {});
+            renderCores(res[2] || {});
+        });
     }
 
     function acervoAprender(calibrar) {
