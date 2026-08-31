@@ -91,21 +91,50 @@ def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
     assert data["resultado"]["concurso_alvo"] == 9999
 
 
-def test_api_ancoras_123_existe(client, app_module, monkeypatch):
-    fake = {
-        "status": "ok",
-        "n_cartelas": 3,
-        "cartelas": [],
-        "concurso_alvo": 9999,
-        "pool_elite": [],
-        "estrategia": "ancoradas-01-02-03",
-        "analise": {"p_melhor_14_mais": 0.0},
-    }
-    monkeypatch.setattr(
-        app_module.magna, "decidir_ancoradas_01_02_03", lambda **_: fake)
-    response = client.post("/api/magna/ancoras-123", json={"salvar": False})
+def test_api_inmet_existe(client):
+    """Telemetria INMET com janela de estado (sem rede: padrão São Paulo/SP)."""
+    response = client.get("/api/magna/inmet")
     assert response.status_code == 200
-    assert response.get_json()["resultado"]["estrategia"] == "ancoradas-01-02-03"
+    data = response.get_json()
+    assert data["status"] == "ok"
+    assert data["versao"] == "11.7-telemetria-inmet"
+    assert data["local_do_sorteio"]["uf"] == "SP"
+    assert data["local_do_sorteio"]["geocodigo"] == "3550308"
+    assert "n_registros" in data["telemetria_banco"]
+
+
+def test_api_forja_auto_existe(client, monkeypatch):
+    """Contrato da rota: forja automática devolve local + telemetria + decisão."""
+    import core.forja_auto as fa_mod
+
+    class FakeAuto:
+        def executar(self, **kw):
+            return {
+                "status": "ok",
+                "local": {"cidade": "São Paulo", "uf": "SP",
+                          "fonte": "padrao"},
+                "telemetria": {"status": "neutro", "fonte": "padrao",
+                               "telemetria": None, "condicoes_clima": None},
+                "decisao": {
+                    "status": "ok", "n_cartelas": 0, "cartelas": [],
+                    "concurso_alvo": 9999, "pool_elite": [],
+                    "estrategia": "suprema", "custo": 0.0,
+                    "analise": {"p_melhor_14_mais": 0.0},
+                },
+            }
+
+        def local_do_sorteio(self, **kw):
+            return {"cidade": "São Paulo", "uf": "SP", "fonte": "padrao"}
+
+    monkeypatch.setattr(fa_mod, "ForjaAutomatica", lambda **_: FakeAuto())
+    response = client.post("/api/magna/forja-auto", json={
+        "quantidade": 2, "salvar": False, "usar_inmet": False,
+    })
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "ok"
+    assert data["local_do_sorteio"]["uf"] == "SP"
+    assert data["decisao"]["concurso_alvo"] == 9999
 
 
 def test_cartela_do_dia_isolada_foi_desativada(client):

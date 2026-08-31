@@ -277,6 +277,30 @@ class DBManager:
             )
         """)
 
+        # ── Telemetria INMET por local do sorteio (v11.7) ─────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inmet_telemetria (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                concurso    INTEGER,
+                local       TEXT,
+                cidade_uf   TEXT,
+                cidade      TEXT,
+                uf          TEXT,
+                geocodigo   TEXT,
+                estacao     TEXT,
+                lat         REAL,
+                lon         REAL,
+                temperatura REAL,
+                pressao     REAL,
+                umidade     REAL,
+                vento       REAL,
+                fonte       TEXT,
+                status      TEXT,
+                bruto       TEXT,
+                criado_em   TEXT
+            )
+        """)
+
         conn.commit()
         conn.close()
 

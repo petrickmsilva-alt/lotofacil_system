@@ -11,13 +11,14 @@ Evoluções v11:
 - Entender: explainability por dezena/cartela, chat "por que 22?", fingerprint SHA256 anti-repetição pessoal
 - Verificar: backtest walk-forward 50 concursos, binomial significância, curva aprendizado mm5
 
-Único gerador: mesma pipeline para decisão única e 3 âncoras 01/02/03.
+Único gerador: mesma pipeline para decisão única, forja suprema e forja auto.
 
 Uso:
   python gerar_pessoal.py --qtd 8 --orcamento 100 --alvo 13 --perfil conservador --modo suprema
   python gerar_pessoal.py --qtd 8 --orcamento 100 --alvo 14 --perfil equilibrado --modo suprema --mcts --multi-rota
   python gerar_pessoal.py --qtd 16 --orcamento 200 --alvo 15 --perfil agressivo --modo suprema --segundos 60
-  python gerar_pessoal.py --ancoras --perfil conservador
+  python gerar_pessoal.py --auto --perfil conservador
+  python gerar_pessoal.py --auto --sem-inmet --qtd 4
   python gerar_pessoal.py --qtd 8 --temp 19.5 --pressao 0.912 --umidade 42
   python gerar_pessoal.py --assimilar --calibrar-pesos --conhecimento --qtd 1
   python gerar_pessoal.py --memorizar-abertura "3774:07" --conhecimento
@@ -52,7 +53,12 @@ def main():
     parser.add_argument("--tentativas", type=int, default=2, help="Tentativas juiz (1-3)")
     parser.add_argument("--mcts", action="store_true", help="Usar MCTS pool UCT")
     parser.add_argument("--multi-rota", action="store_true", help="Usar alocação multi-rota 60/30/10")
-    parser.add_argument("--ancoras", action="store_true", help="Gerar 3 âncoras 01/02/03 (mesmo processo supremo)")
+    # v11.7 — forja automática com telemetria INMET por local do sorteio
+    parser.add_argument("--auto", action="store_true",
+                        help="Forja automática: local do sorteio → telemetria "
+                             "INMET → forja suprema")
+    parser.add_argument("--sem-inmet", action="store_true",
+                        help="Com --auto: não consulta o INMET (clima neutro)")
     parser.add_argument("--salvar", action="store_true", help="Salvar no banco")
     parser.add_argument("--chat", type=str, default="", help="Pergunta para chat Magna ex: 'por que 22?'")
     # v11.4 — acervo de conhecimento (órgão da própria Magna, sem módulo paralelo)
@@ -82,11 +88,11 @@ def main():
 
     print(f"""
 ╔════════════════════════════════════════════════════════════════╗
-║   MAGNA SUPREMA v11.4 — SISTEMA ÚNICO PESSOAL EVOLUÍDO         ║
+║   MAGNA SUPREMA v11.7 — SISTEMA ÚNICO PESSOAL EVOLUÍDO         ║
 ║   Potência máxima, sem erros, uso próprio                      ║
 ║   Qtd={args.qtd} Orçamento=R${args.orcamento:.2f} Alvo={args.alvo} Perfil={args.perfil} Modo={args.modo}
 ║   Segundos={args.segundos} Tentativas={args.tentativas} MCTS={args.mcts} MultiRota={args.multi_rota}
-║   { "ÂNCORAS 01/02/03" if args.ancoras else "DECISÃO ÚNICA" }
+║   {"FORJA AUTO · INMET" if args.auto and not args.sem_inmet else "FORJA AUTO · CLIMA NEUTRO" if args.auto else "DECISÃO ÚNICA"}
 ╚════════════════════════════════════════════════════════════════╝
 """)
 
@@ -209,13 +215,35 @@ def main():
     print(f"[ORÇAMENTO] {aloc.get('recomendacao')} — R${aloc.get('total_custo')} {aloc.get('total_cartelas')} cartelas")
 
     # Decisão
-    if args.ancoras:
-        print("\n[GERANDO] 3 âncoras 01/02/03 via MESMO processo supremo...")
-        resultado = magna.decidir_ancoradas_01_02_03(
-            registrar=args.salvar,
+    if args.auto:
+        # v11.7 — forja automática: local do sorteio → telemetria INMET →
+        # forja suprema (clima local com peso restrito no consenso)
+        from core.forja_auto import ForjaAutomatica
+        print("\n[GERANDO] Forja automática v11.7 (telemetria INMET por local "
+              "do sorteio)...")
+        auto = ForjaAutomatica(magna=magna)
+        auto_res = auto.executar(
+            quantidade=args.qtd,
             orcamento=args.orcamento,
+            alvo=args.alvo,
             perfil=args.perfil,
+            segundos_forja=args.segundos,
+            salvar=args.salvar,
+            usar_inmet=not args.sem_inmet,
         )
+        if auto_res.get("status") != "ok":
+            print("\n[AUTO] ERRO: {}".format(auto_res.get("msg")))
+            sys.exit(1)
+        local = auto_res.get("local", {})
+        print("[AUTO] local do sorteio: {}/{} ({})".format(
+            local.get("cidade"), local.get("uf"), local.get("fonte")))
+        tel = auto_res.get("telemetria", {})
+        print("[AUTO] telemetria: {} · fonte {} · {}°C {} atm {}%".format(
+            tel.get("status"), tel.get("fonte"),
+            (tel.get("telemetria") or {}).get("temperatura"),
+            (tel.get("telemetria") or {}).get("pressao"),
+            (tel.get("telemetria") or {}).get("umidade")))
+        resultado = auto_res.get("decisao", {})
     elif args.modo == "suprema":
         print(f"\n[GERANDO] Suprema v11 {args.qtd} cartelas alvo {args.alvo} perfil {args.perfil} {args.segundos}s MCTS={args.mcts}...")
         resultado = magna.decidir_suprema(

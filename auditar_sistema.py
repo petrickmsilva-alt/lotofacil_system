@@ -110,9 +110,29 @@ def verificar_modulos():
         "core.conferencia", "core.financeiro", "core.wheeling",
         "core.cerebro_ia", "core.forja_lotes", "core.singularidade",
         "core.antipopularidade", "core.caixa_client", "core.fisica_sorteio",
-        "core.clima_lotofacil", "core.magna_suprema",
+        "core.clima_lotofacil", "core.magna_suprema", "core.inmet",
+        "core.forja_auto",
     ]
     return {m: True for m in mods}
+
+
+def verificar_inmet():
+    """Telemetria INMET: tabela presente, registros e última fonte real."""
+    try:
+        from core.inmet import TelemetriaInmet
+        tel = TelemetriaInmet().resumo()
+        return {
+            "tabela": "ok",
+            "registros": tel.get("n_registros", 0),
+            "fontes": tel.get("fontes", {}),
+            "ultima": (
+                {k: tel["ultima"].get(k) for k in
+                 ("concurso", "cidade_uf", "estacao", "fonte", "status")}
+                if tel.get("ultima") else None
+            ),
+        }
+    except Exception as exc:
+        return {"tabela": "erro", "erro": str(exc)}
 
 
 def verificar_escada():
@@ -155,10 +175,12 @@ def executar():
         "modulos": verificar_modulos(),
         "escada_13_14_15": verificar_escada(),
         "anti_popularidade": verificar_antipop(),
+        "telemetria_inmet": verificar_inmet(),
         "observacao": (
             "Auditoria técnica: nenhum filtro/motor altera a probabilidade "
             "hipergeométrica de 13/14/15. A escada é combinatoria condicional; "
-            "a anti-popularidade é edge de RATEIO (prêmio menos dividido)."
+            "a anti-popularidade é edge de RATEIO (prêmio menos dividido); "
+            "a telemetria INMET é evidência de ambiente, nunca previsão."
         ),
     }
     return rel
@@ -194,6 +216,11 @@ def imprimir(rel):
         print("  bônus_rateio_estimado_x={}".format(ap["bonus_rateio_estimado_x"]))
     except Exception as exc:
         print("  erro={}".format(exc))
+    im = rel["telemetria_inmet"]
+    print("\nTelemetria INMET (local do sorteio):")
+    print("  tabela={} registros={} fontes={}".format(
+        im.get("tabela"), im.get("registros"), im.get("fontes")))
+    print("  última={}".format(im.get("ultima")))
     print("\n{}".format(rel["observacao"]))
 
 

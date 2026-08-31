@@ -21,6 +21,11 @@ class ErroFonteResultados(RuntimeError):
     """Falha controlada ao consultar ou validar uma fonte de resultados."""
 
 
+def _limpar(valor):
+    """Normaliza texto livre (espaços múltiplos / None) sem levantar erro."""
+    return re.sub(r"\s+", " ", str(valor or "")).strip()
+
+
 class CaixaClient:
     OFICIAL_BASE = os.getenv(
         "LOTOFACIL_API_URL",
@@ -222,6 +227,15 @@ class CaixaClient:
 
         normalizado["listaDezenas"] = ["{:02d}".format(d) for d in dezenas_int]
         normalizado["_fonte"] = fonte
+        # v11.7 — local físico do sorteio (para a telemetria INMET).
+        # A Caixa traz `local` + `cidadeUF`; espelhos costumam manter as
+        # mesmas chaves. Sempre normalizadas para strings vazias quando
+        # ausentes, para o `extrair_local` decidir sem exceção.
+        normalizado["local"] = _limpar(bruto.get("local")) \
+            if bruto.get("local") is not None else ""
+        normalizado["cidadeUF"] = _limpar(
+            bruto.get("cidadeUF") or bruto.get("cidade_uf")) \
+            if (bruto.get("cidadeUF") or bruto.get("cidade_uf")) else ""
         # v11.3 — ordem real de sorteio (1ª, 2ª, ... bola), se a fonte
         # fornecer (campo oficial `dezenasSorteadasOrdemSorteio`; espelhos
         # usam `listaDezenasOrdemSorteio`). Só é aceita se tiver 15
