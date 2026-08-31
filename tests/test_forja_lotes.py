@@ -111,9 +111,13 @@ def test_forja_entrega_lote_valido_e_melhora_massa():
 # 4. Fechamento dual
 # ============================================================
 def test_cota_de_esfera_pool19():
-    # bola dual: Σ_{i=2..4} C(4,i)·C(15,4−i) = 630+60+1 = 691
+    # cota inferior correta = ceil(C(19,s) / |esfera Johnson|):
+    # esfera(α=2) = Σ_{i=2..4} C(4,i)·C(15,4−i) = 630+60+1 = 691
     # piso = ceil(C(19,4)/691) = ceil(3876/691) = 6
+    # (a fórmula antiga retornava a esfera 691 em vez do piso 6)
     assert FechamentoDual.cota_esfera(19, 13) == 6
+    # e a mentira do menu antigo (21/13 com 30 cartelas) é impossível:
+    assert FechamentoDual.cota_esfera(21, 13) == 33
 
 
 def test_fechamento_dual_pool19_garantia_verificada():
@@ -123,7 +127,7 @@ def test_fechamento_dual_pool19_garantia_verificada():
     assert res["garantia"] == 13
     assert res["garantia_verificada"] is True
     assert res["verificacao_exata"] is True
-    assert 6 <= len(cartelas) <= 25
+    assert 6 <= len(cartelas) <= 20  # fechamento verificado (cache)
     for c in cartelas:
         assert len(c) == 15
         assert set(c) <= set(pool)
@@ -176,16 +180,23 @@ def test_espectro_de_johnson_soma_os_pares():
 # ============================================================
 def test_menu_captura_probabilidades_exatas():
     menu = menu_captura()
-    por_pool = {linha["n_pool"]: linha for linha in menu}
-    assert {16, 17, 18, 19} <= set(por_pool)
+    por_caso = {(l["n_pool"], l["garantia"]): l for l in menu}
+    assert {(16, 15), (17, 14), (18, 13), (19, 13)} <= set(por_caso)
     for linha in menu:
-        esperado = math.comb(linha["n_pool"], 15) / math.comb(25, 15)
-        assert abs(linha["p_captura"] - esperado) < 1e-8
-    assert por_pool[16]["alvo"] == 15
-    assert por_pool[17]["alvo"] == 14
-    assert por_pool[18]["alvo"] == 13
-    assert por_pool[16]["um_em_captura"] == round(
+        if linha["n_pool"] < 25:
+            esperado = math.comb(linha["n_pool"], 15) / math.comb(25, 15)
+            assert abs(linha["p_captura"] - esperado) < 1e-8
+        else:
+            assert linha["p_captura"] == 1.0
+    assert por_caso[(16, 15)]["alvo"] == 15
+    assert por_caso[(17, 14)]["alvo"] == 14
+    assert por_caso[(18, 13)]["alvo"] == 13
+    assert por_caso[(16, 15)]["um_em_captura"] == round(
         math.comb(25, 15) / math.comb(16, 15), 1)
+    # a correção honesta: 21/13 não tem 30 cartelas (mínimo 33)
+    linha21 = por_caso.get((21, 13))
+    if linha21 and linha21["garantia_verificada"]:
+        assert linha21["cartelas_verificadas"] >= 33
 
 
 # ============================================================
