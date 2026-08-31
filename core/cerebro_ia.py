@@ -50,6 +50,20 @@ except Exception:
     GeometriaJohnson = None
     MapaInformacional = None
 
+# v11.5 — Anti-popularidade (edge real de RATEIO, não de acerto)
+try:
+    from .antipopularidade import AntiPopularidade
+except Exception as _e_ap:
+    print("[AVISO] antipopularidade import: {}".format(_e_ap))
+    AntiPopularidade = None
+
+# v11.6 — Laboratório de aprendizado dinâmico (benchmark + auditoria + exploração)
+try:
+    from .laboratorio_magna import LaboratorioMagna
+except Exception as _e_lab:
+    print("[AVISO] laboratorio_magna import: {}".format(_e_lab))
+    LaboratorioMagna = None
+
 try:
     from .magna_suprema import (
         DetectorRegime, MemoriaVetorialMagna, JuizMagna,
@@ -1610,6 +1624,29 @@ class CerebroIA:
         self._oraculo = OraculoConvergente(self.matriz)
         self._log("INIT", "Oráculo Convergente ativado (15 teorias + Entropia Nanossegundo)")
 
+        # v11.5 — anti-popularidade: mede o efeito de RATEIO (quem costuma
+        # dividir o prêmio) e usa apenas como desempate estrutural. Não altera
+        # P(acerto): é edge de prêmio condicional.
+        try:
+            if AntiPopularidade is not None:
+                self.antipopularidade = AntiPopularidade(self.db_path)
+            else:
+                self.antipopularidade = None
+        except Exception as _e_ap:
+            print("[AVISO] AntiPopularidade não inicializado: {}".format(_e_ap))
+            self.antipopularidade = None
+
+        # v11.6 — laboratório pessoal de aprendizado dinâmico
+        try:
+            if LaboratorioMagna is not None:
+                self.laboratorio = LaboratorioMagna(
+                    db_path=self.db_path, matriz=self.matriz)
+            else:
+                self.laboratorio = None
+        except Exception as _e_lab:
+            print("[AVISO] LaboratorioMagna não inicializado: {}".format(_e_lab))
+            self.laboratorio = None
+
         self._criar_tabelas_ciclo()
         self.pesos_fontes_magna = self._carregar_pesos_fontes_magna()
         self._ultimo_processado = self._get_ultimo_processado()
@@ -1917,6 +1954,154 @@ class CerebroIA:
             ev * 0.22 + div * 0.14 + kl * 0.10 + mk * 0.14 + vl * 0.10
             + sg * 0.08 + filtro * 0.09 + ja_15 * 0.08 + ab * 0.05
         )
+
+    # ============================================================
+    # v11.5 — Anti-popularidade (edge de rateio, não de acerto)
+    # ============================================================
+    def _vetor_antipopularidade(self, vf: np.ndarray,
+                                forca: float = 0.05) -> np.ndarray:
+        """Combina o vetor da Magna com a impopularidade de cada dezena.
+
+        O score anti-popularidade EVITA regiões do volante que historicamente
+        atraem mais ganhadores (e portanto dividem mais o prêmio). É usado
+        apenas como desempate/priorização — a probabilidade hipergeométrica de
+        cada cartela permanece exatamente a mesma.
+        """
+        vf = self._normalizar_vetor(vf)
+        ap = getattr(self, "antipopularidade", None)
+        if ap is None or not hasattr(ap, "vetor_impopularidade"):
+            return vf
+        try:
+            v_ap = ap.vetor_impopularidade()
+            if v_ap is None or float(np.sum(v_ap)) <= 0:
+                return vf
+            v_ap = v_ap / float(np.sum(v_ap))
+            # v_ap normalizada é ~4% por dezena; multiplicar por (1+força) dá
+            # um leve favorecimento às dezenas menos lotadas.
+            v = vf * (1.0 + float(forca) * v_ap * TOTAL_DEZENAS)
+            return self._normalizar_vetor(v)
+        except Exception:
+            return vf
+
+    def _popularidade_da_cartela(self, dezenas: List[int]) -> Dict[str, Any]:
+        ap = getattr(self, "antipopularidade", None)
+        if ap is None or not hasattr(ap, "analisar_cartela"):
+            return {"disponivel": False}
+        try:
+            r = ap.analisar_cartela(dezenas)
+            return {"disponivel": True, **r}
+        except Exception:
+            return {"disponivel": False}
+
+    def _auditoria_cartelas_magna(
+            self, cartelas: List[Sequence[int]],
+            vetor_final: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        lab = getattr(self, "laboratorio", None)
+        if lab is None:
+            return {"disponivel": False}
+        try:
+            res = lab.auditor.auditar_lote(
+                cartelas, cartelas, vetor_final=vetor_final)
+            return {"disponivel": True, **res}
+        except Exception:
+            return {"disponivel": False}
+
+    def _resumo_antipopularidade(self, cartelas: List[List[int]]) -> Dict[str, Any]:
+        ap = getattr(self, "antipopularidade", None)
+        if ap is None or not hasattr(ap, "relatorio"):
+            return {"disponivel": False}
+        rel = ap.relatorio()
+        bonus = [self._popularidade_da_cartela(c) for c in cartelas]
+        bonus_x = [float(b.get("bonus_rateio_estimado_x", 1.0))
+                   for b in bonus if b.get("disponivel")]
+        regioes = [b.get("regiao") for b in bonus if b.get("disponivel")]
+        return {
+            "disponivel": True,
+            "calibracao": rel,
+            "bonus_rateio_medio_x": (
+                round(float(np.mean(bonus_x)), 3) if bonus_x else 1.0
+            ),
+            "distribuicao_regioes": {
+                r: regioes.count(r) for r in set(regioes)
+            },
+            "honestidade": (
+                "A anti-popularidade reduz a disputa do MESMO prêmio quando "
+                "você acerta. Não altera a probabilidade de acertar 13/14/15."
+            ),
+        }
+
+    # ============================================================
+    # v11.6 — Laboratório dinâmico (benchmark, auditoria, exploração)
+    # ============================================================
+    def lab_benchmark(self, n_testes: int = 40, janela: int = 50,
+                      n_aleatorio: int = 120,
+                      pesos: Optional[Dict[str, float]] = None,
+                      callback=None) -> Dict[str, Any]:
+        """Walk-forward de todas as famílias de estratégia da base histórica.
+
+        Treina apenas com o passado, mede no futuro, compara com o acaso,
+        marca o que é RUIM (quarentena) e propõe novos pesos para o consenso.
+        """
+        lab = getattr(self, "laboratorio", None)
+        if lab is None:
+            return {"status": "erro", "msg": "laboratório indisponível"}
+        try:
+            res = lab.rodar_benchmark(
+                n_testes=n_testes, janela=janela, n_aleatorio=n_aleatorio,
+                pesos=pesos, persistir=True)
+            res["pesos_recomendados"] = lab._recomendacao
+            res["quarentena"] = lab._quarentena
+            if callback:
+                callback(res)
+            return res
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return {"status": "erro", "msg": str(exc)}
+
+    def lab_explorar(self, ensaios: List[Dict[str, Any]],
+                     n_testes: int = 20,
+                     callback=None) -> Dict[str, Any]:
+        """Explora mutações de estratégia e devolve as que melhoram fora-da-amostra."""
+        lab = getattr(self, "laboratorio", None)
+        if lab is None:
+            return {"status": "erro", "msg": "laboratório indisponível"}
+        try:
+            res = lab.explorar(ensaios=ensaios, n_testes=n_testes,
+                               persistir=True)
+            if callback:
+                callback(res)
+            return res
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return {"status": "erro", "msg": str(exc)}
+
+    def auditor_cartelas(self, cartelas: List[Sequence[int]],
+                         score_modelos: Optional[List[float]] = None,
+                         vetor_final: Optional[np.ndarray] = None,
+                         callback=None) -> Dict[str, Any]:
+        """Audita cartelas criadas: repetidas, quase-repetidas, riscos e P exata."""
+        lab = getattr(self, "laboratorio", None)
+        if lab is None:
+            return {"status": "erro", "msg": "laboratório indisponível"}
+        try:
+            res = lab.auditar_cartelas(
+                cartelas, score_modelos=score_modelos,
+                vetor_final=vetor_final, persistir=True)
+            if callback:
+                callback(res)
+            return res
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return {"status": "erro", "msg": str(exc)}
+
+    def lab_relatorio(self) -> Dict[str, Any]:
+        lab = getattr(self, "laboratorio", None)
+        if lab is None:
+            return {"status": "erro", "msg": "laboratório indisponível"}
+        return lab.relatorio()
 
     def gerar_cartela_do_dia(self, reaproveitar: bool = True) -> Dict:
         """
@@ -3670,6 +3855,12 @@ class CerebroIA:
         vetor_final = self._normalizar_vetor(vetor_final)
         vetor_final = self._aplicar_memoria_episodica(vetor_final)
 
+        # v11.5 — desempate por taxa de rateio (edge real, não preditivo).
+        if getattr(self, "antipopularidade", None) is not None:
+            vetor_final = self._vetor_antipopularidade(vetor_final)
+            cb("Anti-popularidade: priorizando perfis menos disputados no "
+               "rateio (não muda P(acerto) — reduz divisão do prêmio).")
+
         # Planejamento extraordinário por orçamento (nova inteligência)
         try:
             rota_info = self._planejar_rota_extraordinaria(
@@ -3703,6 +3894,7 @@ class CerebroIA:
                 nome: round(float(sum(v[d - 1] for d in dezenas)), 6)
                 for nome, v in fontes.items()
             }
+            pop = self._popularidade_da_cartela(dezenas)
             cartela["interpretacao_magna"] = {
                 "filtros_avancados": relatorio,
                 "contribuicoes_fontes": contribuicoes,
@@ -3715,9 +3907,23 @@ class CerebroIA:
                 # abertura que a Magna memorizou (abrir com 01 não aumenta a
                 # chance de nada: é coerência estrutural, registrada à vista).
                 "abertura": self.acervo.afinidade_cartela(dezenas),
+                # v11.5 — taxa de rateio estimada (desempate de prêmio).
+                "popularidade": pop,
             }
             cartela["scores"]["afinidade_abertura"] = float(
                 cartela["interpretacao_magna"]["abertura"]["afinidade"])
+            cartela["scores"]["bonus_rateio_estimado_x"] = float(
+                (pop or {}).get("bonus_rateio_estimado_x", 1.0))
+            # v11.6 — auditoria estrutural de cada cartela (repetição, filtros,
+            # riscos e P exata) sem alterar a probabilidade do sorteio.
+            cartela["interpretacao_magna"]["auditoria"] = (
+                self.laboratorio.auditor.auditar(
+                    dezenas, lote=[c["dezenas"] for c in resultado["cartelas"]],
+                    score_modelo=float(cartela.get("score_total", 0) or 0),
+                    vetor_final=vetor_final,
+                ) if getattr(self, "laboratorio", None) is not None else
+                {"disponivel": False}
+            )
 
         hurst = [
             round(float(espectro.expoente_hurst(self.matriz[:, d])), 4)
@@ -3808,6 +4014,10 @@ class CerebroIA:
                 str(i + 1): int(votos[i]) for i in range(TOTAL_DEZENAS)
             },
             "diagnostico_magna": diagnostico,
+            "antipopularidade_magna": self._resumo_antipopularidade(
+                [c["dezenas"] for c in resultado["cartelas"]]),
+            "auditoria_cartelas_magna": self._auditoria_cartelas_magna(
+                [c["dezenas"] for c in resultado["cartelas"]], vetor_final),
             "memoria_magna": {
                 "top15_fontes": top15_fontes,
                 "vetor_final": [round(float(x), 10) for x in vetor_final],

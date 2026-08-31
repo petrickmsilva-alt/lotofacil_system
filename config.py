@@ -58,7 +58,7 @@ GRAVIDADE = 9.78               # São Paulo
 #  rejeitavam ~70% dos sorteios reais.)
 # ============================================================
 SOMA_MIN = 155
-SOMA_MAX = 235
+SOMA_MAX = 236   # recalibrado em 31/08/2026 (3.773 concursos): p99 real = 236
 MAX_CONSECUTIVOS = 14      # maior sequência real observada
 PRIMOS_MIN = 3
 PRIMOS_MAX = 8

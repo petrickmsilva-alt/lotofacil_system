@@ -1,5 +1,10 @@
 # 🔬 Auditoria Técnica — Sistema LotoFácil IA
 
+> **Atualização de 31/08/2026:** ver
+> **[`AUDITORIA_TECNICA_2026-08-31.md`](AUDITORIA_TECNICA_2026-08-31.md)**
+> (filtros recalculados com 3.773 concursos, escada exata conferida e novo
+> módulo anti-popularidade/rateio).
+>
 > **Atualização de 25/08/2026:** este arquivo preserva o histórico das fases 1–6.
 > A reauditoria independente do commit atual, com novos achados bloqueantes de
 > segurança, dados e ciclo autônomo, está em

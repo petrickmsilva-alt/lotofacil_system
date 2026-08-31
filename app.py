@@ -789,6 +789,184 @@ def api_magna_ordem():
                                       "/api/magna/ordem/ingestao"]}), 410
 
 
+@app.route("/api/magna/popularidade")
+def api_magna_popularidade():
+    """Medição do efeito de RATEIO (edge real, não preditivo).
+
+    Calibra no histórico oficial quantos ganhadores de 13/14 pontos cada perfil
+    de cartela costuma atrair. Perfis menos disputados têm o MESMO custo e a
+    MESMA P(acerto), mas prêmio esperado condicional maior.
+    """
+    try:
+        if getattr(magna, "antipopularidade", None) is None:
+            return jsonify({
+                "status": "indisponivel",
+                "msg": "anti-popularidade não inicializada",
+            })
+        return jsonify({
+            "status": "ok",
+            "anti_popularidade": magna.antipopularidade.relatorio(),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/captura")
+def api_magna_captura():
+    """Panorama 13 · 14 · 15: probabilidades exatas, custo e EV honesto.
+
+    A escada de captura mostra quantas cartelas a combinatoria garante dado um
+    pool de N dezenas. A garantia é CONDICIONAL (exige que o pool contenha as
+    15 sorteadas). O EV usa prêmios médios reais e o bônus de rateio estimado.
+    """
+    try:
+        from core.forja_lotes import menu_captura
+        from core.wheeling import MotorWheeling
+        menus = menu_captura()
+        premios = db.get_media_premios()
+        media_13 = float(premios["media_13"] or 35.0)
+        media_14 = float(premios["media_14"] or 0.0)
+        media_15 = float(premios["media_15"] or 0.0)
+        ap = getattr(magna, "antipopularidade", None)
+        bonus = 1.0
+        if ap is not None and ap.n_concursos >= 30:
+            rel = ap.relatorio()
+            raz = ((rel.get("auto_auditoria") or {}).get(
+                "razao_menos_popular_vs_popular"))
+            if raz:
+                bonus = float(np.clip(1.0 / max(float(raz), 1e-3), 1.0, 3.0))
+            else:
+                # fallback: cartela representativa da região mais impopular
+                bonus = float(ap.analisar_cartela(
+                    [7, 8, 9, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+                ).get("bonus_rateio_estimado_x", 1.0))
+        for linha in menus:
+            alvo = linha["alvo"]
+            if alvo == 13:
+                premio_medio = media_13 * bonus
+            elif alvo == 14:
+                premio_medio = media_14 * bonus
+            else:
+                premio_medio = media_15 * bonus
+            custo = linha.get("custo_teorico") or 0.0
+            p_cap = linha["p_captura"]
+            ev = p_cap * premio_medio - custo
+            linha["premio_medio_oficial"] = round(premio_medio, 2)
+            linha["ev_esperado_lote"] = round(float(ev), 2)
+            linha["retorno_esperado_pct"] = (
+                round(100 * float(ev) / custo, 2) if custo > 0 else 0.0
+            )
+            linha["nota_honesta"] = (
+                "EV negativo é esperado: a garantia só vale se o pool capturar "
+                "o sorteio; prêmio maior (por rateio) é o único ajuste real."
+            )
+        return jsonify({
+            "status": "ok",
+            "concursos_na_base": db.get_total_concursos(),
+            "universo": MotorWheeling.universo().size,
+            "bonus_rateio_medio_x": round(float(bonus), 3),
+            "escala": menus,
+            "honestidade": (
+                "Nenhuma rota altera a probabilidade de acertar 13/14/15. A "
+                "escada troca pontos garantidos por probabilidade de captura; "
+                "a anti-popularidade troca prêmio disputado por prêmio menos "
+                "dividido. Ambos são estrutura, não previsão."
+            ),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/lab")
+def api_magna_lab():
+    """Estado do laboratório dinâmico: placar persistido, quarentena, pesos."""
+    try:
+        return jsonify(magna.lab_relatorio())
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/lab/benchmark", methods=["POST"])
+def api_magna_lab_benchmark():
+    """Roda o benchmark walk-forward de todas as estratégias e recalcula pesos."""
+    try:
+        dados = request.get_json() or {}
+        n_testes = int(dados.get("n_testes", 40))
+        janela = int(dados.get("janela", 50))
+        n_aleatorio = int(dados.get("n_aleatorio", 120))
+        if not 5 <= n_testes <= 200:
+            raise ValueError("n_testes deve estar entre 5 e 200")
+        if not 10 <= janela <= 300:
+            raise ValueError("janela deve estar entre 10 e 300")
+        return jsonify(magna.lab_benchmark(
+            n_testes=n_testes, janela=janela, n_aleatorio=n_aleatorio,
+        ))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/lab/explorar", methods=["POST"])
+def api_magna_lab_explorar():
+    """Explora mutações de janele/transformações e devolve as melhores."""
+    try:
+        dados = request.get_json() or {}
+        ensaios = dados.get("ensaios") or []
+        if not isinstance(ensaios, list) or not ensaios:
+            raise ValueError("envie `ensaios` (janela/pesos/transformacao)")
+        n_testes = int(dados.get("n_testes", 20))
+        return jsonify(magna.lab_explorar(ensaios=ensaios, n_testes=n_testes))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/lab/auditar", methods=["POST"])
+def api_magna_lab_auditar():
+    """Audita cartelas (repetição histórica, filtros, riscos, P exata)."""
+    try:
+        dados = request.get_json() or {}
+        cartelas = dados.get("cartelas") or []
+        if not isinstance(cartelas, list) or not cartelas:
+            raise ValueError("envie `cartelas` — lista de listas de 15 dezenas")
+        for c in cartelas:
+            if not isinstance(c, list) or len(c) != 15:
+                raise ValueError("cada cartela deve ter 15 dezenas")
+        vetor = dados.get("vetor")
+        vetor_final = (np.asarray(vetor, dtype=float)
+                       if vetor is not None and len(vetor) == 25 else None)
+        score_modelos = dados.get("score_modelos")
+        res = magna.auditor_cartelas(
+            cartelas, score_modelos=score_modelos,
+            vetor_final=vetor_final)
+        return jsonify(res)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/lab/jogos-ruins")
+def api_magna_lab_jogos_ruins():
+    """Investiga o histórico procurando jogos repetidos/quase repetidos."""
+    try:
+        lab = getattr(magna, "laboratorio", None)
+        if lab is None:
+            return jsonify({"status": "erro", "msg": "laboratório indisponível"})
+        return jsonify(lab.jogos_ruins(persistir=True))
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/magna/abertura")
 def api_magna_abertura():
     """O que a Magna sabe sobre a abertura do próximo concurso.

@@ -284,6 +284,83 @@
     </div>
 </section>
 
+<section class="magna-history" id="rateio-section">
+    <div class="magna-section-title">
+        <div>
+            <span>EDGE DE RATEIO (V11.5)</span>
+            <h3>Anti-popularidade: menos disputa no mesmo prêmio</h3>
+        </div>
+        <div class="acervo-actions">
+            <button type="button" id="rateio-ver" class="acervo-btn">
+                <i class="fas fa-chart-line"></i> Ver panorama + rateio
+            </button>
+        </div>
+    </div>
+    <p class="acervo-leitura" id="rateio-leitura">
+        <i class="fas fa-circle-notch fa-spin"></i> consultando efeito de rateio…
+    </p>
+    <div id="rateio-resultado" class="ordem-grid-2">
+        <div class="magna-panel">
+            <h3><i class="fas fa-stairs"></i> Escada 13 · 14 · 15 com EV</h3>
+            <div class="table-container">
+                <table class="table" id="rateio-captura">
+                    <thead><tr><th>Alvo</th><th>Pool</th><th>Cartelas</th><th>Custo</th><th>Captura</th><th>EV/lote</th></tr></thead>
+                    <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="magna-panel">
+            <h3><i class="fas fa-users"></i> O que a base ensina sobre o rateio</h3>
+            <div id="rateio-popularidade" class="ordem-placar">carregando…</div>
+            <p class="ordem-nota">
+                A anti-popularidade usa apenas o EFEITO DE RATEIO: menor nº de
+                ganhadores por faixa = prêmio menos dividido quando acertar.
+                <strong>Não aumenta P(acerto)</strong> — é estrutura de prêmio.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="magna-history" id="lab-section">
+    <div class="magna-section-title">
+        <div>
+            <span>APRENDIZADO DINÂMICO (V11.6)</span>
+            <h3>Laboratório: medir, auditar, explorar e recalibrar</h3>
+        </div>
+        <div class="acervo-actions">
+            <button type="button" id="lab-benchmark" class="acervo-btn">
+                <i class="fas fa-flask"></i> Rodar benchmark walk-forward
+            </button>
+            <button type="button" id="lab-explorar" class="acervo-btn secundario">
+                <i class="fas fa-microscope"></i> Explorar propostas
+            </button>
+            <button type="button" id="lab-ruins" class="acervo-btn secundario">
+                <i class="fas fa-radiation"></i> Jogos ruins históricos
+            </button>
+        </div>
+    </div>
+    <p class="acervo-leitura" id="lab-leitura">
+        <i class="fas fa-circle-notch fa-spin"></i> consultando o laboratório…
+    </p>
+    <div id="lab-resultado" class="ordem-grid-2">
+        <div class="magna-panel">
+            <h3><i class="fas fa-chart-line"></i> Placar das estratégias</h3>
+            <div id="lab-placar" class="ordem-placar">carregando…</div>
+        </div>
+        <div class="magna-panel">
+            <h3><i class="fas fa-ban"></i> Quarentena + pesos recomendados</h3>
+            <div id="lab-quarentena" class="ordem-placar">carregando…</div>
+        </div>
+    </div>
+    <div id="lab-detalhes" class="magna-panel" style="margin-top:12px"></div>
+    <p class="ordem-nota">
+        O laboratório é o árbitro interno da Magna: treina só no passado, mede
+        no futuro, compara com o acaso e põe em <strong>quarentena</strong> o que
+        não funciona. Nada aqui promete prever o sorteio — ele impede o sistema
+        de se enganar e permite evoluir as estratégias com evidência.
+    </p>
+</section>
+
 <section class="magna-history">
     <div class="magna-section-title">
         <div><span>RASTREABILIDADE</span><h3>Decisões anteriores da mesma inteligência</h3></div>
@@ -467,6 +544,132 @@
             .catch(() => { });
     }
 
+    /* ── Laboratório dinâmico (v11.6) ── */
+    function carregarLab() {
+        const leitura = document.getElementById('lab-leitura');
+        const placar = document.getElementById('lab-placar');
+        const quar = document.getElementById('lab-quarentena');
+        const det = document.getElementById('lab-detalhes');
+        fetch('/api/magna/lab').then(r => r.json()).then(d => {
+            if (!d || d.status === 'erro') {
+                if (leitura) leitura.innerHTML = 'Sem placar persistido ainda. Rode o benchmark.';
+                return;
+            }
+            const rows = (d.placar_historico || []).map(p =>
+                '<div class="ordem-freq-item"><span>' + p.fonte + '</span><b>' +
+                Number(p.media_acertos || 0).toFixed(2) + '</b> <span style="color:#777">' +
+                p.veredito + '</span></div>').join('');
+            if (placar) placar.innerHTML = rows || '<div class="ordem-loading">Sem dados</div>';
+            const q = (d.quarentena || []).join(', ') || '—';
+            const pes = Object.entries(d.pesos_recomendados || {}).map(([k, v]) =>
+                k + ': ' + (Number(v) * 100).toFixed(1) + '%').join(' · ');
+            if (quar) quar.innerHTML = '<span>Quarentena: ' + q + '</span><br>' +
+                '<span>Pesos recomendados: ' + (pes || '—') + '</span>';
+        }).catch(() => {});
+    }
+
+    function labMsg(txt, tipo) {
+        const det = document.getElementById('lab-detalhes');
+        if (det) det.innerHTML = '<div class="magna-resultado ' + (tipo || 'sucesso') + '">' + txt + '</div>';
+    }
+
+    const labBench = document.getElementById('lab-benchmark');
+    if (labBench) labBench.addEventListener('click', async function () {
+        labBench.disabled = true;
+        labMsg('Rodando benchmark walk-forward (treina no passado, mede no futuro)…');
+        try {
+            const resp = await fetch('/api/magna/lab/benchmark', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({n_testes: 40, janela: 50, n_aleatorio: 120})
+            });
+            const d = await resp.json();
+            if (d.status === 'erro') throw new Error(d.msg);
+            carregarLab();
+            const q = (d.quarentena || []).join(', ') || '—';
+            labMsg('Benchmark concluído · quarentena: ' + q +
+                ' · veredito: ' + (d.veredito_geral || ''));
+        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
+        finally { labBench.disabled = false; }
+    });
+
+    const labExpl = document.getElementById('lab-explorar');
+    if (labExpl) labExpl.addEventListener('click', async function () {
+        labExpl.disabled = true;
+        labMsg('Explorando novas janelas/combinações…');
+        try {
+            const ensaios = [
+                {janela: 30}, {janela: 80}, {janela: 120}, {janela: 200},
+                {janela: 50, pesos: {freq_global: 0.3, freq_recente: 0.3, markov: 0.2, reversao: 0.1, espectral: 0.1}},
+                {janela: 50, transformacao: 'log'}
+            ];
+            const resp = await fetch('/api/magna/lab/explorar', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ensaios: ensaios, n_testes: 20})
+            });
+            const d = await resp.json();
+            if (d.status === 'erro') throw new Error(d.msg);
+            carregarLab();
+            const melhores = (d.melhores_propostas || []).map(x =>
+                'janela ' + x.janela + ': ' + x.media_acertos +
+                ' (ganho ' + x.ganho_vs_base + ') — ' + x.veredito).join('<br>');
+            labMsg('Exploração concluída<br>' + (melhores || 'Nenhuma melhora relevante.'));
+        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
+        finally { labExpl.disabled = false; }
+    });
+
+    const labRuins = document.getElementById('lab-ruins');
+    if (labRuins) labRuins.addEventListener('click', async function () {
+        labRuins.disabled = true;
+        try {
+            const resp = await fetch('/api/magna/lab/jogos-ruins');
+            const d = await resp.json();
+            if (d.status === 'erro') throw new Error(d.msg);
+            const jogos = (d.jogos || []).slice(0, 8).map(j =>
+                '<div class="ordem-freq-item"><span>' + j.dezenas.join('-') +
+                '</span><b>' + j.motivo + '</b></div>').join('');
+            labMsg('Jogos ruins históricos: ' + (d.n || 0) + '<br>' + jogos);
+        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
+        finally { labRuins.disabled = false; }
+    });
+
+    /* ── Anti-popularidade / edge de rateio (v11.5) ── */
+    function carregarRateio() {
+        const ler = (url, cb) => fetch(url).then(r => r.json()).then(cb).catch(() => cb({status:'erro'}));
+        const captura = document.querySelector('#rateio-captura tbody');
+        const pop = document.getElementById('rateio-popularidade');
+        const leitura = document.getElementById('rateio-leitura');
+        ler('/api/magna/captura', data => {
+            if (data.status !== 'ok') return;
+            const tabela = (data.escala || []).map(l =>
+                '<tr><td><strong>' + l.alvo + ' pts</strong></td>' +
+                '<td>' + l.n_pool + '</td>' +
+                '<td>' + l.cartelas_teoricas + '</td>' +
+                '<td>' + brl(l.custo_teorico) + '</td>' +
+                '<td>1 em ' + Number(l.um_em_captura).toLocaleString('pt-BR') + '</td>' +
+                '<td>' + brl(l.ev_esperado_lote) + '</td></tr>').join('');
+            if (captura) captura.innerHTML = tabela || '<tr><td colspan="6">—</td></tr>';
+            if (leitura) leitura.innerHTML = 'Base: ' + data.concursos_na_base +
+                ' concursos · bônus de rateio médio ' + data.bonus_rateio_medio_x + '×';
+        });
+        ler('/api/magna/popularidade', data => {
+            if (data.status !== 'ok') return;
+            const ap = data.anti_popularidade || {};
+            const aud = (ap.auto_auditoria || {});
+            const rows = [
+                ['Concursos com rateio', ap.concursos_calibrados],
+                ['Média ganhadores 13', Number(ap.media_ganhadores_13).toLocaleString('pt-BR')],
+                ['Menos populares (teste)', aud.media_ganhadores_menos_populares ? Number(aud.media_ganhadores_menos_populares).toLocaleString('pt-BR') : '—'],
+                ['Mais populares (teste)', aud.media_ganhadores_mais_populares ? Number(aud.media_ganhadores_mais_populares).toLocaleString('pt-BR') : '—'],
+                ['Razão menos/popular', aud.razao_menos_popular_vs_popular || '—']
+            ];
+            if (pop) {
+                pop.innerHTML = rows.map(r =>
+                    '<div class="ordem-freq-item"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('');
+                pop.classList.add('ordem-placar');
+            }
+        });
+    }
+
     function desenharMapa() {
         const cv = document.getElementById('forja-mapa');
         if (!cv) return;
@@ -540,6 +743,8 @@
     }
 
     carregarMenuForja();
+    carregarRateio();
+    carregarLab();
     desenharMapa();
 
     function iniciarProcessamento() {
@@ -587,10 +792,13 @@
             const conv = ((c.interpretacao_magna || {}).convergencia_media || 0) * 100;
             const el = document.createElement('article');
             el.className = 'magna-ticket';
+            const bonusRateio = (((c.interpretacao_magna || {}).popularidade || {}).bonus_rateio_estimado_x);
+            const regiao = (((c.interpretacao_magna || {}).popularidade || {}).regiao) || '—';
             el.innerHTML =
                 '<header><span>CARTELA ' + String(i + 1).padStart(2, '0') + '</span><strong>' + Number(c.score_total || 0).toFixed(4) + '</strong></header>' +
                 '<div class="magna-balls">' + bolas(c.dezenas) + '</div>' +
-                '<footer><span>plausibilidade ' + Number(av || 0).toFixed(2) + '</span><span>convergência ' + conv.toFixed(1) + '%</span></footer>';
+                '<footer><span>plausibilidade ' + Number(av || 0).toFixed(2) + '</span><span>convergência ' + conv.toFixed(1) + '%</span></footer>' +
+                '<footer><span>rateio: ' + regiao + '</span><span>bonus ' + (bonusRateio ? Number(bonusRateio).toFixed(2) + '×' : '—') + '</span></footer>';
             cards.appendChild(el);
         });
         resultBox.hidden = false;
