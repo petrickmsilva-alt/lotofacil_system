@@ -29,11 +29,9 @@ if THIS_DIR not in sys.path:
     sys.path.insert(0, THIS_DIR)
 
 from config import (
-    BORDA, FIBONACCI, PRIMOS, SOMA_MAX, SOMA_MIN,
-    TOTAL_DEZENAS, VALOR_APOSTA, DIAS_SORTEIO_HORA,
+    SOMA_MAX, SOMA_MIN, VALOR_APOSTA, DIAS_SORTEIO_HORA,
 )
 from database.db_manager import DBManager
-from core.wheeling import MotorWheeling
 
 N_UNIVERSO = math.comb(25, 15)
 

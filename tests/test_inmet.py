@@ -96,6 +96,15 @@ def test_territorio_fora_da_tabela_usa_capital_da_uf():
     assert p["fonte_territorio"] == "padrao"
 
 
+def test_local_sorteio_sem_cidade_uf_cai_no_alias():
+    """Caixa pode trazer só `local` (ex.: 'ESPAÇO DA SORTE') sem cidadeUF."""
+    local = extrair_local({"local": "ESPAÇO DA SORTE", "numero": 3773})
+    assert local["cidade_uf"] == "São Paulo/SP"
+    t = TerritorioInmet().resolver(local["local"], local["cidade_uf"])
+    assert t["uf"] == "SP"
+    assert t["geocodigo"] == "3550308"
+
+
 # ============================================================
 # 2. Cliente: INMET oficial → Open-Meteo → neutro
 # ============================================================
@@ -131,6 +140,10 @@ def test_telemetria_neutra_sem_rede():
     assert dados["fonte"] == "padrao"
     assert dados["temperatura"] is None
     assert dados["erro"] is not None
+    # contrato uniforme entre os três ramos: local do sorteio preservado
+    assert dados["local"] == "ESPAÇO DA SORTE"
+    assert dados["cidade_uf"] == "São Paulo/SP"
+    assert dados["n_observacoes"] == 0
     # nunca fabrica medição: os valores ficam vazios, não padrões fictícios
     assert all(dados[k] is None for k in
                ("temperatura", "pressao", "umidade", "vento"))

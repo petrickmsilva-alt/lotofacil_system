@@ -441,7 +441,7 @@ def api_magna_verificar():
         # backtest opcional
         backtest = {}
         try:
-            from core.magna_suprema import BacktestLote, TesteBinomial, CurvaAprendizado, TesteNIST, PValueRandom, JuizAdversarial
+            from core.magna_suprema import BacktestLote, CurvaAprendizado, TesteNIST, PValueRandom, JuizAdversarial
             backtest = BacktestLote().testar(cartelas, magna.matriz, janela=50)
             nist = TesteNIST().testar(cartelas)
             pval = PValueRandom().calcular(ver.get("p13_exata",0), len(cartelas), alvo=13)
@@ -485,8 +485,6 @@ def api_magna_chat():
                 for nome, v in fontes.items():
                     vetor += v * pesos[nome]
                 vetor = magna._normalizar_vetor(vetor)
-                # último lote se existir
-                ultimo = magna.decisoes.get("magna")
                 contexto = {
                     "vf": vetor,
                     "fontes": fontes,
@@ -669,6 +667,7 @@ def api_magna_forja_auto():
                                            dados.get("segundos", 30.0))),
             salvar=bool(dados.get("salvar", True)),
             usar_inmet=bool(dados.get("usar_inmet", True)),
+            persistir_telemetria=bool(dados.get("persistir_telemetria", True)),
         )
         if resultado.get("status") != "ok":
             return jsonify(resultado), 502

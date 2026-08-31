@@ -152,7 +152,7 @@ def main():
             if plac.get("aplicavel"):
                 print(f"[ACERVO] placar walk-forward ({plac['n_provas']} provas): "
                       f"{plac['leitura']}")
-            print(f"[ACERVO] pesos do consenso: " +
+            print("[ACERVO] pesos do consenso: " +
                   " · ".join(f"{n} {v:.3f}" for n, v in
                              kn["pesos_fontes"].items()))
             print(f"[ACERVO] memória conferida: "

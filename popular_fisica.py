@@ -144,11 +144,11 @@ def main():
 
     # 1. Registra as 25 bolas
     print("\n📊 Registrando perfis das 25 bolas...")
-    resultado_bolas = popular_bolas(fisica)
+    popular_bolas(fisica)
 
     # 2. Registra o ambiente padrão
     print("\n🌡️  Registrando ambiente padrão de sorteio...")
-    resultado_ambiente = popular_ambiente_padrao(fisica)
+    popular_ambiente_padrao(fisica)
 
     # 3. Verifica o estado final
     print("\n" + "=" * 60)

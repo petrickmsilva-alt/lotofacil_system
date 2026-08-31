@@ -11,10 +11,8 @@ Tudo honesto: nenhum módulo prevê sorteio, apenas maximiza estrutura combinat�
 Único gerador: Inteligência Magna — tanto decisão única quanto 3 âncoras passam pelo mesmo processo.
 """
 import math
-import time
 import hashlib
-import json
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 import numpy as np
 
 from config import TOTAL_DEZENAS, QUADRANTES, VALOR_APOSTA, PRIMOS, FIBONACCI, BORDA
@@ -750,7 +748,7 @@ class ExplainabilityMagna:
         explic = f"Dezena {dezena:02d}: "
         explic += f"top fonte {top_fonte} ({contrib.get(top_fonte,0):.4f}), "
         explic += f"votos oráculo {voto}/15, "
-        explic += f"contribuições: " + ", ".join([f"{k}={v:.3f}" for k,v in ordenadas[:3]])
+        explic += "contribuições: " + ", ".join([f"{k}={v:.3f}" for k,v in ordenadas[:3]])
         if dezena in [1,2,3]:
             explic += " — âncora pessoal"
         if dezena % 2 == 0:
@@ -796,7 +794,7 @@ class ChatMagna:
                     d = int(n)
                     if 1 <= d <= 25:
                         return self.explain.explicar_dezena(d, vf, fontes, votos)
-                except:
+                except Exception:
                     pass
         if "13" in pergunta or "14" in pergunta or "15" in pergunta:
             analise = contexto.get("analise", {})

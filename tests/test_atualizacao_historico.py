@@ -198,7 +198,8 @@ def test_endpoint_impede_duas_atualizacoes_concorrentes(monkeypatch):
 
 
 def test_javascript_do_historico_possui_funcao_de_atualizacao():
-    conteudo = open("static/js/main.js", encoding="utf-8").read()
+    with open("static/js/main.js", encoding="utf-8") as fh:
+        conteudo = fh.read()
     assert "function atualizarDados()" in conteudo
     assert "'/api/atualizar_dados'" in conteudo
 

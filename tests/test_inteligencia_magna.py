@@ -38,8 +38,9 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["n_cartelas"] == 1
     assert resultado["decisao_id"] is not None
     # v11.4 — o acervo de abertura (base histórica inteira) entrou como
-    # conhecimento assimilado: são 7 fontes de leitura dentro da Magna.
-    assert len(resultado["fontes_assimiladas"]) == 7
+    # conhecimento assimilado: são 7 fontes de leitura dentro da Magna;
+    # v11.7 — telemetria INMET por local do sorteio (8ª fonte assimilada).
+    assert len(resultado["fontes_assimiladas"]) == 8
     assert any("acervo" in f for f in resultado["fontes_assimiladas"])
     # v11.2 — clima entrou no consenso; v11.4 — a fonte `ordem` (módulo
     # paralelo) virou `abertura`: órgão da própria Magna; v11.7 — telemetria
@@ -155,6 +156,27 @@ def test_ciclo_pos_sorteio_assimila_e_planeja(tmp_path):
     assert magna.treinado is True
     assert out["plano"]["modo_recomendado"] == "wheeling-garantia-14"
     assert "autocritica" in out
+
+
+def test_decidir_suprema_registra_sem_keyerror(tmp_path):
+    """Regressão: `_registrar_decisao_magna` quebrava com KeyError
+    'diagnostico_magna' quando a suprema registrava o lote (CLI --auto
+    --salvar / API com salvar=True)."""
+    caminho = tmp_path / "suprema_reg.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    magna = InteligenciaMagna(db_path=str(caminho), n_cartelas=2)
+    resultado = magna.decidir_suprema(
+        quantidade=2, orcamento=30.0, alvo=13, perfil="equilibrado",
+        segundos_forja=2.0, tentativas_juiz=1, usar_mcts=False,
+        usar_multi_rota=False, registrar=True, concurso_alvo=10001,
+    )
+    assert resultado["status"] == "ok"
+    assert resultado["decisao_id"] is not None
+    assert "diagnostico_magna" in resultado
+    assert "memoria_magna" in resultado
+    reg = magna.get_historico_magna(1)[0]
+    assert reg["id"] == resultado["decisao_id"]
+    assert reg["status"] == "aguardando"
 
 
 def test_inmet_e_fonte_do_consenso(magna_decisao):

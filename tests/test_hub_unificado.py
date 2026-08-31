@@ -91,6 +91,16 @@ def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
     assert data["resultado"]["concurso_alvo"] == 9999
 
 
+def test_painel_tem_forja_auto_sem_ancoras(client):
+    body = client.get("/cerebro").data.decode("utf-8")
+    # v11.7 — forja automática com telemetria INMET substituiu as âncoras
+    assert 'id="magna-inmet-auto"' in body
+    assert 'id="magna-telemetria"' in body
+    assert 'id="magna-ancoras"' not in body
+    assert "/api/magna/ancoras-123" not in body
+    assert "/api/magna/forja-auto" in body
+
+
 def test_api_inmet_existe(client):
     """Telemetria INMET com janela de estado (sem rede: padrão São Paulo/SP)."""
     response = client.get("/api/magna/inmet")

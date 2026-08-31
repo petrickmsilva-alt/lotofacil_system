@@ -1618,7 +1618,6 @@ class CerebroIA:
             self.inmet = None
         self._log("INIT", "INMET v11.7: {} registros de telemetria".format(
             self.inmet.resumo().get("n_registros", 0) if self.inmet else 0))
-
         # v11.4 — os padrões de abertura DEIXARAM DE SER UM MÓDULO. Eles são o
         # acervo da própria Magna (AcervoAberturaMagna), montado logo abaixo,
         # depois das tabelas de memória, para já nascer aprendido e memorizado.
@@ -2285,8 +2284,10 @@ class CerebroIA:
             result = []
             for r in rows:
                 d = dict(r)
-                try: d["dezenas"] = json.loads(d.get("dezenas", "[]"))
-                except: d["dezenas"] = []
+                try:
+                    d["dezenas"] = json.loads(d.get("dezenas", "[]"))
+                except Exception:
+                    d["dezenas"] = []
                 result.append(d)
             return result
         except Exception:
@@ -4019,6 +4020,7 @@ class CerebroIA:
                 "wheeling 14/15", "análise histórica e recente",
                 "singularidade e filtros avançados", "auditoria e aprendizado",
                 "acervo de abertura (base histórica inteira)",
+                "telemetria INMET (local do sorteio)",
             ],
             "pesos_fontes": pesos,
             "acervo_magna": evidencia_abertura,
@@ -4095,9 +4097,11 @@ class CerebroIA:
                 str(resultado["estrategia"]),
                 json.dumps(self._json_seguro(resultado["cartelas"])),
                 json.dumps(self._json_seguro({
-                    "memoria": resultado["memoria_magna"],
-                    "diagnostico": resultado["diagnostico_magna"],
-                    "analise_lote": resultado["analise"],
+                    # acessos defensivos: qualquer decisor (única, suprema,
+                    # forja automática) registra sem quebrar o ciclo
+                    "memoria": resultado.get("memoria_magna") or {},
+                    "diagnostico": resultado.get("diagnostico_magna") or {},
+                    "analise_lote": resultado.get("analise") or {},
                 })),
                 str(resultado["justificativa_magna"]),
             ))
@@ -5225,7 +5229,7 @@ class CerebroIA:
                     f"acervo de conhecimento {evidencia_abertura['digest']} aprendido até o concurso {evidencia_abertura['aprendido_ate']} "
                     f"(veredito {evidencia_abertura['veredito']}, fator {evidencia_abertura['fator_confianca']}) — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","inmet","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -5275,6 +5279,15 @@ class CerebroIA:
                     "abertura_atual": evidencia_abertura["abertura_atual"],
                     "recorde": evidencia_abertura["recorde"],
                 },
+            }
+            # mesmo contrato da decisão única: o painel do /cerebro lê
+            # `diagnostico_magna` (hurst, entropia, filtro, kelly)
+            resultado["diagnostico_magna"] = {
+                "hurst_medio": 0.5,
+                "entropia_permutacao_media": 0.0,
+                "taxa_aprovacao_filtro": getattr(
+                    self._gaussiano, "taxa_aprovacao_historica", None),
+                "kelly": 0,
             }
             resultado["decisao_id"] = self._registrar_decisao_magna(resultado) if registrar else None
             cb(f"Decisão Suprema v11 concluída: {resultado['estrategia']} nota {melhor_nota:.3f} util {melhor_utilidade:.3f} auditoria #{resultado['decisao_id'] or 'pessoal'}")

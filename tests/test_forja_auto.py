@@ -12,7 +12,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import numpy as np
 import pytest
 
 from core.forja_auto import ForjaAutomatica
@@ -141,6 +140,23 @@ def test_executar_sem_inmet_nao_consulta_cliente(auto):
     # sem condições, o MotorClima não é tocado
     assert magna.clima.definidas == []
     assert auto.telemetria.resumo()["n_registros"] == 0
+
+
+def test_persistir_telemetria_e_independente_das_cartelas(auto):
+    magna = FakeMagna()
+    auto.magna = magna
+    # cartelas NÃO salvas, mas telemetria auditável SIM (contrato v11.7)
+    resumo = auto.executar(quantidade=2, alvo=13, salvar=False,
+                           usar_inmet=True, persistir_telemetria=True)
+    assert resumo["status"] == "ok"
+    assert auto.telemetria.resumo()["n_registros"] == 1
+    assert auto.telemetria.ultima()["local"] == "Espaço da Sorte (padrão)"
+    assert auto.telemetria.ultima()["cidade_uf"] == "São Paulo/SP"
+    # e pode ser desligada explicitamente
+    resumo2 = auto.executar(quantidade=2, alvo=13, salvar=True,
+                            usar_inmet=True, persistir_telemetria=False)
+    assert resumo2["status"] == "ok"
+    assert auto.telemetria.resumo()["n_registros"] == 1
 
 
 def test_executar_falha_na_forja_devolve_erro_sem_levantar(auto):

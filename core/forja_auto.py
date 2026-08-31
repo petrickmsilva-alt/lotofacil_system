@@ -20,7 +20,7 @@ HONESTIDADE:
   clima neutro e o relatório diz exatamente o que foi usado.
 ====================================================================
 """
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .inmet import (
     LOCAL_PADRAO, InmetClient, TelemetriaInmet, TerritorioInmet, extrair_local,
@@ -126,10 +126,16 @@ class ForjaAutomatica:
                  alvo: int = 13, perfil: str = "equilibrado",
                  segundos_forja: float = 60.0, salvar: bool = True,
                  usar_inmet: bool = True,
+                 persistir_telemetria: bool = True,
                  callback: Optional[Callable[[str], None]] = None,
                  resultado_caixa: Optional[Dict[str, Any]] = None
                  ) -> Dict[str, Any]:
-        """Pipeline automático completo. Nunca levanta exceção para rede."""
+        """Pipeline automático completo. Nunca levanta exceção para rede.
+
+        `salvar` controla a persistência do LOTE (cartelas); `usar_inmet`
+        liga a telemetria; `persistir_telemetria` controla o registro
+        meteorológico (auditoria), independente das cartelas.
+        """
         from .cerebro_ia import InteligenciaMagna
 
         magna = self.magna or InteligenciaMagna(
@@ -153,7 +159,8 @@ class ForjaAutomatica:
                 "condicoes_clima": None, "local": local}
         if usar_inmet:
             try:
-                tele = self.coletar_telemetria(local, salvar=True)
+                tele = self.coletar_telemetria(
+                    local, salvar=bool(persistir_telemetria))
                 cb("[AUTO] telemetria: {} ({})".format(
                     tele.get("status"), tele.get("fonte")))
             except Exception as exc:

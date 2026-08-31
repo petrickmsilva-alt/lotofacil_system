@@ -391,6 +391,7 @@ class InmetClient:
         return {
             "status": "neutro",
             "fonte": "padrao",
+            "local": territorio.get("local"),
             "cidade": territorio.get("cidade"),
             "uf": territorio.get("uf"),
             "cidade_uf": territorio.get("cidade_uf"),
@@ -402,6 +403,8 @@ class InmetClient:
             "pressao": None,
             "umidade": None,
             "vento": None,
+            "n_observacoes": 0,
+            "periodo": None,
             "detalhe": motivo,
             "diagnostico": diagnostico or {},
             "erro": motivo,
