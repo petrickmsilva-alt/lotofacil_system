@@ -1,4 +1,4 @@
-# 🧠 LotoFácil — Inteligência Magna v9.0
+# 🧠 LotoFácil — Inteligência Magna v11.5
 
 Sistema unificado de estudo estatístico e combinatório da Lotofácil.
 
@@ -178,9 +178,10 @@ tira da tela, mas a memória de aprendizado permanece. Diagnóstico contínuo:
 
 ```bash
 pip install pytest pip-audit bandit
-pytest -q                         # 76 testes
+pytest -q                         # 135 testes
 pip-audit -r requirements.txt    # nenhuma vulnerabilidade conhecida
 bandit -q -r app.py core database -x tests
+python auditar_sistema.py         # auditoria contínua (sem alterar o banco)
 ```
 
 A migração corrige automaticamente dezenas NumPy antigas armazenadas como BLOB,
@@ -231,6 +232,72 @@ Magna — em três instrumentos:
 Honestidade mantida: a forja maximiza a estrutura do lote sob o modelo da
 Magna — ganho combinatório, nunca preditivo. A probabilidade exata
 não-pesada acompanha sempre o relatório.
+
+## Edge de rateio — anti-popularidade (v11.5)
+
+A Lotofácil é **rateada**: quando o sorteio cai em região popular do volante,
+mais apostas coincidem e **o mesmo prêmio é dividido por mais gente**. Isso
+não altera a chance de acertar — altera o valor esperado **quando você
+acerta**. O módulo `core/antipopularidade.py` calibra o efeito sobre o
+histórico oficial e usa apenas como **desempate estrutural** na decisão da
+Magna.
+
+```http
+GET /api/magna/popularidade   # calibração + auto-auditoria walk-forward
+GET /api/magna/captura        # escada 13/14/15 com custo, P exata e EV honesto
+```
+
+Na base atual (105 concursos com rateio), perfis classificados como menos
+populares tiveram **~20% menos ganhadores de 13 pontos** no período de teste.
+A interface exibe o `bonus_rateio_estimado_x` por cartela e a nota explícita:
+**anti-popularidade não prevê dezenas; reduz a disputa do prêmio.**
+
+## Laboratório de aprendizagem dinâmica (v11.6)
+
+A Magna agora tem um **árbitro interno** para estudar a base histórica sem
+mentir para si mesma:
+
+1. **Benchmark walk-forward** — treina apenas com o passado, mede no futuro,
+   compara com a baseline aleatória/hipergeométrica;
+2. **Auditoria de cartelas** — detecta jogos já saídos, quase-repetidos,
+   padrões fracos, e reporta a probabilidade exata de 13/14/15;
+3. **Reconhecimento de jogos ruins** — varre o histórico por repetições/quase
+   repetições que devem ser evitadas;
+4. **Exploração de propostas** — testa janelas e combinações de fontes e
+   devolve as que melhoraram fora-da-amostra;
+5. **Quarentena + pesos recomendados** — estratégias que não batem o acaso
+   saem do consenso automaticamente e o placar fica persistido em
+   `magna_placar_fontes` / `magna_laboratorio`.
+
+```http
+GET  /api/magna/lab                # placar, quarentena, pesos
+POST /api/magna/lab/benchmark      # walk-forward completo
+POST /api/magna/lab/explorar       # ensaios {janela, pesos, transformacao}
+POST /api/magna/lab/auditar        # {cartelas: [[...15...], ...]}
+GET  /api/magna/lab/jogos-ruins    # repetidos/quase repetidos históricos
+```
+
+```bash
+python investigar_magna.py --benchmark
+python investigar_magna.py --auditar 07 08 09 12 13 14 17 18 19 20 21 22 23 24 25
+python investigar_magna.py --historico-ruins
+python investigar_magna.py --explorar
+python investigar_magna.py --relatorio
+```
+
+A honestidade permanece: **nenhum método muda a probabilidade de acertar
+13/14/15**. O laboratório serve para **medir, auditar e não se enganar** —
+a busca por “previsibilidade perfeita” é tratada como estudo de estrutura e
+gestão de risco, não como promessa de previsão.
+
+## Melhorias de engenharia
+
+- **CI:** pipeline de testes/segurança pronto em `docs/ci-github-actions.yml`
+  (pytest + cobertura + bandit + pip-audit). Nesta conta o GitHub App não possui
+  permissão `workflows`, então o arquivo deve ser copiado para
+  `.github/workflows/ci.yml` por quem tenha permissão no repositório.
+- **Auditoria contínua:** `python auditar_sistema.py` verifica banco,
+  filtros, módulos, escada e anti-popularidade sem alterar dados.
 
 ## Áreas do sistema
 
