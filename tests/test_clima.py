@@ -169,22 +169,24 @@ def test_aprender_novo_e_upsert(tmp_path):
 
     # re-ingestão idêntica → byte-idêntico, não duplica
     import hashlib
-    h1 = hashlib.md5(open(p, "rb").read()).hexdigest()
+    with open(p, "rb") as fh:
+        h1 = hashlib.md5(fh.read()).hexdigest()
     r2 = m.aprender(4000, 20.0, 0.91, 55, data="01/09/2026",
                     dezenas=list(range(1, 16)))
-    h2 = hashlib.md5(open(p, "rb").read()).hexdigest()
+    with open(p, "rb") as fh:
+        h2 = hashlib.md5(fh.read()).hexdigest()
     assert r2["novo"] is False and r2["n_registros"] == 1
     assert h1 == h2
 
     # atualização de valores → recalcula sem duplicar
-    r3 = m.aprender(4000, 21.5, 0.92, 60, data="01/09/2026")
+    m.aprender(4000, 21.5, 0.92, 60, data="01/09/2026")
     m2 = MotorClima(csv_path=p, usar_web=False)
     assert m2.n_registros == 1
     assert m2.registros[0]["temperatura"] == 21.5
 
     # registro inválido (16 dezenas) → aceita clima, descarta dezenas
-    r4 = m.aprender(4001, 22.0, 0.91, 40,
-                    dezenas=list(range(1, 17)))
+    m.aprender(4001, 22.0, 0.91, 40,
+              dezenas=list(range(1, 17)))
     m3 = MotorClima(csv_path=p, usar_web=False)
     assert m3.n_registros == 2
     assert m3.registros[1]["dezenas"] == []

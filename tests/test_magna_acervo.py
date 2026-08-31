@@ -275,8 +275,10 @@ def test_evidencia_abertura_e_a_mesma_para_decisao_e_juiz(magna_aprendida):
                   "concursos_da_base", "probabilidades"):
         assert chave in ev, chave
     assert ev["ranking"], "a Magna precisa ter um ranking de abertura"
-    assert magna_aprendida.ancoras_do_acervo(3) == ev["ranking"][:3]
-    assert len(magna_aprendida.ancoras_do_acervo(1)) == 1
+    # v11.7 — âncoras removidas; o ranking de abertura continua sendo a
+    # mesma leitura do acervo usada pela decisão e pelo Juiz.
+    assert magna_aprendida.acervo.proximas_aberturas(3) == ev["ranking"][:3]
+    assert len(magna_aprendida.acervo.proximas_aberturas(1)) == 1
 
 
 def test_decisao_leva_acervo_memoria_e_palpite_julgavel(magna_aprendida):

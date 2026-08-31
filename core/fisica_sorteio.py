@@ -24,12 +24,12 @@ preditiva comprovada.
 import math
 import sqlite3
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List
 from datetime import datetime
 
 from config import (
     DATABASE_PATH, TOTAL_DEZENAS,
-    MASSA_BOLA_KG, DIAMETRO_BOLA_M, RAIO_BOLA_M,
+    MASSA_BOLA_KG, DIAMETRO_BOLA_M,
     COEF_RESTITUICAO, TEMPERATURA_K, PRESSAO_ATM,
     DENSIDADE_AR, UMIDADE_RELATIVA, GRAVIDADE,
 )
@@ -470,8 +470,6 @@ class MotorFisicaSorteio:
             fator_temp = (amb.temperatura - 290) / 10.0  # normalizado
             # Umidade alta → ar mais pesado → mais arrasto
             fator_umid = -(amb.umidade - 0.5) * 0.5
-            # Rotação mais rápida → mais mistura → mais aleatoriedade
-            fator_rot = amb.velocidade_rotacao / 60.0  # normalizado
 
             ajuste = 1.0 + 0.05 * (fator_temp + fator_umid)
             scores *= ajuste

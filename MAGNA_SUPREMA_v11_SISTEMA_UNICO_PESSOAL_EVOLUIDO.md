@@ -26,8 +26,10 @@
 1. **Treino:** 14 módulos + oráculo em 1.2s sobre 3770 concursos
 2. **Fontes assimiladas:** motores + oráculos + espectral + informação + recente + física + memória episódica + vetorial
 3. **Decisão única:** vetor supremo → regime → perfil → MCTS pool → forja suprema → juiz 8 critérios + adversarial + NIST + p-value → fingerprint → backtest → verificação exaustiva
-4. **Âncoras 01/02/03:** MESMO processo supremo, apenas âncoras fixas + ranking Magna
-5. **APIs:** /api/magna/suprema, /api/magna/ancoras-123, /api/magna/regime, /api/magna/verificar, /api/magna/chat, /api/magna/fingerprint, /api/magna/perfil
+4. **Forja automática (v11.7):** local do sorteio → telemetria INMET → forja suprema
+5. **APIs:** /api/magna/suprema, /api/magna/inmet, /api/magna/inmet/atualizar,
+   /api/magna/forja-auto, /api/magna/regime, /api/magna/verificar, /api/magna/chat,
+   /api/magna/fingerprint, /api/magna/perfil
 
 ---
 
@@ -224,9 +226,9 @@ Mostra se sistema está aprendendo: curva de acertos subindo = melhorando.
 
 ### Requisito Cumprido: Único Gerador Magna
 
-**Antes v10:** `decidir_e_gerar` e `decidir_ancoradas_01_02_03` usavam fluxos diferentes.
+**Antes v10:** `decidir_e_gerar` e as âncoras usavam fluxos diferentes.
 
-**Agora v11:** Ambos usam **MESMO processo supremo**:
+**Agora v11:** Decisão única, forja suprema e forja automática usam **MESMO processo supremo**:
 
 ```python
 # decidir_suprema (único gerador)
@@ -239,13 +241,14 @@ Mostra se sistema está aprendendo: curva de acertos subindo = melhorando.
 7. Fingerprint SHA256 anti-repetição
 8. Backtest 50 + binomial + curva + verificação exaustiva + explainability + utilidade esperada
 
-# decidir_ancoradas_01_02_03 (mesmo processo)
-Mesmos passos 1-8, apenas cartelas fixas 01/02/03 + 14 dezenas ranking Magna
+# forja_auto (v11.7 — mesmo processo)
+Passos 1-8 + local do sorteio → telemetria INMET (InmetClient → TelemetriaInmet)
+→ definição do boletim no MotorClima (peso restrito 0.03 + auto-auditoria)
 ```
 
 **Validação:**
 - `/api/magna/suprema` → estrategia `suprema-forja-13-7seeds-mcts-conservador`, unico_gerador=True
-- `/api/magna/ancoras-123` → estrategia `ancoradas-01-02-03-suprema`, decisao_unica=True, mesmo pipeline
+- `/api/magna/forja-auto` → local + telemetria INMET + mesma decisão suprema, mesmo pipeline
 - Ambos retornam: julgamento, adversarial, NIST, p-value, backtest, curva, fingerprint, perfil, verificação
 
 ---
@@ -268,14 +271,23 @@ Mesmos passos 1-8, apenas cartelas fixas 01/02/03 + 14 dezenas ranking Magna
 → julgamento, adversarial, nist, p_value, backtest, curva, fingerprint, perfil, utilidade, verificacao, explicacoes
 ```
 
-### POST /api/magna/ancoras-123
+### POST /api/magna/forja-auto (v11.7)
 ```json
 {
-  "perfil": "conservador",
+  "quantidade": 8,
   "orcamento": 100,
+  "alvo": 13,
+  "perfil": "conservador",
+  "segundos_forja": 30,
+  "usar_inmet": true,
   "salvar": true
 }
-→ MESMO pipeline supremo, 3 cartelas 01/02/03
+→ local_do_sorteio + telemetria (INMET oficial → Open-Meteo → neutro) + decisão suprema
+```
+
+### GET /api/magna/inmet
+```text
+→ local_do_sorteio (caixa_remota | banco_local | padrao) + resumo da telemetria
 ```
 
 ### GET /api/magna/regime
@@ -308,8 +320,8 @@ Mesmos passos 1-8, apenas cartelas fixas 01/02/03 + 14 dezenas ranking Magna
 # Decisão única conservadora 8 cartelas 13 pontos 60s suprema
 python gerar_pessoal.py --qtd 8 --orcamento 100 --alvo 13 --perfil conservador --modo suprema --segundos 60 --mcts --multi-rota
 
-# Âncoras 01/02/03 mesmo processo supremo
-python gerar_pessoal.py --ancoras --perfil conservador --chat "por que 22?"
+# Forja automática: local do sorteio → telemetria INMET → forja suprema
+python gerar_pessoal.py --auto --perfil conservador --chat "por que 22?"
 
 # Agressivo caça 15
 python gerar_pessoal.py --qtd 16 --orcamento 200 --alvo 15 --perfil agressivo --modo suprema --segundos 60 --tentativas 2

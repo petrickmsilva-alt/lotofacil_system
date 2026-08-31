@@ -37,7 +37,6 @@ restrito e reavaliado a cada ciclo.
 """
 import csv
 import os
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -630,7 +629,6 @@ class MotorClima:
         if t3.get("aplicavel") and t3.get("top_z"):
             regime = "frio" if temperatura < t3["limiar_temperatura"] \
                 else "quente"
-            outros = "quente" if regime == "frio" else "frio"
             fortes = [
                 x for x in t3["top_z"]
                 if (regime == "frio" and x["frio"] >= x["quente"]

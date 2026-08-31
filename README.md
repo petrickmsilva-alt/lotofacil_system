@@ -107,7 +107,8 @@ acervo  →  frequências · streaks · recorde · repetição por dezena
         ↓
 fonte `abertura` do consenso (peso default 4%, atenuada pelo veredito)
         ↓
-decisão · interpretação por cartela · 9º critério do Juiz · âncoras 01/02/03
+decisão · interpretação por cartela · 9º critério do Juiz
+        →  forja automática (v11.7): local do sorteio → telemetria INMET → forja suprema
         ↓
 conferência → o palpite de abertura é julgado → pesos e memória reajustados
 ```

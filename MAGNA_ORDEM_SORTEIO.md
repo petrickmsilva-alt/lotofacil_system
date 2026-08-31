@@ -187,7 +187,7 @@ excluir ninguém.
 
 - `core/cerebro_ia.py` — `AcervoAberturaMagna` (estatística, previsão, placar,
   auditoria) + a integração no `CerebroIA` (`assimilar_acervo`,
-  `evidencia_abertura`, `ancoras_do_acervo`, `aprender_ordem_sorteio`,
+  `evidencia_abertura`, `acervo.proximas_aberturas`, `aprender_ordem_sorteio`,
   `conhecimento`, `calibrar_pesos_walkforward`)
 - `core/magna_suprema.py` — 9º critério do Juiz (`cobertura_abertura`)
 - `database/db_manager.py` — tabela `ordem_sorteio` (CHECK 1–25, upsert) e

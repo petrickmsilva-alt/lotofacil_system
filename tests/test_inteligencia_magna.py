@@ -38,14 +38,16 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["n_cartelas"] == 1
     assert resultado["decisao_id"] is not None
     # v11.4 — o acervo de abertura (base histórica inteira) entrou como
-    # conhecimento assimilado: são 7 fontes de leitura dentro da Magna.
-    assert len(resultado["fontes_assimiladas"]) == 7
+    # conhecimento assimilado: são 7 fontes de leitura dentro da Magna;
+    # v11.7 — telemetria INMET por local do sorteio (8ª fonte assimilada).
+    assert len(resultado["fontes_assimiladas"]) == 8
     assert any("acervo" in f for f in resultado["fontes_assimiladas"])
     # v11.2 — clima entrou no consenso; v11.4 — a fonte `ordem` (módulo
-    # paralelo) virou `abertura`: órgão da própria Magna.
+    # paralelo) virou `abertura`: órgão da própria Magna; v11.7 — telemetria
+    # INMET por local do sorteio entrou como fonte leve.
     assert set(resultado["pesos_fontes"]) == {
         "motores", "oraculos", "espectral", "informacao", "recente",
-        "fisica", "clima", "abertura",
+        "fisica", "clima", "abertura", "inmet",
     }
     assert abs(sum(resultado["pesos_fontes"].values()) - 1.0) < 1e-5
     assert len(resultado["top15_magna"]) == 15
@@ -156,28 +158,41 @@ def test_ciclo_pos_sorteio_assimila_e_planeja(tmp_path):
     assert "autocritica" in out
 
 
-def test_ancoras_01_02_03_usam_memoria_unica(magna_decisao):
-    magna, _ = magna_decisao
-    r = magna.decidir_ancoradas_01_02_03(registrar=False, concurso_alvo=10001)
-    assert r["n_cartelas"] == 3
-    # v11: a família "ancoradas-01-02-03" ganhou o sufixo "-suprema".
-    # O contrato travado é a família (prefixo), não o rebranding.
-    assert r["estrategia"].startswith("ancoradas-01-02-03")
-    c1, c2, c3 = (c["dezenas"] for c in r["cartelas"])
-    # Cartela 1 começa com a dezena 01.
-    assert c1[0] == 1
-    # Cartela 2 começa com a dezena 02 e NÃO contém a dezena 01.
-    assert c2[0] == 2
-    assert 1 not in c2
-    # Cartela 3 começa com a dezena 03 e NÃO contém as dezenas 01 e 02.
-    assert c3[0] == 3
-    assert 1 not in c3
-    assert 2 not in c3
-    for c in r["cartelas"]:
-        assert len(c["dezenas"]) == 15
-        assert len(set(c["dezenas"])) == 15
-        assert all(1 <= d <= 25 for d in c["dezenas"])
-    assert all(r["validacao_ancoras"].values())
+def test_decidir_suprema_registra_sem_keyerror(tmp_path):
+    """Regressão: `_registrar_decisao_magna` quebrava com KeyError
+    'diagnostico_magna' quando a suprema registrava o lote (CLI --auto
+    --salvar / API com salvar=True)."""
+    caminho = tmp_path / "suprema_reg.db"
+    shutil.copy2(DATABASE_PATH, caminho)
+    magna = InteligenciaMagna(db_path=str(caminho), n_cartelas=2)
+    resultado = magna.decidir_suprema(
+        quantidade=2, orcamento=30.0, alvo=13, perfil="equilibrado",
+        segundos_forja=2.0, tentativas_juiz=1, usar_mcts=False,
+        usar_multi_rota=False, registrar=True, concurso_alvo=10001,
+    )
+    assert resultado["status"] == "ok"
+    assert resultado["decisao_id"] is not None
+    assert "diagnostico_magna" in resultado
+    assert "memoria_magna" in resultado
+    reg = magna.get_historico_magna(1)[0]
+    assert reg["id"] == resultado["decisao_id"]
+    assert reg["status"] == "aguardando"
+
+
+def test_inmet_e_fonte_do_consenso(magna_decisao):
+    magna, resultado = magna_decisao
+    # v11.7 — telemetria INMET integrada à Magna como fonte leve (sem dados
+    # o vetor é uniforme: fonte neutra, nunca inventa medição).
+    assert "inmet" in magna._FONTES_MAGNA_DEFAULT
+    assert "inmet" in resultado["pesos_fontes"]
+    assert "inmet" in magna.get_status()["inteligencia_magna"]["pesos_fontes"]
+    assert magna.get_status()["inmet"]["n_registros"] == 0
+    fontes, *_ = magna._fontes_assimiladas_magna()
+    vetor_inmet = fontes["inmet"]
+    assert len(vetor_inmet) == 25
+    # vetor normalizado para o consenso (soma = 1, uniforme sem telemetria)
+    assert abs(float(vetor_inmet.sum()) - 1.0) < 1e-6
+    assert np.allclose(vetor_inmet, np.ones(25) / 25.0, atol=1e-6)
 
 
 def test_aprendizado_grava_episodio_de_retencao(magna_decisao):

@@ -34,13 +34,13 @@ import os
 import sqlite3
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
 from config import (
     BORDA, DATABASE_PATH, DEZENAS_POR_JOGO, FIBONACCI, PRIMOS,
-    QUADRANTES, TOTAL_DEZENAS, VALOR_APOSTA,
+    QUADRANTES, TOTAL_DEZENAS,
 )
 from database.db_manager import DBManager
 
@@ -596,13 +596,11 @@ class LaboratorioMagna:
         if n < 60:
             return {"status": "erro", "msg": "base insuficiente (mínimo 60)"}
 
-        treino_min = min(60, n - n_testes)
         acumulado: Dict[str, List[int]] = {
             nome: [] for nome in ESTRATEGIAS_BASE
         }
         erros_dict: Dict[str, float] = {nome: 0.0 for nome in ESTRATEGIAS_BASE}
         aleatorio_hits: List[int] = []
-        detalhes: List[Dict] = []
 
         for t in range(n - n_testes, n):
             treino = self.matriz[:t]

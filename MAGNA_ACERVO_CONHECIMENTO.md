@@ -72,10 +72,9 @@ O acervo não gera cartela nenhuma. Ele **participa do mesmo processo** que gera
    critério nunca vira cota para lote pequeno: ou alguma cartela abre pela dezena
    mais provável do conhecimento, ou (lote ≥ 3) a união das aberturas cobre
    ≥ 85% da massa;
-5. **âncoras 01/02/03** — `decidir_ancoradas_01_02_03()` não chumba o trio: chama
-   `ancoras_do_acervo(3)`, que devolve as três aberturas mais prováveis do
-   posterior. Hoje o resultado coincide com a intuição (01 > 02 > 03) porque a
-   base ensina isso, não porque o código repete;
+5. **fonte INMET (v11.7)** — a telemetria por local do sorteio entrou como
+   fonte leve do consenso (`peso 0.03`), pré-alimentada pela forja automática;
+   **âncoras 01/02/03 foram removidas** nesta versão;
 6. **palpite registrado** — cada decisão grava em `magna_decisoes.analise_json`
    o `memoria.palpite_abertura` (ranking + probabilidades + `digest` do
    conhecimento usado) antes de existir qualquer resultado.
@@ -161,7 +160,7 @@ Python:
 magna = InteligenciaMagna()                 # já nasce com o acervo lido
 magna.assimilar_acervo(forcar=True, calibrar_fontes=True)
 magna.evidencia_abertura()                  # o que entra na decisão e no Juiz
-magna.ancoras_do_acervo(3)                  # âncoras aprendidas
+magna.acervo.proximas_aberturas(3)         # top 3 aberturas da base
 magna.conhecimento(detalhes=True)            # inventário + memória + pesos
 magna.placar_abertura_memoria()              # palpite × conferência
 magna.diagnostico_aprendizado()              # o que ela aprendeu, sem retoque
@@ -195,7 +194,7 @@ idempotência do aprendizado, streaks, repetição por dezena, posterior,
 walk-forward sem vazamento, veredito `REAL` em série com sinal e `RUÍDO` sob
 independência, digest, `afinidade_cartela`, `avaliar_palpite`, os 8 nomes de
 fonte do consenso, persistência em `magna_conhecimento`/`magna_memoria`,
-presença do acervo na decisão única/suprema/âncoras, julgamento do palpite na
+presença do acervo na decisão única/suprema/forja-auto, julgamento do palpite na
 conferência, ingestão da ordem real e a migração dos pesos gravados com a chave
 antiga `ordem`. `tests/conftest.py` roda tudo em modo somente-leitura.
 

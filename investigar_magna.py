@@ -18,15 +18,11 @@ Exemplos:
 import argparse
 import os
 import sys
-from datetime import datetime
-
-import numpy as np
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if THIS_DIR not in sys.path:
     sys.path.insert(0, THIS_DIR)
 
-from database.db_manager import DBManager
 from core.cerebro_ia import InteligenciaMagna
 
 

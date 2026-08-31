@@ -441,7 +441,7 @@ def api_magna_verificar():
         # backtest opcional
         backtest = {}
         try:
-            from core.magna_suprema import BacktestLote, TesteBinomial, CurvaAprendizado, TesteNIST, PValueRandom, JuizAdversarial
+            from core.magna_suprema import BacktestLote, CurvaAprendizado, TesteNIST, PValueRandom, JuizAdversarial
             backtest = BacktestLote().testar(cartelas, magna.matriz, janela=50)
             nist = TesteNIST().testar(cartelas)
             pval = PValueRandom().calcular(ver.get("p13_exata",0), len(cartelas), alvo=13)
@@ -485,8 +485,6 @@ def api_magna_chat():
                 for nome, v in fontes.items():
                     vetor += v * pesos[nome]
                 vetor = magna._normalizar_vetor(vetor)
-                # último lote se existir
-                ultimo = magna.decisoes.get("magna")
                 contexto = {
                     "vf": vetor,
                     "fontes": fontes,
@@ -598,33 +596,99 @@ def api_magna_forja_menu():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
-@app.route("/api/magna/ancoras-123", methods=["POST"])
-def api_magna_ancoras_123():
-    """Comando extra: 3 cartelas âncora 01,02,03 + 14 dezenas Magna — MESMO PROCESSO SUPREMO ÚNICO."""
+# ============================================================
+# API — TELEMETRIA INMET POR LOCAL DO SORTEIO (v11.7)
+# ============================================================
+
+def _forja_auto_instance():
+    from core.forja_auto import ForjaAutomatica
+    return ForjaAutomatica(magna=magna, db_path=getattr(db, "db_path", None))
+
+
+@app.route("/api/magna/inmet")
+def api_magna_inmet():
+    """Estado da telemetria INMET: local do sorteio + última consulta."""
+    try:
+        auto = _forja_auto_instance()
+        local = auto.local_do_sorteio(usar_rede=False)
+        return jsonify({
+            "status": "ok",
+            "versao": "11.7-telemetria-inmet",
+            "local_do_sorteio": local,
+            "telemetria_banco": auto.telemetria.resumo(),
+            "historico": auto.telemetria.historico(10),
+        })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/inmet/atualizar", methods=["POST"])
+def api_magna_inmet_atualizar():
+    """Busca a telemetria INMET do local do sorteio e persiste."""
     try:
         dados = request.get_json() or {}
-        salvar = bool(dados.get("salvar", True))
-        perfil = dados.get("perfil", "equilibrado")
-        orcamento = float(dados.get("orcamento", 100.0))
-        resultado = magna.decidir_ancoradas_01_02_03(
-            registrar=salvar,
-            orcamento=orcamento,
-            perfil=perfil,
+        auto = _forja_auto_instance()
+        local = auto.local_do_sorteio(usar_rede=True)
+        parcela = auto.coletar_telemetria(
+            local_dados=local,
+            concurso=(int(dados["concurso"])
+                      if dados.get("concurso") is not None else None),
+            salvar=bool(dados.get("salvar", True)),
         )
+        return jsonify({
+            "status": "ok",
+            "versao": "11.7-telemetria-inmet",
+            "local_do_sorteio": local,
+            "fonte": parcela.get("fonte"),
+            "telemetria": parcela.get("telemetria"),
+            "condicoes_clima": parcela.get("condicoes_clima"),
+            "registrada": bool(dados.get("salvar", True)),
+        })
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
+@app.route("/api/magna/forja-auto", methods=["POST"])
+def api_magna_forja_auto():
+    """Forja automática: local do sorteio → telemetria INMET → forja suprema."""
+    try:
+        dados = request.get_json() or {}
+        auto = _forja_auto_instance()
+        resultado = auto.executar(
+            quantidade=int(dados.get("quantidade", 8)),
+            orcamento=float(dados.get("orcamento", 100.0)),
+            alvo=int(dados.get("alvo", 13)),
+            perfil=dados.get("perfil", "equilibrado"),
+            segundos_forja=float(dados.get("segundos_forja",
+                                           dados.get("segundos", 30.0))),
+            salvar=bool(dados.get("salvar", True)),
+            usar_inmet=bool(dados.get("usar_inmet", True)),
+            persistir_telemetria=bool(dados.get("persistir_telemetria", True)),
+        )
+        if resultado.get("status") != "ok":
+            return jsonify(resultado), 502
+        decisao = resultado.get("decisao") or {}
         salvos = 0
-        if salvar and resultado.get("n_cartelas", 0) > 0:
+        if dados.get("salvar", True) and decisao.get("n_cartelas", 0) > 0:
             salvos = _salvar_cartelas_banco(
-                resultado["cartelas"], resultado["concurso_alvo"],
-                tipo="inteligencia_magna", modo=resultado["estrategia"],
-                grupo_elite=resultado.get("pool_elite"),
-                cobertura=(resultado.get("analise") or {}).get(
+                decisao["cartelas"], decisao.get("concurso_alvo"),
+                tipo="magna_forja_auto", modo=decisao.get("estrategia"),
+                grupo_elite=decisao.get("pool_elite"),
+                cobertura=(decisao.get("analise") or {}).get(
                     "p_melhor_14_mais", 0),
             )
         return jsonify({
             "status": "ok",
-            "resultado": resultado,
+            "versao": "11.7-forja-auto-inmet",
+            "local_do_sorteio": resultado.get("local"),
+            "telemetria": resultado.get("telemetria"),
+            "decisao": decisao,
             "salvas": salvos,
-            "concurso": resultado.get("concurso_alvo"),
+            "concurso": decisao.get("concurso_alvo"),
         })
     except (TypeError, ValueError) as exc:
         return jsonify({"status": "erro", "msg": str(exc)}), 400

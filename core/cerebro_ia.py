@@ -40,6 +40,13 @@ try:
 except Exception as _e_clima:
     print(f"[AVISO] clima_lotofacil import: {_e_clima}")
 
+# v11.7 — Telemetria INMET por local do sorteio (fonte de evidência)
+try:
+    from .inmet import TelemetriaInmet
+except Exception as _e_inmet:
+    print(f"[AVISO] inmet import: {_e_inmet}")
+    TelemetriaInmet = None
+
 # Forja v2 extraordinária + Suprema v10
 try:
     from .forja_lotes import MotorGrafos, melhor_rota_por_orcamento, ForjaDeLotes, GeometriaJohnson, MapaInformacional
@@ -1128,7 +1135,7 @@ class AcervoAberturaMagna:
 
     def proximas_aberturas(self, k: int = 3,
                            canal: str = "minima") -> List[int]:
-        """As k aberturas mais prováveis do próximo concurso (p/ âncoras)."""
+        """As k aberturas mais prováveis do próximo concurso."""
         probs = self.posterior(canal)
         ordem = sorted(probs, key=lambda d: probs[d], reverse=True)
         return [int(d) for d in ordem[:max(1, int(k))]]
@@ -1494,7 +1501,7 @@ class CerebroIA:
     # memorizado no banco), e não por um módulo separado. O peso é um teto de
     # influência: sobe apenas se a auto-auditoria walk-forward medir lift.
     _FONTES_MAGNA_DEFAULT = {
-        "motores": 0.36,
+        "motores": 0.33,
         "oraculos": 0.18,
         "espectral": 0.10,
         "informacao": 0.10,
@@ -1502,6 +1509,7 @@ class CerebroIA:
         "fisica": 0.08,
         "clima": 0.05,
         "abertura": 0.04,
+        "inmet": 0.03,
     }
 
     # Chaves do acervo persistidas em magna_conhecimento
@@ -1597,6 +1605,19 @@ class CerebroIA:
         self._log("INIT", "Clima v11.2: {} registros, auto-auditoria ativa".format(
             self.clima.n_registros))
 
+        # v11.7 — Telemetria INMET por local do sorteio. Fonte de evidência
+        # leve (peso 0.03 no consenso): persistida por concurso e reusada;
+        # quando não há dados, o vetor é uniforme (fonte neutra).
+        if TelemetriaInmet is not None:
+            try:
+                self.inmet = TelemetriaInmet(self.db_path)
+            except Exception as _e_inmet:
+                self.inmet = None
+                print(f"[AVISO] TelemetriaInmet init: {_e_inmet}")
+        else:  # pragma: no cover — fallback neutro
+            self.inmet = None
+        self._log("INIT", "INMET v11.7: {} registros de telemetria".format(
+            self.inmet.resumo().get("n_registros", 0) if self.inmet else 0))
         # v11.4 — os padrões de abertura DEIXARAM DE SER UM MÓDULO. Eles são o
         # acervo da própria Magna (AcervoAberturaMagna), montado logo abaixo,
         # depois das tabelas de memória, para já nascer aprendido e memorizado.
@@ -1655,7 +1676,7 @@ class CerebroIA:
         # A Magna já nasce aprendendo: ela varre a base histórica, mede a
         # abertura em dois canais, calibra o peso das próprias fontes em
         # walk-forward e MEMORIZA tudo em magna_conhecimento/magna_memoria.
-        # É o mesmo acervo que alimenta o vetor, o Juiz e as âncoras de cada
+        # É o mesmo acervo que alimenta o vetor e o Juiz de cada
         # cartela — não existe módulo, painel ou gerador paralelo.
         self._aberturas_vivas: Dict[int, int] = {}
         self.acervo = self._montar_acervo_abertura()
@@ -2263,8 +2284,10 @@ class CerebroIA:
             result = []
             for r in rows:
                 d = dict(r)
-                try: d["dezenas"] = json.loads(d.get("dezenas", "[]"))
-                except: d["dezenas"] = []
+                try:
+                    d["dezenas"] = json.loads(d.get("dezenas", "[]"))
+                except Exception:
+                    d["dezenas"] = []
                 result.append(d)
             return result
         except Exception:
@@ -2945,6 +2968,16 @@ class CerebroIA:
             vetor_abertura = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS)
 
+        # v11.7 — Fonte INMET: telemetria por local do sorteio. Apenas um
+        # tilt leve (±10% no máximo, puxado pela pressão do local medido
+        # pelo INMET). Sem telemetria, o vetor é uniforme → fonte neutra
+        # (a Magna a ignora no consenso, exatamente como as demais).
+        try:
+            vetor_inmet = self._normalizar_vetor(self.inmet.vetor_inmet())
+        except Exception:
+            vetor_inmet = self._normalizar_vetor(
+                np.ones(TOTAL_DEZENAS, dtype=float))
+
         fontes = {
             "motores": vetor_motores,
             "oraculos": vetor_oraculos,
@@ -2954,6 +2987,7 @@ class CerebroIA:
             "fisica": vetor_fisica,
             "clima": vetor_clima,
             "abertura": vetor_abertura,
+            "inmet": vetor_inmet,
         }
         return fontes, consulta, espectro, informacao, entropias
 
@@ -3662,25 +3696,7 @@ class CerebroIA:
             detalhe=julgamento)
         return julgamento
 
-    def ancoras_do_acervo(self, k: int = 3) -> List[int]:
-        """As k dezenas que a Magna escolhe para ancorar cartelas.
 
-        Vêm do acervo de abertura (aprendido da base histórica inteira e
-        memorizado), não de um trio chumbado no código. Como o conhecimento
-        medido aponta 01 > 02 > 03, o resultado coincide com a intuição
-        popular — com a diferença de que agora há origem, placar e digest.
-        """
-        k = max(1, int(k))
-        try:
-            top = [int(d) for d in self.acervo.proximas_aberturas(k)]
-        except Exception:
-            top = []
-        for d in (1, 2, 3):
-            if len(top) >= k:
-                break
-            if d not in top:
-                top.append(int(d))
-        return (top[:k] or [1, 2, 3])
 
     def abertura_para_o_juiz(self, cartelas: Optional[List[List[int]]] = None
                              ) -> Dict[str, Any]:
@@ -4004,6 +4020,7 @@ class CerebroIA:
                 "wheeling 14/15", "análise histórica e recente",
                 "singularidade e filtros avançados", "auditoria e aprendizado",
                 "acervo de abertura (base histórica inteira)",
+                "telemetria INMET (local do sorteio)",
             ],
             "pesos_fontes": pesos,
             "acervo_magna": evidencia_abertura,
@@ -4080,9 +4097,11 @@ class CerebroIA:
                 str(resultado["estrategia"]),
                 json.dumps(self._json_seguro(resultado["cartelas"])),
                 json.dumps(self._json_seguro({
-                    "memoria": resultado["memoria_magna"],
-                    "diagnostico": resultado["diagnostico_magna"],
-                    "analise_lote": resultado["analise"],
+                    # acessos defensivos: qualquer decisor (única, suprema,
+                    # forja automática) registra sem quebrar o ciclo
+                    "memoria": resultado.get("memoria_magna") or {},
+                    "diagnostico": resultado.get("diagnostico_magna") or {},
+                    "analise_lote": resultado.get("analise") or {},
                 })),
                 str(resultado["justificativa_magna"]),
             ))
@@ -4495,296 +4514,7 @@ class CerebroIA:
             "plano": self._planejar_alvo_13_14_15(),
         }
 
-    def decidir_ancoradas_01_02_03(self, registrar=True, concurso_alvo=None,
-                                  orcamento: float = 100.0, perfil: str = "equilibrado"):
-        """Opção extra: 3 cartelas âncora exclusivas + 14 dezenas da Magna — MESMO PROCESSO SUPREMO.
 
-        Regras (v11.4 — âncoras decididas pelo acervo, não chumbadas):
-        - as 3 âncoras são as aberturas mais prováveis QUE A MAGNA APRENDEU da
-          base histórica (hoje: 01, 02 e 03 — porque a medição confirma a
-          intuição, não porque o código a repete);
-        - Cartela 1: âncora 1 + 14 dezenas ranking Magna
-        - Cartela 2: âncora 2 + 14 dezenas, SEM a âncora 1
-        - Cartela 3: âncora 3 + 14 dezenas, SEM as âncoras 1 e 2
-        Usa todo o pipeline supremo: regime adaptativo, memória vetorial, EWC, meta por regime,
-        perfil risco, MCTS, juiz 9 critérios + adversarial + NIST + p-value, fingerprint SHA256,
-        backtest walk-forward, binomial, curva aprendizado, verificação exaustiva, explainability.
-        Único gerador: Inteligência Magna.
-        """
-        with self._magna_lock:
-            if not self.treinado:
-                self.treinar()
-            # v11.4 — as âncoras deixaram de ser um trio chumbado no código: a
-            # Magna decide quais dezenas ancoram o lote a partir do próprio
-            # acervo de abertura (aprendido da base histórica e memorizado).
-            # Como o conhecimento medido aponta exatamente 01 > 02 > 03, o
-            # resultado coincide com a intuição do usuário — mas agora com
-            # origem, placar walk-forward e digest auditáveis.
-            self._garantir_acervo()
-            evidencia_abertura = self.evidencia_abertura()
-            ancoras_do_acervo = self.ancoras_do_acervo(3)
-            self._log("ANCORAS", "âncoras decididas pelo acervo: {} — {}".format(
-                ancoras_do_acervo, self.acervo.leitura()))
-            # Usa o MESMO processo supremo da decisão única (regime, memória,
-            # EWC, MCTS, juiz, fingerprint, backtest, verificação exaustiva).
-
-            # 1. Regime adaptativo
-            regime = {}
-            try:
-                if DetectorRegime is not None:
-                    det = DetectorRegime(self.matriz)
-                    regime = det.detectar_adaptativo(janela=100)
-            except Exception:
-                regime = {"regime_atual": 0, "descricao": "fallback"}
-
-            # 2. Fontes + pesos por regime (meta)
-            fontes, consulta, espectro, informacao, entropias = self._fontes_assimiladas_magna()
-            pesos_default = dict(self.pesos_fontes_magna)
-            try:
-                if MetaAprendizadoRegime is not None:
-                    if not hasattr(self, "_meta_regime"):
-                        self._meta_regime = MetaAprendizadoRegime()
-                    pesos = self._meta_regime.obter_pesos_regime(regime.get("regime_atual",0), pesos_default)
-                else:
-                    pesos = pesos_default
-            except Exception:
-                pesos = pesos_default
-
-            vetor = np.zeros(TOTAL_DEZENAS, dtype=float)
-            for nome, v in fontes.items():
-                vetor += v * pesos[nome]
-            vetor = self._aplicar_memoria_episodica(self._normalizar_vetor(vetor))
-
-            # 3. Perfil risco
-            try:
-                perfil_obj = PerfilRiscoPessoal(perfil) if PerfilRiscoPessoal else None
-            except Exception:
-                perfil_obj = None
-
-            # 4. Ranking + fingerprint
-            ranking = [int(x) for x in (np.argsort(vetor)[::-1] + 1)]
-            try:
-                fp = FingerprintPessoal(self.db) if FingerprintPessoal else None
-                if fp:
-                    fp.carregar_historico()
-            except Exception:
-                fp = None
-
-            # 5. Geração âncoras com mesmo rigor supremo (pool extraordinário + MCTS opcional)
-            bloqueadas = self._carregar_episodios("repulsao", 150)
-            sets_ruins = [set(e["dezenas"]) for e in bloqueadas]
-            ancoras = list(ancoras_do_acervo)
-            excluidas_por_ancora = {pos: set(ancoras[:pos - 1])
-                                    for pos in range(1, len(ancoras) + 1)}
-            cartelas_raw = []
-            usadas = []
-            for ancora in ancoras:
-                excluidas = excluidas_por_ancora[ancora]
-                escolhidas = [ancora]
-                for d in ranking:
-                    if d in escolhidas or d in excluidas:
-                        continue
-                    cand = escolhidas + [d]
-                    if len(cand) < 15:
-                        escolhidas.append(d)
-                        continue
-                    s = set(cand)
-                    if any(len(s & r) >= 14 for r in sets_ruins):
-                        continue
-                    if any(len(s & set(u)) >= 14 for u in usadas):
-                        continue
-                    if fp and fp.ja_foi_gerada(cand):
-                        continue
-                    escolhidas.append(d)
-                    if len(escolhidas) >= 15:
-                        break
-                while len(escolhidas) < 15:
-                    for d in ranking:
-                        if d not in escolhidas and d not in excluidas:
-                            escolhidas.append(d)
-                            break
-                dez = sorted(escolhidas[:15])
-                usadas.append(dez)
-                if fp:
-                    fp.registrar(dez)
-                cartelas_raw.append(dez)
-
-            # 6. Pool elite supremo (MCTS opcional)
-            try:
-                if MCTSPool is not None and self.n >= 50:
-                    mcts = MCTSPool(self.matriz)
-                    pool_elite = mcts.buscar(vetor, tam=17, iteracoes=600)
-                else:
-                    pool_elite = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vetor, 17))
-            except Exception:
-                pool_elite = sorted(int(d) for d in self._selecionar_elite_extraordinaria(vetor, 17))
-
-            # 7. Análise exata
-            analise = self.wheeling.analisar_lote(cartelas_raw, pool_elite)
-
-            # 8. Juiz + adversarial + NIST + p-value
-            julgamento = {}
-            adv = {}
-            nist = {}
-            pval = {}
-            try:
-                if JuizMagna is not None:
-                    julgamento = JuizMagna(self.matriz).julgar(
-                        cartelas_raw, pool_elite, analise, vetor,
-                        self._mascaras_sorteios_15(),
-                        abertura=self.abertura_para_o_juiz())
-                if JuizAdversarial is not None:
-                    adv = JuizAdversarial().julgar(cartelas_raw, pool_elite)
-                if TesteNIST is not None:
-                    nist = TesteNIST().testar(cartelas_raw)
-                if PValueRandom is not None:
-                    pval = PValueRandom().calcular(analise.get("p_melhor_13_mais",0), len(cartelas_raw), alvo=13)
-            except Exception as exc:
-                julgamento = {"veredito": "APROVADO", "nota": 0.8, "erro": str(exc)}
-
-            # 9. Backtest + binomial + curva
-            backtest = {}
-            curva = {}
-            try:
-                if BacktestLote is not None:
-                    backtest = BacktestLote().testar(cartelas_raw, self.matriz, janela=50)
-                if CurvaAprendizado is not None:
-                    curva = CurvaAprendizado(self.get_historico_magna(50)).curva()
-            except Exception:
-                pass
-
-            # 10. Verificação exaustiva
-            verificacao = {}
-            try:
-                if VerificadorMagno is not None:
-                    verificacao = VerificadorMagno().verificar(cartelas_raw, pool_elite)
-            except Exception:
-                pass
-
-            # 11. Explainability
-            explicacoes = []
-            try:
-                if ExplainabilityMagna is not None:
-                    exp = ExplainabilityMagna()
-                    explicacoes = exp.explicar_lote(cartelas_raw, vetor, fontes, np.asarray(consulta["votos"], dtype=int))
-            except Exception:
-                pass
-
-            # Monta resultado com MESMA estrutura da decisão única
-            cartelas = []
-            for idx, dez in enumerate(cartelas_raw):
-                _, det = self._gaussiano.filtrar(dez)
-                cartelas.append({
-                    "dezenas": dez,
-                    "ancora": ancoras[idx] if idx < len(ancoras) else None,
-                    "ancora_escolhida_por": "acervo de abertura da Magna",
-                    "dezenas_excluidas": sorted(
-                        excluidas_por_ancora.get(idx + 1, set())),
-                    "bitmask": self._mask_de_dezenas(dez),
-                    "score_total": round(float(sum(vetor[d - 1] for d in dez)), 6),
-                    "soma": det.get("soma"), "pares": det.get("pares"),
-                    "primos": det.get("primos"), "fibonacci": det.get("fibonacci"),
-                    "borda": det.get("borda"),
-                    "scores": {"ev_prob": round(float(sum(vetor[d - 1] for d in dez)), 4)},
-                    "interpretacao_magna": {
-                        "filtros_avancados": {"score_avancado": 0.5},
-                        "contribuicoes_fontes": {},
-                        "votos_oraculo": {},
-                        "convergencia_media": 0.0,
-                        "abertura": self.acervo.afinidade_cartela(dez),
-                    },
-                    "explicacao": explicacoes[idx] if idx < len(explicacoes) else {},
-                })
-
-            resultado = {
-                "status": "ok",
-                "identidade": "Inteligência Magna Suprema v11 — Âncoras",
-                "versao_suprema": "11.0",
-                "decisao_unica": True,
-                "potencia_maxima": True,
-                "uso_pessoal": True,
-                "estrategia": "ancoradas-{}-suprema".format(
-                    "-".join("{:02d}".format(d) for d in ancoras)),
-                "n_cartelas": 3,
-                "cartelas": cartelas,
-                "pool_elite": pool_elite,
-                "custo": round(3 * VALOR_APOSTA, 2),
-                "analise": analise,
-                "justificativa_magna": (
-                    "Âncoras {} decididas pelo ACERVO de abertura da Magna "
-                    "(não são um trio chumbado: vêm do que a base histórica "
-                    "ensinou) via MESMO processo supremo: regime adaptativo "
-                    "K-means, memória vetorial atenção, EWC, meta por regime, "
-                    "perfil risco, MCTS pool, juiz 9 critérios + adversarial "
-                    "+ NIST + p-value, fingerprint SHA256, backtest 50, "
-                    "verificação exaustiva. Cartela i = âncora + 14 dezenas "
-                    "do ranking, sem as âncoras anteriores. Único gerador Magna."
-                    .format("/".join("{:02d}".format(d) for d in ancoras))
-                ),
-                "validacao_ancoras": {
-                    "ancoras_vem_do_acervo": True,
-                    "cada_cartela_abre_com_sua_ancora": all(
-                        cartelas[i]["dezenas"][0] == ancoras[i]
-                        for i in range(len(cartelas))),
-                    "ancoras_anteriores_excluidas": all(
-                        all(prev not in cartelas[i]["dezenas"]
-                            for prev in ancoras[:i])
-                        for i in range(len(cartelas))),
-                    "abertura_da_base": self.acervo.estado(),
-                },
-                "regime": regime,
-                "julgamento": julgamento,
-                "julgamento_adversarial": adv,
-                "teste_nist": nist,
-                "p_value_random": pval,
-                "backtest_lote": backtest,
-                "curva_aprendizado": curva,
-                "verificacao_exaustiva": verificacao,
-                "explicacoes": explicacoes,
-                "fingerprint": fp.relatorio() if fp else {},
-                "perfil_risco": perfil_obj.relatorio() if perfil_obj else {},
-                "fontes_assimiladas": ["geração combinatória", "consenso dos oráculos", "wheeling 14/15", "análise histórica e recente", "singularidade e filtros avançados", "auditoria e aprendizado", "memoria_vetorial", "regime", "ewc", "meta_regime", "mcts", "perfil_risco", "acervo de abertura (base histórica inteira)"],
-                "pesos_fontes": pesos,
-                "top15_magna": ranking[:15],
-                "diagnostico_magna": {
-                    "hurst_medio": 0.5,
-                    "entropia_permutacao_media": 0.0,
-                    "taxa_aprovacao_filtro": getattr(self._gaussiano, "taxa_aprovacao_historica", None),
-                    "kelly": 0,
-                },
-                "memoria_magna": {
-                    "top15_fontes": {n: [int(x) for x in (np.argsort(v)[::-1][:15] + 1)] for n, v in fontes.items()},
-                    "vetor_final": [round(float(x), 10) for x in vetor],
-                    "pesos_fontes": pesos,
-                    "acervo": {
-                        "versao": self.ACERVO_VERSAO,
-                        "digest": evidencia_abertura["digest"],
-                        "aprendido_ate": evidencia_abertura["aprendido_ate"],
-                        "concursos_da_base": evidencia_abertura["concursos_da_base"],
-                        "veredito": evidencia_abertura["veredito"],
-                        "fator_confianca": evidencia_abertura["fator_confianca"],
-                        "leitura": evidencia_abertura["leitura"],
-                        "placar_walkforward": evidencia_abertura["placar"],
-                        "ancoras": ancoras,
-                    },
-                    "palpite_abertura": {
-                        "digest": evidencia_abertura["digest"],
-                        "ranking": evidencia_abertura["ranking"],
-                        "probabilidades": evidencia_abertura["probabilidades"],
-                        "abertura_atual": evidencia_abertura["abertura_atual"],
-                        "recorde": evidencia_abertura["recorde"],
-                    },
-                },
-                "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0) + 1),
-                "verdade_honesta": "Âncoras escolhidas pelo acervo de abertura não alteram a hipergeométrica: 13≈1/692, 14≈1/21.800, 15=1/3.268.760. Mesmo processo supremo da decisão única — a âncora é estrutura, não vantagem.",
-            }
-            # agentes
-            try:
-                resultado["agentes_magna"] = self._agentes_autonomos_refinar(resultado, vetor, fontes)
-            except Exception:
-                pass
-            resultado["decisao_id"] = self._registrar_decisao_magna(resultado) if registrar else None
-            return self._json_seguro(resultado)
 
 
 
@@ -4868,8 +4598,8 @@ class CerebroIA:
 
         v11.4 — o acervo de conhecimento é a primeira resposta: a Magna já
         aprendeu da base histórica inteira ANTES de existir qualquer decisão
-        conferida, e é o mesmo acervo que alimenta o vetor, o Juiz e as
-        âncoras de cada cartela.
+        conferida, e é o mesmo acervo que alimenta o vetor e o Juiz de
+        cada cartela.
         """
         ret = self.get_retencao(20)
         pesos = dict(self.pesos_fontes_magna)
@@ -5181,7 +4911,7 @@ class CerebroIA:
         - Entender: explainability LLM, fingerprint SHA256
         - Verificar: backtest walk-forward lote 50, binomial significância, curva aprendizado
 
-        Fluxo supremo único (mesmo para âncoras):
+        Fluxo supremo único:
         1. Detecta regime adaptativo K-means
         2. Pesos por regime meta + EWC
         3. Vetor supremo com memória vetorial atenção
@@ -5499,7 +5229,7 @@ class CerebroIA:
                     f"acervo de conhecimento {evidencia_abertura['digest']} aprendido até o concurso {evidencia_abertura['aprendido_ate']} "
                     f"(veredito {evidencia_abertura['veredito']}, fator {evidencia_abertura['fator_confianca']}) — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","inmet","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -5549,6 +5279,15 @@ class CerebroIA:
                     "abertura_atual": evidencia_abertura["abertura_atual"],
                     "recorde": evidencia_abertura["recorde"],
                 },
+            }
+            # mesmo contrato da decisão única: o painel do /cerebro lê
+            # `diagnostico_magna` (hurst, entropia, filtro, kelly)
+            resultado["diagnostico_magna"] = {
+                "hurst_medio": 0.5,
+                "entropia_permutacao_media": 0.0,
+                "taxa_aprovacao_filtro": getattr(
+                    self._gaussiano, "taxa_aprovacao_historica", None),
+                "kelly": 0,
             }
             resultado["decisao_id"] = self._registrar_decisao_magna(resultado) if registrar else None
             cb(f"Decisão Suprema v11 concluída: {resultado['estrategia']} nota {melhor_nota:.3f} util {melhor_utilidade:.3f} auditoria #{resultado['decisao_id'] or 'pessoal'}")
@@ -5898,6 +5637,13 @@ class CerebroIA:
                     self.clima.top5_clima(usar_web=False)
                     if self.clima.n_registros else None),
             },
+            # v11.7 — telemetria INMET por local do sorteio
+            "inmet": (
+                self.inmet.resumo()
+                if getattr(self, "inmet", None) is not None
+                else {"status": "neutro", "n_registros": 0,
+                      "ultima": None, "fontes": {}, "medias": None}
+            ),
             # v11.4 — o acervo da própria Magna (aprendizado + memória viva)
             "acervo": {
                 "versao": self.ACERVO_VERSAO,

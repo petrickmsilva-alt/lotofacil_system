@@ -160,9 +160,9 @@
                 <i class="fas fa-wand-magic-sparkles"></i>
                 Analisar tudo e tomar a decisão
             </button>
-            <button id="magna-ancoras" class="magna-btn-secondary" type="button" style="grid-column:1/3;justify-content:center;">
-                <i class="fas fa-layer-group"></i>
-                3 cartelas âncora: 01 + 14 · 02 + 14 (sem 01) · 03 + 14 (sem 01/02)
+            <button id="magna-inmet-auto" class="magna-btn-secondary" type="button" style="grid-column:1/3;justify-content:center;">
+                <i class="fas fa-cloud-sun"></i>
+                Forja automática v11.7: local do sorteio → telemetria INMET → forja suprema
             </button>
         </form>
 
@@ -247,6 +247,7 @@
         <small id="magna-saved"></small>
     </div>
     <div id="magna-cartelas" class="magna-cartelas"></div>
+    <small id="magna-telemetria" class="magna-telemetria"></small>
 
     <div class="magna-truth">
         <i class="fas fa-scale-balanced"></i>
@@ -805,28 +806,41 @@
         resultBox.scrollIntoView({behavior:'smooth', block:'start'});
     }
 
-    const btnAncoras = document.getElementById('magna-ancoras');
-    if (btnAncoras) {
-        btnAncoras.addEventListener('click', async function () {
-            btnAncoras.disabled = true;
+    const btnInmetAuto = document.getElementById('magna-inmet-auto');
+    if (btnInmetAuto) {
+        btnInmetAuto.addEventListener('click', async function () {
+            btnInmetAuto.disabled = true;
             if (btn) btn.disabled = true;
             iniciarProcessamento();
             try {
-                const response = await fetch('/api/magna/ancoras-123', {
+                const response = await fetch('/api/magna/forja-auto', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        salvar: document.getElementById('magna-salvar').checked
+                        salvar: document.getElementById('magna-salvar').checked,
+                        usar_inmet: true,
+                        segundos_forja: 20
                     })
                 });
                 const data = await response.json();
-                if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha nas âncoras');
-                renderizar(data);
+                if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na forja automática');
+                renderizar({
+                    resultado: data.decisao,
+                    salvas: data.salvas || 0
+                });
+                const telBox = document.getElementById('magna-telemetria');
+                if (telBox) {
+                    const tel = data.telemetria || {};
+                    const local = data.local_do_sorteio || {};
+                    telBox.textContent = 'INMET: ' + (tel.status || 'neutro') +
+                        ' · ' + (local.cidade_uf || local.cidade || '?') +
+                        ' · fonte ' + (tel.fonte || 'padrão');
+                }
             } catch (err) {
                 alert('Inteligência Magna: ' + err.message);
             } finally {
                 pararProcessamento();
-                btnAncoras.disabled = false;
+                btnInmetAuto.disabled = false;
                 if (btn) btn.disabled = false;
             }
         });
