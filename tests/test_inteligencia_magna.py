@@ -39,15 +39,17 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     assert resultado["decisao_id"] is not None
     # v11.4 — o acervo de abertura (base histórica inteira) entrou como
     # conhecimento assimilado: são 7 fontes de leitura dentro da Magna;
-    # v11.7 — telemetria INMET por local do sorteio (8ª fonte assimilada).
-    assert len(resultado["fontes_assimiladas"]) == 8
+    # v11.7 — telemetria INMET por local do sorteio (8ª fonte assimilada);
+    # v11.8 — acervo de cores das bolas, tabela oficial MazuSoft (9ª fonte).
+    assert len(resultado["fontes_assimiladas"]) == 9
     assert any("acervo" in f for f in resultado["fontes_assimiladas"])
     # v11.2 — clima entrou no consenso; v11.4 — a fonte `ordem` (módulo
     # paralelo) virou `abertura`: órgão da própria Magna; v11.7 — telemetria
-    # INMET por local do sorteio entrou como fonte leve.
+    # INMET por local do sorteio entrou como fonte leve; v11.8 — `cor`
+    # (tabela oficial de cores das bolas) entrou como fonte do consenso.
     assert set(resultado["pesos_fontes"]) == {
         "motores", "oraculos", "espectral", "informacao", "recente",
-        "fisica", "clima", "abertura", "inmet",
+        "fisica", "clima", "abertura", "cor", "inmet",
     }
     assert abs(sum(resultado["pesos_fontes"].values()) - 1.0) < 1e-5
     assert len(resultado["top15_magna"]) == 15

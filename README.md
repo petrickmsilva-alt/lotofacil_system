@@ -155,6 +155,43 @@ Painel: **`/cerebro` → seção "Acervo nativo"**. Documentação completa em
 [`MAGNA_ACERVO_CONHECIMENTO.md`](MAGNA_ACERVO_CONHECIMENTO.md); a medição
 estatística detalhada continua em [`MAGNA_ORDEM_SORTEIO.md`](MAGNA_ORDEM_SORTEIO.md).
 
+## Cores das bolas (v11.8) — acervo de cores da Magna
+
+A **tabela oficial de cores** das bolas (MazuSoft —
+`mazusoft.com.br/lotofacil/tabela-cor.php`) virou outro órgão da Magna: a cor
+de cada bola é o **último dígito** do número, então o perfil de cores de cada
+sorteio é derivado das dezenas oficiais da base — a Magna aprende a
+distribuição real × a margem hipergeométrica exata, memoriza em
+`magna_conhecimento` (domínio `cor`) e **atualiza a cada sorteio conferido**.
+
+```text
+base histórica (15 dezenas por concurso)
+        ↓  regra MazuSoft (último dígito → 10 cores, Grupos 1 e 2)
+acervo de cores  →  distribuições × margem · streaks da cor dominante
+                 →  repetição da dominância (margem por simulação)
+                 →  placar walk-forward · auto-auditoria → fator
+        ↓
+fonte `cor` do consenso (peso default 3%, atenuada pelo veredito)
+        ↓
+decisão · interpretação por cartela · 10º critério do Juiz (cobertura_cor)
+        ↓
+conferência → palpite de cores julgado → memória e pesos reajustados
+```
+
+Sob a margem pura o vetor de cores é **exatamente uniforme** (E[G1]/3 =
+E[G2]/2 = 0,6): a fonte só inclina quando a base mostra desvio real de cores,
+e o placar walk-forward decide o quanto confiar nele. Veredito `RUÍDO` →
+vetor atenuado; conhecimento publicado, nunca promessa.
+
+```http
+GET  /api/magna/cor                 # ranking, placar, auto-auditoria, palpite
+GET  /api/magna/cor/tabela          # tabela de cores por concurso (com data)
+GET  /api/magna/conhecimento?dominio=cor
+```
+
+Painel: **`/cerebro` → seção "Acervo nativo" → card "Cores das bolas"**.
+Documentação completa em [`MAGNA_ACERVO_CORES.md`](MAGNA_ACERVO_CORES.md).
+
 ## Memória e aprendizado
 
 Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:
@@ -163,9 +200,9 @@ Cada decisão é registrada em `magna_decisoes`. Depois da conferência oficial:
 2. ajusta suavemente os pesos em `magna_estado`;
 3. grava cada mudança em `magna_aprendizado`;
 4. mantém a decisão, o resultado e os pesos vinculados pelo mesmo ID;
-5. julga o que havia previsto sobre a **abertura** e reassimila o acervo
-   (`magna_conhecimento` + `magna_memoria`) — a memória do concurso vira o
-   conhecimento do próximo.
+5. julga o que havia previsto sobre a **abertura** e sobre as **cores das
+   bolas** (v11.8) e reassimila o acervo (`magna_conhecimento` +
+   `magna_memoria`) — a memória do concurso vira o conhecimento do próximo.
 
 Não existe aprendizado oculto nem outro gerador paralelo.
 

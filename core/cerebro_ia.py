@@ -1,6 +1,6 @@
 """
 ============================================================
-INTELIGÊNCIA MAGNA v11.4 — UNIFICADA, AUTÔNOMA E CIENTE
+INTELIGÊNCIA MAGNA v11.8 — UNIFICADA, AUTÔNOMA E CIENTE
 Assimila motores, oráculos, análise, singularidade e wheeling
 + Repulsão Vetorial de Coulomb (Sem Repetições)
 + Deriva de Entropia Temporal Nanosegundo
@@ -8,6 +8,10 @@ Assimila motores, oráculos, análise, singularidade e wheeling
 + ACERVO PRÓPRIO: aprende com toda a base histórica, memoriza e
   decide — os padrões de abertura deixaram de ser um módulo à parte
   e viraram um órgão desta inteligência (ver AcervoAberturaMagna)
++ ACERVO DE CORES (v11.8): a tabela oficial de cores das bolas
+  (MazuSoft — último dígito de cada bola) é outro órgão da Magna:
+  ela aprende a distribuição de cores da base inteira, memoriza em
+  magna_conhecimento e decide com ela (ver AcervoCorMagna)
 ============================================================
 """
 import os
@@ -39,6 +43,15 @@ try:
     from .clima_lotofacil import MotorClima
 except Exception as _e_clima:
     print(f"[AVISO] clima_lotofacil import: {_e_clima}")
+
+# v11.8 — Acervo de cores das bolas (tabela oficial MazuSoft): a cor de cada
+# bola é definida pelo último dígito; o perfil por concurso é derivado das
+# dezenas oficiais e memorizado como domínio de conhecimento da Magna.
+try:
+    from .acervo_cor import AcervoCorMagna
+except Exception as _e_cor:
+    print(f"[AVISO] acervo_cor import: {_e_cor}")
+    AcervoCorMagna = None
 
 # v11.7 — Telemetria INMET por local do sorteio (fonte de evidência)
 try:
@@ -110,6 +123,68 @@ except Exception as _e:
 def _popcount_uf(x: int) -> int:
     """Popcount de um inteiro Python (máscara de dezenas)."""
     return bin(x).count("1")
+
+
+class _AcervoCorNeutro:
+    """Fallback inerte quando `acervo_cor` não pôde ser importado.
+
+    Nunca decide, nunca inclina, nunca grava: devolve estruturas vazias com o
+    mesmo contrato do acervo real para que a Magna continue funcionando.
+    """
+    def ultimo(self): return None
+
+    def digest(self): return "sha256:indisponivel"
+
+    def estado(self):
+        return {"status": "indisponível", "concursos_da_base": 0,
+                "aprendido_ate_concurso": None, "palpite_top3": [],
+                "veredito": "INDISPONÍVEL", "fator_confianca": 0.5,
+                "digest": self.digest()}
+
+    def relatorio(self):
+        return {"status": "indisponível", "digest": self.digest(),
+                "n_registros": 0, "fator_confianca": 0.5,
+                "veredito": "INDISPONÍVEL",
+                "leitura": "acervo de cores indisponível (import falhou)",
+                "distribuicoes": {}, "streaks": {}, "palpite": {},
+                "placar_walkforward": {"aplicavel": False},
+                "auto_auditoria": {"aplicavel": False, "veredito": "SEM AMOSTRA",
+                                   "fator_confianca": 0.5},
+                "honestidade": "fallback neutro"}
+
+    def fator_confianca(self): return 0.5
+
+    def leitura(self): return "acervo de cores indisponível (import falhou)"
+
+    def palpite(self):
+        return {"n_registros": 0, "probabilidades": {},
+                "probabilidades_fortes": {}, "ranking": [], "ranking_fortes": [],
+                "proximo_palpite_top3": [], "proximo_palpite_forte_top3": [],
+                "pergunta_decisiva": {}}
+
+    def placar_walkforward(self): return {"aplicavel": False}
+
+    def auto_auditoria(self):
+        return {"aplicavel": False, "veredito": "SEM AMOSTRA",
+                "fator_confianca": 0.5}
+
+    def streaks(self):
+        return {"run_atual": None, "recorde_historico": None}
+
+    def p_aparecer_teorica(self, cor): return 0.0
+
+    def p_forte_teorica(self, cor): return 0.0
+
+    def tabela(self, *a, **k): return []
+
+    def vetor_evidencia(self): return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+
+    def vetor_bruto(self): return np.ones(TOTAL_DEZENAS) / TOTAL_DEZENAS
+
+    def afinidade_cartela(self, dezenas):
+        return {"perfil_da_cartela": {}, "cor_dominante_da_cartela": None,
+                "probabilidade_do_perfil": 0.0, "afinidade": 0.5,
+                "cobre_palpite_da_magna": False}
 
 
 # ============================================================
@@ -1500,8 +1575,13 @@ class CerebroIA:
     # pelo ACERVO da própria Magna (aprendido da base histórica inteira e
     # memorizado no banco), e não por um módulo separado. O peso é um teto de
     # influência: sobe apenas se a auto-auditoria walk-forward medir lift.
+    #
+    # v11.8 — a fonte `cor` entra com o mesmo espírito: o acervo de cores das
+    # bolas (tabela oficial MazuSoft) é outro órgão da Magna, com peso leve
+    # default e o MESMO destino: ser calibrado em walk-forward e reajustado
+    # pelo aprendizado bayesiano a cada sorteio conferido.
     _FONTES_MAGNA_DEFAULT = {
-        "motores": 0.33,
+        "motores": 0.30,
         "oraculos": 0.18,
         "espectral": 0.10,
         "informacao": 0.10,
@@ -1509,17 +1589,18 @@ class CerebroIA:
         "fisica": 0.08,
         "clima": 0.05,
         "abertura": 0.04,
+        "cor": 0.03,
         "inmet": 0.03,
     }
 
     # Chaves do acervo persistidas em magna_conhecimento
-    _ACERVO_DOMINIOS = ("base", "abertura", "fontes", "memoria")
-    ACERVO_VERSAO = "v11.4-acervo-unico"
+    _ACERVO_DOMINIOS = ("base", "abertura", "cor", "fontes", "memoria")
+    ACERVO_VERSAO = "v11.8-acervo-unico-cor"
 
     # v9.2 extraordinária: pool elite força máxima + forja força máxima
     VERSAO_MAGNA = "11.0-Magna-Suprema-Unica-Pessoal-Evoluida"
     VERSAO_SUPREMA = "11.0"
-    VERSAO_EVOLUCAO = "v11.4-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-AcervoAberturaUnico"
+    VERSAO_EVOLUCAO = "v11.8-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-AcervoAberturaCor-Unico"
 
     _PESOS_DEFAULT = {
         "freq_global":  0.07,
@@ -1680,6 +1761,15 @@ class CerebroIA:
         # cartela — não existe módulo, painel ou gerador paralelo.
         self._aberturas_vivas: Dict[int, int] = {}
         self.acervo = self._montar_acervo_abertura()
+        # v11.8 — ACERVO DE CORES (tabela oficial das bolas, MazuSoft). Mesmo
+        # ciclo de vida do acervo de abertura: montado no nascimento, lido da
+        # base inteira, memorizado em magna_conhecimento (domínio `cor`) e
+        # reassimilado a cada sorteio conferido. As cores são função
+        # determinística do último dígito de cada bola, então a série nasce
+        # completa dos 3.775 concursos da base — e cresce sozinha a cada
+        # concurso novo, sem download de tabela externa.
+        self._cores_vivas: Dict[int, Tuple[int, ...]] = {}
+        self.acervo_cor = self._montar_acervo_cor()
         self._acervo_calibrado = False
         # v11.4 — o conhecimento é montado aqui, no nascimento da Magna: ela já
         # vem sabendo o que a base histórica ensina (a leitura dos 3.700+
@@ -1971,9 +2061,16 @@ class CerebroIA:
             ab = self.acervo.afinidade_cartela(dez)["afinidade"]
         except Exception:
             ab = 0.5
+        # v11.8 — cores: afinidade estrutural do perfil de cores da cartela
+        # com o que o acervo de cores (tabela oficial das bolas) aprendeu.
+        # Desempate de peso ainda menor; nunca altera a hipergeométrica.
+        try:
+            cr = self.acervo_cor.afinidade_cartela(dez)["afinidade"]
+        except Exception:
+            cr = 0.5
         return (
-            ev * 0.22 + div * 0.14 + kl * 0.10 + mk * 0.14 + vl * 0.10
-            + sg * 0.08 + filtro * 0.09 + ja_15 * 0.08 + ab * 0.05
+            ev * 0.20 + div * 0.14 + kl * 0.09 + mk * 0.14 + vl * 0.10
+            + sg * 0.08 + filtro * 0.09 + ja_15 * 0.08 + ab * 0.05 + cr * 0.03
         )
 
     # ============================================================
@@ -2882,6 +2979,17 @@ class CerebroIA:
                         self._log("ACERVO",
                                   "peso aprendido da fonte 'ordem' migrado "
                                   "para 'abertura' (mesma memória)")
+                    # v11.8 — a fonte `cor` é nova: pesos gravados em versões
+                    # anteriores não a conhecem. Entra com o default leve e o
+                    # aprendizado bayesiano trata o resto (como fez com
+                    # clima/inmet quando chegaram).
+                    if ("cor" not in gravados
+                            and set(gravados) == set(pesos) - {"cor"}):
+                        gravados = dict(gravados)
+                        gravados["cor"] = self._FONTES_MAGNA_DEFAULT["cor"]
+                        self._log("ACERVO",
+                                  "peso default da fonte 'cor' (tabela de "
+                                  "cores) incorporado à memória")
                     if set(gravados) == set(pesos):
                         pesos = {k: max(0.01, float(gravados[k]))
                                  for k in pesos}
@@ -2978,6 +3086,17 @@ class CerebroIA:
             vetor_inmet = self._normalizar_vetor(
                 np.ones(TOTAL_DEZENAS, dtype=float))
 
+        # v11.8 — Fonte COR: acervo de cores das bolas (tabela oficial
+        # MazuSoft). Sob a margem hipergeométrica pura o vetor é exatamente
+        # uniforme (E[G1]/3 = E[G2]/2 = 0,6) — ele só inclina quando a base
+        # mostra desvio real de cores, e o fator de confiança (auto-auditoria
+        # walk-forward) decide o quanto desse desvio entra no consenso.
+        try:
+            vetor_cor = self.vetor_cor_para_consenso()
+        except Exception:
+            vetor_cor = self._normalizar_vetor(
+                np.ones(TOTAL_DEZENAS, dtype=float))
+
         fontes = {
             "motores": vetor_motores,
             "oraculos": vetor_oraculos,
@@ -2987,6 +3106,7 @@ class CerebroIA:
             "fisica": vetor_fisica,
             "clima": vetor_clima,
             "abertura": vetor_abertura,
+            "cor": vetor_cor,
             "inmet": vetor_inmet,
         }
         return fontes, consulta, espectro, informacao, entropias
@@ -3033,6 +3153,326 @@ class CerebroIA:
             if concurso not in ja_vistos:
                 minima.append((int(concurso), int(abertura)))
         return AcervoAberturaMagna(minima=sorted(minima), ordens=ordens)
+
+    # ============================================================
+    # ACERVO DE CORES DAS BOLAS — aprender, memorizar, julgar (v11.8)
+    # ============================================================
+    def _montar_acervo_cor(self) -> "AcervoCorMagna":
+        """Lê da base histórica o perfil de cores de cada concurso.
+
+        As cores são função determinística do último dígito de cada bola
+        (tabela oficial MazuSoft), então a série completa nasce dos campos
+        `resultados.d1..d15` — sem download externo e sem backfill. Concursos
+        já conferidos pela Magna (memória viva) entram na frente.
+        """
+        serie: List[Tuple[int, Tuple[int, ...]]] = []
+        try:
+            conn = self.db.get_conn()
+            try:
+                cols = ", ".join("d{}".format(i) for i in range(1, 16))
+                for row in conn.execute(
+                        "SELECT concurso, {} FROM resultados "
+                        "ORDER BY concurso ASC".format(cols)).fetchall():
+                    dez = tuple(int(x) for x in row[1:])
+                    if len(dez) == 15 and all(
+                            1 <= d <= TOTAL_DEZENAS for d in dez):
+                        serie.append((int(row[0]), dez))
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            self._log("AVISO", "acervo de cores: leitura da base falhou "
+                              "({})".format(exc))
+        ja_vistos = {c for c, _ in serie}
+        for concurso, dezenas in sorted(getattr(self, "_cores_vivas",
+                                                {}).items()):
+            if concurso not in ja_vistos:
+                serie.append((int(concurso), tuple(sorted(int(d) for d in
+                                                          dezenas))))
+        if AcervoCorMagna is None:  # pragma: no cover — fallback neutro
+            return _AcervoCorNeutro()
+        return AcervoCorMagna(serie=sorted(serie))
+
+    def vetor_cor_para_consenso(self) -> np.ndarray:
+        """A leitura de cores, atenuada pela confiança medida na própria base.
+
+        fator 0,5 → vetor quase uniforme (ruído); fator 1,0 → o posterior
+        aprendido entra inteiro. A atenuação é feita AQUI, na Magna — mesma
+        disciplina da abertura, clima e INMET.
+        """
+        fator = float(self.acervo_cor.fator_confianca())
+        v = self.acervo_cor.vetor_evidencia()
+        uniforme = np.ones(TOTAL_DEZENAS, dtype=float) / TOTAL_DEZENAS
+        return self._normalizar_vetor((1.0 - fator) * uniforme + fator * v)
+
+    def _assimilar_acervo_cor_sem_lock(self, base: Dict[str, Any],
+                                       auto: bool = False,
+                                       forcar: bool = False) -> Dict[str, Any]:
+        """Aprende e memoriza o domínio COR no mesmo ciclo do acervo de
+        abertura: mesma base, mesmo carimbo, mesma disciplina de
+        somente-leitura (`LOTOFACIL_ACERVO_AUTO=0`)."""
+        if AcervoCorMagna is None:  # pragma: no cover — fallback
+            return {"status": "indisponivel", "dominio": "cor",
+                    "reassimilado": False}
+        gravado = self._ler_conhecimento("cor")
+        aprendido_ate = (self.acervo_cor.ultimo()
+                         if hasattr(self, "acervo_cor") else None) or 0
+        ate = int(base.get("ultimo") or 0)
+        desatualizado = (forcar or aprendido_ate != ate or not gravado
+                         or int(gravado.get("concurso_ate") or 0) != ate)
+        if not desatualizado:
+            return {"status": "atualizado", "dominio": "cor",
+                    "aprendido_ate": aprendido_ate,
+                    "digest": self.acervo_cor.digest(),
+                    "reassimilado": False}
+        self.acervo_cor = self._montar_acervo_cor()
+        rel = self.acervo_cor.relatorio()
+        gravar = not (auto and not self._acervo_auto_calibracao())
+        if not gravar:
+            return {"status": "memoria", "dominio": "cor",
+                    "aprendido_ate": self.acervo_cor.ultimo(),
+                    "digest": rel["digest"], "veredito": rel["veredito"],
+                    "fator_confianca": rel["fator_confianca"],
+                    "leitura": rel["leitura"], "reassimilado": True,
+                    "gravado": False}
+        conn = self.db.get_conn()
+        try:
+            self._gravar_conhecimento(conn, "cor", {
+                "digest": rel["digest"],
+                "fator_confianca": rel["fator_confianca"],
+                "veredito": rel["veredito"],
+                "pesos_de_evidencia": rel["pesos_de_evidencia"],
+                "leitura": rel["leitura"],
+                "esperados": {c: rel["distribuicoes"][c]["esperado"]
+                              for c in rel["distribuicoes"]},
+                "placar_walkforward": rel["placar_walkforward"],
+                "auto_auditoria": rel["auto_auditoria"],
+                "palpite": rel["palpite"],
+                "streaks": {k: v for k, v in rel["streaks"].items()
+                            if k != "por_cor"},
+                "honestidade": rel["honestidade"],
+            }, concurso_ate=ate,
+                n_provas=int(rel["n_registros"]),
+                veredito=rel["veredito"],
+                fator_confianca=rel["fator_confianca"],
+                origem="incremental" if auto else "fundante")
+            # evento de memória apenas quando a leitura realmente mudou:
+            # o carimbo evita inflar o diário com o mesmo aprendizado
+            ultimo_evento = conn.execute(
+                "SELECT detalhe_json FROM magna_memoria "
+                "WHERE dominio='cor' AND evento='assimilado' AND concurso=? "
+                "ORDER BY id DESC LIMIT 1", (ate,)).fetchone()
+            ultima_digest = ""
+            try:
+                ultima_digest = json.loads(
+                    ultimo_evento[0] or "{}").get("digest", "") \
+                    if ultimo_evento is not None else ""
+            except (TypeError, json.JSONDecodeError):
+                ultima_digest = ""
+            if ultima_digest != rel["digest"]:
+                self._registrar_memoria(conn, "cor", "assimilado",
+                                        concurso=ate,
+                                        provas=rel["n_registros"],
+                                        taxa=rel["auto_auditoria"].get(
+                                            "taxa"),
+                                        detalhe={"digest": rel["digest"],
+                                                 "veredito": rel["veredito"],
+                                                 "leitura": rel["leitura"]})
+            conn.commit()
+        finally:
+            conn.close()
+        return {"status": "ok", "dominio": "cor", "aprendido_ate": ate,
+                "digest": rel["digest"], "reassimilado": True,
+                "veredito": rel["veredito"],
+                "fator_confianca": rel["fator_confianca"],
+                "leitura": rel["leitura"]}
+
+    def evidencia_cor(self) -> Dict[str, Any]:
+        """Síntese do conhecimento de cores usada por TODA decisão.
+
+        É o mesmo objeto que o Juiz recebe, que a interpretação de cada
+        cartela cita e que a conferência vai julgar — uma única fonte,
+        dentro da Magna (tabela oficial das bolas, derivada da base).
+        """
+        if AcervoCorMagna is None:  # pragma: no cover — fallback neutro
+            return {"disponivel": False, "digest": "", "versao": self.ACERVO_VERSAO,
+                    "aprendido_ate": None, "concursos_da_base": 0,
+                    "dominante_atual": None, "veredito": "INDISPONÍVEL",
+                    "fator_confianca": 0.5, "ranking": [], "ranking_completo": [],
+                    "ranking_fortes": [], "probabilidades": {}, "palpite_top3": [],
+                    "palpite_forte_top3": [], "recorde": None,
+                    "placar": {"aplicavel": False},
+                    "auto_auditoria": {"aplicavel": False,
+                                       "veredito": "SEM AMOSTRA"},
+                    "pergunta_decisiva": {},
+                    "leitura": "acervo de cores indisponível (import falhou)",
+                    "fonte": "tabela oficial de cores das bolas (MazuSoft)"}
+        acervo = self.acervo_cor
+        prev = acervo.palpite()
+        est = acervo.estado()
+        return {
+            "digest": est["digest"],
+            "versao": self.ACERVO_VERSAO,
+            "aprendido_ate": est["aprendido_ate_concurso"],
+            "concursos_da_base": est["concursos_da_base"],
+            "dominante_atual": est["dominante_atual"],
+            "veredito": est["veredito"],
+            "fator_confianca": est["fator_confianca"],
+            "ranking": [r["cor"] for r in prev.get("ranking") or []],
+            "ranking_completo": prev.get("ranking") or [],
+            "ranking_fortes": prev.get("ranking_fortes") or [],
+            "probabilidades": {str(c): round(v, 5) for c, v in
+                               (prev.get("probabilidades") or {}).items()},
+            "palpite_top3": prev.get("proximo_palpite_top3") or [],
+            "palpite_forte_top3": prev.get("proximo_palpite_forte_top3") or [],
+            "recorde": acervo.streaks().get("recorde_historico"),
+            "placar": acervo.placar_walkforward(),
+            "auto_auditoria": acervo.auto_auditoria(),
+            "pergunta_decisiva": prev.get("pergunta_decisiva"),
+            "leitura": acervo.leitura(),
+            "fonte": ("tabela oficial de cores das bolas da Lotofácil "
+                      "(MazuSoft) — a cor de cada bola é o último dígito; "
+                      "perfil por concurso derivado das dezenas oficiais"),
+        }
+
+    def _julgar_palpite_cor(self, conn, concurso: int,
+                            row: Dict[str, Any],
+                            real: set) -> Optional[Dict[str, Any]]:
+        """Julga o que a Magna previu de CORES para ESTE concurso.
+
+        O palpite está gravado em `analise_json.memoria.palpite_cor` desde a
+        decisão; aqui ele é confrontado com o perfil real de cores e vira
+        memória auditável (dominio `cor`, evento `palpite`).
+        """
+        if AcervoCorMagna is None:  # pragma: no cover — fallback
+            return None
+        try:
+            analise = json.loads(row["analise_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return None
+        palpite = ((analise.get("memoria") or {}).get("palpite_cor") or {})
+        ranking = [str(c) for c in (palpite.get("ranking") or [])]
+        ranking_fortes = [str(c) for c in
+                          (palpite.get("ranking_fortes") or [])]
+        perfil = AcervoCorMagna.perfil_dezenas(sorted(int(d) for d in real))
+        julgamento = (AcervoCorMagna.avaliar_palpite(
+            ranking, perfil, ranking_fortes) if ranking else {
+                "dominante_real": AcervoCorMagna.dominante_de(perfil),
+                "posicao_no_ranking": None,
+                "acerto_top1": None, "acerto_top2": None, "acerto_top3": None,
+                "acerto_forte": None,
+                "motivo": "decisão anterior ao acervo de cores: sem palpite "
+                          "gravado"})
+        julgamento.update({
+            "concurso": int(concurso),
+            "digest_acervo": palpite.get("digest"),
+            "cor_prevista_top3": ranking[:3],
+            "cores_presentes": [c for c, q in perfil.items() if q > 0],
+            "dominante_real": AcervoCorMagna.dominante_de(perfil),
+        })
+        self._registrar_memoria(
+            conn, "cor", "palpite", concurso=concurso,
+            acertos=(1 if julgamento.get("acerto_top1") else 0),
+            provas=1,
+            taxa=(1.0 if julgamento.get("acerto_top3") else 0.0),
+            detalhe=julgamento)
+        return julgamento
+
+    def placar_cor_memoria(self, conn=None) -> Dict[str, Any]:
+        """O placar do que a Magna PREVÊ de cores — memória auditável.
+
+        Compara o ranking aprendido com o perfil real de cada concurso
+        conferido e devolve o aproveitamento ao lado da margem teórica.
+        """
+        if AcervoCorMagna is None:  # pragma: no cover — fallback
+            return {"aplicavel": False, "motivo": "acervo de cores indisponível"}
+        proprio = conn is None
+        conn = conn or self.db.get_conn()
+        try:
+            rows = conn.execute("""
+                SELECT acertos, provas, taxa, detalhe_json FROM magna_memoria
+                WHERE dominio='cor' AND evento='palpite'
+                ORDER BY id DESC LIMIT 5000""").fetchall()
+        except sqlite3.Error:
+            return {"aplicavel": False, "motivo": "sem tabela de memória"}
+        finally:
+            if proprio:
+                conn.close()
+        n = len(rows)
+        if not n:
+            return {"aplicavel": False,
+                    "motivo": "a Magna ainda não conferiu um concurso com "
+                             "palpite de cores registrado",
+                    "provas": 0}
+        t1 = t3 = t_forte = 0
+        for r in rows:
+            try:
+                det = json.loads(r[3] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                det = {}
+            t1 += 1 if det.get("acerto_top1") else 0
+            t3 += 1 if det.get("acerto_top3") else 0
+            t_forte += 1 if det.get("acerto_forte") else 0
+        teto = {
+            "top1": max(self.acervo_cor.p_aparecer_teorica(c)
+                        for c in self.acervo_cor.CORES),
+            "top3": 1.0 - min((1.0 - self.acervo_cor.p_aparecer_teorica(c))
+                              for c in self.acervo_cor.CORES) ** 3,
+            "forte": max(self.acervo_cor.p_forte_teorica(c)
+                         for c in self.acervo_cor.CORES),
+        }
+        return {
+            "aplicavel": True, "provas": n,
+            "acerto_top1": round(t1 / n, 4), "acerto_top3": round(t3 / n, 4),
+            "acerto_forte": round(t_forte / n, 4),
+            "margem_teorica": {k: round(v, 4) for k, v in teto.items()},
+            "leitura": ("o palpite de cores da Magna fica na margem teórica "
+                        "— isso é o teto do que existe para prever cor sob "
+                        "independência"
+                        if abs(t3 / n - teto["top3"]) < 0.02
+                        else "desvio da margem na amostra pequena: aguardar"),
+        }
+
+    def cor_para_o_juiz(self, cartelas: Optional[List[List[int]]] = None
+                        ) -> Dict[str, Any]:
+        """Recorte do acervo de cores que o Juiz Magna usa como critério."""
+        if AcervoCorMagna is None:  # pragma: no cover — fallback
+            return {"probabilidades": {}, "ranking": [], "n_registros": 0,
+                    "fator_confianca": 0.5}
+        prev = self.acervo_cor.palpite()
+        return {
+            "probabilidades": prev.get("probabilidades") or {},
+            "ranking": prev.get("proximo_palpite_top3") or [],
+            "n_registros": prev.get("n_registros"),
+            "fator_confianca": self.acervo_cor.fator_confianca(),
+        }
+
+    def tabela_cores(self, desde: Optional[int] = None,
+                     ate: Optional[int] = None,
+                     limite: int = 30) -> List[Dict[str, Any]]:
+        """A tabela de cores por concurso (como a do MazuSoft), derivada das
+        dezenas oficiais, enriquecida com a data do sorteio."""
+        if AcervoCorMagna is None:  # pragma: no cover — fallback
+            return []
+        linhas = self.acervo_cor.tabela(desde=desde, ate=ate, limite=limite)
+        if not linhas:
+            return linhas
+        datas = {}
+        try:
+            conn = self.db.get_conn()
+            try:
+                for row in conn.execute(
+                        "SELECT concurso, data FROM resultados WHERE "
+                        "concurso IN ({})".format(
+                            ",".join("?" * len(linhas))),
+                        [int(l["concurso"]) for l in linhas]).fetchall():
+                    datas[int(row[0])] = row[1]
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            datas = {}
+        for l in linhas:
+            l["data"] = datas.get(int(l["concurso"]))
+        return linhas
 
     def _ler_conhecimento(self, dominio: str) -> Optional[Dict[str, Any]]:
         try:
@@ -3200,6 +3640,11 @@ class CerebroIA:
                 callback(msg)
 
         base = self._estado_base_historica()
+        # v11.8 — o acervo de cores aprende no MESMO ciclo do acervo de
+        # abertura (mesma base, mesmo carimbo, mesma memória): se a base
+        # cresceu ou o forcar veio, a série de cores é relida e repersistida.
+        cor_res = self._assimilar_acervo_cor_sem_lock(
+            base, auto=auto, forcar=forcar)
         aprendido_ate = (self.acervo.ultimo("minima")
                          if hasattr(self, "acervo") else None) or 0
         ate = self._acervo_carimbo(base)
@@ -3215,6 +3660,7 @@ class CerebroIA:
                     "veredito": rel["veredito"],
                     "fator_confianca": rel["fator_confianca"],
                     "leitura": rel["leitura"],
+                    "cor": cor_res,
                     "reassimilado": False}
 
         # A fonte da verdade do conhecimento é o banco: reler a série completa
@@ -3233,7 +3679,8 @@ class CerebroIA:
                     "aprendido_ate": self.acervo.ultimo("minima"),
                     "digest": rel["digest"], "veredito": rel["veredito"],
                     "fator_confianca": rel["fator_confianca"],
-                    "leitura": rel["leitura"], "reassimilado": True,
+                    "leitura": rel["leitura"], "cor": cor_res,
+                    "reassimilado": True,
                     "gravado": False}
         conn = self.db.get_conn()
         try:
@@ -3330,6 +3777,7 @@ class CerebroIA:
                 "veredito": rel["veredito"],
                 "fator_confianca": rel["fator_confianca"],
                 "leitura": rel["leitura"],
+                "cor": cor_res,
                 "pesos_fontes": dict(self.pesos_fontes_magna),
                 "calibracao": calibracao}
 
@@ -3350,6 +3798,7 @@ class CerebroIA:
                 epi = conn.execute(
                     "SELECT COUNT(*) FROM magna_episodios").fetchone()
                 placar = self.placar_abertura_memoria(conn)
+                placar_cor = self.placar_cor_memoria(conn)
                 snapshot = {
                     "decisoes": int(dec[0] or 0),
                     "decisoes_conferidas": int(dec[1] or 0),
@@ -3360,6 +3809,7 @@ class CerebroIA:
                     "episodios": int(epi[0] or 0),
                     "eventos_de_memoria": int(mem[0] or 0),
                     "placar_abertura": placar,
+                    "placar_cor": placar_cor,
                 }
                 ultimo = self._acervo_carimbo()
                 self._gravar_conhecimento(conn, "memoria", snapshot,
@@ -3744,7 +4194,7 @@ class CerebroIA:
             gravados, memoria = {}, [{"erro": str(exc)}]
         out = {
             "status": "ok",
-            "identidade": "Inteligência Magna — acervo de conhecimento v11.4",
+            "identidade": "Inteligência Magna — acervo de conhecimento v11.8",
             "versao_acervo": self.ACERVO_VERSAO,
             "base": self._estado_base_historica(),
             "fontes_do_consenso": list(self._FONTES_MAGNA_DEFAULT),
@@ -3757,6 +4207,11 @@ class CerebroIA:
             "abertura": self.acervo.estado(),
             "leitura": self.acervo.leitura(),
             "placar_abertura": self.placar_abertura_memoria(),
+            # v11.8 — domínio de cores (tabela oficial das bolas): o que a
+            # Magna sabe sobre as cores, o placar do que já previu e a
+            # leitura honesta do órgão.
+            "cor": self.acervo_cor.estado(),
+            "placar_cor": self.placar_cor_memoria(),
             "honestidade": (
                 "O acervo é memória e julgamento, não bola de cristal: mede, "
                 "atenua e publica. As probabilidades hipergeométricas de cada "
@@ -3764,6 +4219,7 @@ class CerebroIA:
         }
         if detalhes:
             out["abertura_relatorio"] = self.acervo.relatorio()
+            out["cor_relatorio"] = self.acervo_cor.relatorio()
         return out
 
     def aprender_ordem_sorteio(self, concurso: int,
@@ -3856,9 +4312,13 @@ class CerebroIA:
         # v11.4 — antes de decidir, a Magna reassegura o PRÓPRIO acervo: nada
         # de consultar um módulo separado. O conhecimento de abertura é dela,
         # aprendido da base histórica inteira e memorizado no banco.
+        # v11.8 — o mesmo reasseguro cobre o acervo de cores (assimilado no
+        # mesmo ciclo), e a evidência de cores entra na decisão ao lado da
+        # de abertura.
         cb("Reassegurando o acervo de conhecimento (base histórica)...")
         self._garantir_acervo(callback=callback)
         evidencia_abertura = self.evidencia_abertura()
+        evidencia_cor = self.evidencia_cor()
 
         cb("Unificando motores, oráculos, espectro, informação e análise recente...")
         fontes, consulta, espectro, informacao, entropias = \
@@ -3923,11 +4383,17 @@ class CerebroIA:
                 # abertura que a Magna memorizou (abrir com 01 não aumenta a
                 # chance de nada: é coerência estrutural, registrada à vista).
                 "abertura": self.acervo.afinidade_cartela(dezenas),
+                # v11.8 — e com o acervo de cores das bolas (perfil de cores
+                # da cartela frente ao que a base ensinou — estrutura, não
+                # previsão; a hipergeométrica não muda).
+                "cores": self.acervo_cor.afinidade_cartela(dezenas),
                 # v11.5 — taxa de rateio estimada (desempate de prêmio).
                 "popularidade": pop,
             }
             cartela["scores"]["afinidade_abertura"] = float(
                 cartela["interpretacao_magna"]["abertura"]["afinidade"])
+            cartela["scores"]["afinidade_cores"] = float(
+                cartela["interpretacao_magna"]["cores"]["afinidade"])
             cartela["scores"]["bonus_rateio_estimado_x"] = float(
                 (pop or {}).get("bonus_rateio_estimado_x", 1.0))
             # v11.6 — auditoria estrutural de cada cartela (repetição, filtros,
@@ -4014,16 +4480,19 @@ class CerebroIA:
             "identidade": "Inteligência Magna",
             "decisao_unica": True,
             "justificativa_magna": (
-                justificativa + " " + evidencia_abertura["leitura"]),
+                justificativa + " " + evidencia_abertura["leitura"]
+                + " " + evidencia_cor["leitura"]),
             "fontes_assimiladas": [
                 "geração combinatória", "consenso dos oráculos",
                 "wheeling 14/15", "análise histórica e recente",
                 "singularidade e filtros avançados", "auditoria e aprendizado",
                 "acervo de abertura (base histórica inteira)",
+                "acervo de cores (tabela oficial das bolas)",
                 "telemetria INMET (local do sorteio)",
             ],
             "pesos_fontes": pesos,
             "acervo_magna": evidencia_abertura,
+            "acervo_cor_magna": evidencia_cor,
             "top15_magna": [
                 int(x) for x in (np.argsort(vetor_final)[::-1][:15] + 1)
             ],
@@ -4060,6 +4529,30 @@ class CerebroIA:
                     "probabilidades": evidencia_abertura["probabilidades"],
                     "abertura_atual": evidencia_abertura["abertura_atual"],
                     "recorde": evidencia_abertura["recorde"],
+                },
+                # v11.8 — o mesmo contrato para as CORES: ranking de cores
+                # (P de aparecer), ranking de cor forte (2+ bolas), digest do
+                # conhecimento de cores que produziu o palpite — julgado na
+                # conferência ao lado do palpite de abertura.
+                "cor": {
+                    "versao": self.ACERVO_VERSAO,
+                    "digest": evidencia_cor["digest"],
+                    "aprendido_ate": evidencia_cor["aprendido_ate"],
+                    "concursos_da_base": evidencia_cor["concursos_da_base"],
+                    "veredito": evidencia_cor["veredito"],
+                    "fator_confianca": evidencia_cor["fator_confianca"],
+                    "leitura": evidencia_cor["leitura"],
+                    "placar_walkforward": evidencia_cor["placar"],
+                },
+                "palpite_cor": {
+                    "concurso": (int(concurso_alvo) if concurso_alvo is not None
+                                 else None),
+                    "digest": evidencia_cor["digest"],
+                    "ranking": evidencia_cor["ranking"],
+                    "ranking_fortes": evidencia_cor["ranking_fortes"],
+                    "probabilidades": evidencia_cor["probabilidades"],
+                    "dominante_atual": evidencia_cor["dominante_atual"],
+                    "recorde": evidencia_cor["recorde"],
                 },
             },
             "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None
@@ -4155,9 +4648,12 @@ class CerebroIA:
                     else:
                         raise Exception("fallback")
                 except Exception:
+                    # v11.8 — decisões gravadas antes da fonte `cor` (e de
+                    # clima/INMET) não têm acertos para ela: vale a linha de
+                    # base 9 (o esperado de qualquer escolha de 15 dezenas).
                     ajustados = {
                         nome: max(0.01, antes[nome] *
-                                  (1.0 + 0.02 * (acertos_fontes[nome] - 9)))
+                                  (1.0 + 0.02 * (acertos_fontes.get(nome, 9) - 9)))
                         for nome in antes
                     }
                     total = sum(ajustados.values())
@@ -4207,11 +4703,16 @@ class CerebroIA:
                 # deste concurso e memoriza o resultado no próprio acervo.
                 julgamento_abertura = self._julgar_palpite_abertura(
                     conn, concurso, dict(row), real)
+                # v11.8 — e julga o que previu sobre as CORES das bolas
+                # (palpite gravado na decisão, confrontado com o perfil real).
+                julgamento_cor = self._julgar_palpite_cor(
+                    conn, concurso, dict(row), real)
                 aprendidas.append({
                     "decisao_id": row["id"], "melhor_acertos": melhor,
                     "media_acertos": round(media, 2),
                     "acertos_fontes": acertos_fontes,
                     "abertura": julgamento_abertura,
+                    "cor": julgamento_cor,
                 })
 
             if aprendidas:
@@ -4231,6 +4732,21 @@ class CerebroIA:
                     conn, "abertura", "aprendido", concurso=concurso,
                     detalhe={"abertura": abertura_real,
                              "origem": "conferencia"})
+                # v11.8 — o mesmo concurso entra na série viva do ACERVO DE
+                # CORES (perfil derivado das dezenas reais) e é memorizado —
+                # a Magna atualiza o conhecimento de cores a cada sorteio.
+                if hasattr(self, "acervo_cor") and AcervoCorMagna is not None:
+                    cor_real = sorted(int(d) for d in real)
+                    res_cor = self.acervo_cor.aprender(concurso, cor_real)
+                    vivas_cor = getattr(self, "_cores_vivas", None)
+                    if vivas_cor is None:
+                        vivas_cor = self._cores_vivas = {}
+                    vivas_cor[concurso] = tuple(cor_real)
+                    self._registrar_memoria(
+                        conn, "cor", "aprendido", concurso=concurso,
+                        detalhe={"dominante": res_cor.get("dominante"),
+                                 "perfil": res_cor.get("perfil"),
+                                 "origem": "conferencia"})
                 conn.commit()
                 self._assimilar_acervo_sem_lock(auto=True,
                                                 calibrar_fontes=False)
@@ -4472,6 +4988,13 @@ class CerebroIA:
                     # em vez de descartado por divergência de nomes.
                     gravados = dict(gravados)
                     gravados["abertura"] = gravados.pop("ordem")
+                if (isinstance(gravados, dict) and "cor" not in gravados
+                        and set(gravados) ==
+                        set(self.pesos_fontes_magna) - {"cor"}):
+                    # v11.8 — checkpoint anterior ao acervo de cores: a fonte
+                    # `cor` entra com o default leve, sem descartar a memória.
+                    gravados = dict(gravados)
+                    gravados["cor"] = self._FONTES_MAGNA_DEFAULT["cor"]
                 if set(gravados) == set(self.pesos_fontes_magna):
                     self.pesos_fontes_magna = {
                         k: max(0.01, float(gravados[k]))
@@ -4630,6 +5153,10 @@ class CerebroIA:
                 "acervo de abertura: frequências, streaks, recorde, repetição "
                 "por dezena e posterior do próximo início — medidos na base "
                 "histórica inteira e memorizados em magna_conhecimento",
+                "acervo de cores (tabela oficial das bolas): distribuição de "
+                "cores por sorteio × margem hipergeométrica, streaks e "
+                "repetição da cor dominante, placar walk-forward e posterior "
+                "do próximo perfil — memorizados em magna_conhecimento 'cor'",
                 "peso de cada fonte do consenso calibrado em walk-forward "
                 "fora-da-amostra (magna_conhecimento 'fontes')",
                 "pesos das {} fontes ({}) via top-15 vs resultado real".format(
@@ -4653,8 +5180,10 @@ class CerebroIA:
                 "versao": self.ACERVO_VERSAO,
                 "base": base,
                 "abertura": conhecimento["abertura"],
+                "cor": conhecimento["cor"],
                 "leitura": conhecimento["leitura"],
                 "placar_abertura": conhecimento["placar_abertura"],
+                "placar_cor": conhecimento["placar_cor"],
                 "dominios_gravados": list(conhecimento["dominios"].keys()),
             },
             "pesos_fontes": pesos,
@@ -4865,7 +5394,8 @@ class CerebroIA:
             juiz = JuizMagna(self.matriz)
             masks_15 = self._mascaras_sorteios_15()
             veredito = juiz.julgar(cartelas, pool, analise, vf, masks_15,
-                                   abertura=self.abertura_para_o_juiz(cartelas))
+                                   abertura=self.abertura_para_o_juiz(cartelas),
+                                   cores=self.cor_para_o_juiz(cartelas))
             self._log("JUIZ", f"Veredito: {veredito.get('veredito')} nota {veredito.get('nota')} reprovados {veredito.get('reprovados')}")
             return veredito
         except Exception as exc:
@@ -4949,7 +5479,10 @@ class CerebroIA:
             cb("Reassegurando o acervo de conhecimento (base histórica)...")
             self._garantir_acervo(callback=callback)
             evidencia_abertura = self.evidencia_abertura()
-            cb("Acervo v11.4 · {} concursos · {}".format(
+            # v11.8 — acervo de cores das bolas: a Magna suprema também decide
+            # com o conhecimento de cores assimilado no mesmo ciclo.
+            evidencia_cor = self.evidencia_cor()
+            cb("Acervo v11.8 · {} concursos · {}".format(
                 evidencia_abertura["concursos_da_base"],
                 evidencia_abertura["leitura"]))
 
@@ -5211,13 +5744,14 @@ class CerebroIA:
                 "status": "ok",
                 "identidade": "Inteligência Magna Suprema v11 — Única Pessoal",
                 "versao_suprema": "11.0",
-                "versao_evolucao": "v11.2-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico",
+                "versao_evolucao": "v11.8-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-AcervoCor",
                 "decisao_unica": True,
                 "potencia_maxima": True,
                 "uso_pessoal": True,
                 "unico_gerador": True,
                 "regime": regime,
                 "acervo_magna": evidencia_abertura,
+                "acervo_cor_magna": evidencia_cor,
                 "alocacao_orcamento": aloc_multi,
                 "justificativa_magna": (
                     f"Suprema v11 única pessoal evoluída: regime adaptativo k_otimo={regime.get('k_otimo')} sil={regime.get('silhouette')} atual={regime.get('regime_atual')}, "
@@ -5227,9 +5761,10 @@ class CerebroIA:
                     f"utilidade esperada EV real R${resultado.get('utilidade_esperada',{}).get('ev_real_premios_medios')} ROI {resultado.get('utilidade_esperada',{}).get('roi')}%, "
                     f"verificação exaustiva P≥13={resultado.get('verificacao_exaustiva',{}).get('p13_exata')}, "
                     f"acervo de conhecimento {evidencia_abertura['digest']} aprendido até o concurso {evidencia_abertura['aprendido_ate']} "
-                    f"(veredito {evidencia_abertura['veredito']}, fator {evidencia_abertura['fator_confianca']}) — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
+                    f"(veredito {evidencia_abertura['veredito']}, fator {evidencia_abertura['fator_confianca']}), "
+                    f"acervo de cores {evidencia_cor['digest']} (veredito {evidencia_cor['veredito']}, fator {evidencia_cor['fator_confianca']}) — tudo possível e impossível dentro honestidade para 13/14/15. Único gerador Magna."
                 ),
-                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","inmet","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
+                "fontes_assimiladas": ["motores","oraculos","espectral","informacao","recente","fisica","clima","abertura","cor","inmet","memoria_vetorial","regime","ewc","meta_regime","mcts","perfil_risco","multi_rota","juiz_adv","nist","p_value","fingerprint","backtest","binomial","curva","acervo"],
                 "pesos_fontes": pesos,
                 "top15_magna": [int(x) for x in (np.argsort(vetor)[::-1][:15]+1)],
                 "concurso_alvo": int(concurso_alvo) if concurso_alvo is not None else (self.db.get_ultimo_concurso() or 0)+1,
@@ -5249,6 +5784,7 @@ class CerebroIA:
                         "votos_oraculo": {str(d): int(votos[d-1]) for d in dezenas},
                         "convergencia_media": round(float(np.mean([votos[d-1] for d in dezenas]))/15.0,4),
                         "abertura": self.acervo.afinidade_cartela(dezenas),
+                        "cores": self.acervo_cor.afinidade_cartela(dezenas),
                     }
                     if idx < len(resultado.get("explicacoes",[])):
                         cartela["explicacao_llm"] = resultado["explicacoes"][idx]
@@ -5278,6 +5814,27 @@ class CerebroIA:
                     "probabilidades": evidencia_abertura["probabilidades"],
                     "abertura_atual": evidencia_abertura["abertura_atual"],
                     "recorde": evidencia_abertura["recorde"],
+                },
+                # v11.8 — conhecimento de cores na decisão suprema, com o
+                # mesmo contrato de julgamento da conferência.
+                "cor": {
+                    "versao": self.ACERVO_VERSAO,
+                    "digest": evidencia_cor["digest"],
+                    "aprendido_ate": evidencia_cor["aprendido_ate"],
+                    "concursos_da_base": evidencia_cor["concursos_da_base"],
+                    "veredito": evidencia_cor["veredito"],
+                    "fator_confianca": evidencia_cor["fator_confianca"],
+                    "leitura": evidencia_cor["leitura"],
+                    "placar_walkforward": evidencia_cor["placar"],
+                },
+                "palpite_cor": {
+                    "concurso": resultado["concurso_alvo"],
+                    "digest": evidencia_cor["digest"],
+                    "ranking": evidencia_cor["ranking"],
+                    "ranking_fortes": evidencia_cor["ranking_fortes"],
+                    "probabilidades": evidencia_cor["probabilidades"],
+                    "dominante_atual": evidencia_cor["dominante_atual"],
+                    "recorde": evidencia_cor["recorde"],
                 },
             }
             # mesmo contrato da decisão única: o painel do /cerebro lê
@@ -5651,6 +6208,11 @@ class CerebroIA:
                            if hasattr(self, "acervo")
                            else {"status": "indisponível"}),
                 "placar_abertura": self.placar_abertura_memoria(),
+                # v11.8 — acervo de cores das bolas (tabela oficial MazuSoft)
+                "cor": (self.acervo_cor.estado()
+                        if hasattr(self, "acervo_cor")
+                        else {"status": "indisponível"}),
+                "placar_cor": self.placar_cor_memoria(),
                 "calibrado": bool(getattr(self, "_acervo_calibrado", False)),
                 "pesos_fontes": dict(self.pesos_fontes_magna),
             },
