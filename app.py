@@ -369,6 +369,46 @@ def api_magna_decidir():
         return jsonify({"status": "erro", "msg": str(exc)}), 500
 
 
+@app.route("/api/magna/pre-cartelas", methods=["GET"])
+def api_magna_pre_cartelas():
+    """Relatório de TUDO que a Inteligência Magna processa ANTES de gerar.
+
+    v12.1 — roda o pipeline de pré-processamento completo (treino, acervo
+    de abertura e cores, percepção de ambiente INMET/clima/física, regime,
+    fontes assimiladas, consenso do vetor, memória episódica, anti-
+    popularidade e rota extraordinária) SEM gerar nenhuma cartela e devolve
+    a trilha auditável, etapa por etapa, com duração e detalhes.
+
+    Query opcional: ?quantidade=1&alvo=13|14|15&modo=auto|forja&orcamento=50
+    """
+    try:
+        args = request.args
+        quantidade = int(args.get("quantidade", 1))
+        alvo = args.get("alvo") or None
+        if alvo not in (None, "", 13, 14, 15, "13", "14", "15"):
+            return jsonify({"status": "erro",
+                            "msg": "alvo deve ser 13, 14 ou 15"}), 400
+        alvo = int(alvo) if alvo not in (None, "") else None
+        modo = args.get("modo") or None
+        if modo not in (None, "", "auto", "forja"):
+            return jsonify({"status": "erro",
+                            "msg": "modo deve ser 'auto' ou 'forja'"}), 400
+        orcamento = args.get("orcamento")
+        orcamento = float(orcamento) if orcamento not in (None, "") else None
+        concurso = args.get("concurso")
+        concurso = int(concurso) if concurso not in (None, "") else None
+        relatorio = magna.relatorio_pre_cartelas(
+            quantidade=quantidade, orcamento=orcamento, alvo=alvo,
+            modo=modo, concurso_alvo=concurso)
+        return jsonify({"status": "ok", "relatorio": relatorio,
+                        "markdown": relatorio.get("markdown", "")})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "erro", "msg": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"status": "erro", "msg": str(exc)}), 500
+
+
 @app.route("/api/magna/suprema", methods=["POST"])
 def api_magna_suprema():
     """MAGNA SUPREMA v11 — Sistema único pessoal em potência máxima, sem erros.

@@ -157,6 +157,29 @@
     </div>
 </section>
 
+<!-- ══ RELATÓRIO PRÉ-CARTELAS (v12.1 — trilha auditável da decisão) ══ -->
+<details class="magna-details" id="det-pre-cartelas">
+    <summary><i class="fas fa-clipboard-list"></i> Relatório pré-cartelas: tudo que a Magna processa antes de gerar</summary>
+    <div class="magna-details-body">
+        <p class="acervo-leitura" id="precartelas-leitura">
+            Abra para a Magna documentar — etapa por etapa, com duração —
+            tudo que ela lê, pesa e decide ANTES de criar as cartelas.
+        </p>
+        <div id="precartelas-container">
+            <div class="ordem-loading">relatório não carregado — abra ou clique em “atualizar”.</div>
+        </div>
+        <button id="precartelas-atualizar" class="magna-primary" type="button" style="margin-top:10px;">
+            <i class="fas fa-rotate"></i> Atualizar relatório pré-cartelas
+        </button>
+        <p class="ordem-honestidade">
+            <i class="fas fa-circle-info"></i>
+            O relatório descreve o PROCESSO (o que foi lido, pesado e decidido).
+            Ele não altera probabilidades: cada cartela segue sujeita às frações
+            hipergeométricas exatas.
+        </p>
+    </div>
+</details>
+
 <!-- ══ ÁREAS DE CONHECIMENTO (recolhíveis — a Magna cuida de tudo) ══ -->
 <details class="magna-details" id="det-conhecimento">
     <summary><i class="fas fa-book-open"></i> Conhecimento da Magna: acervo, placar e fontes</summary>
@@ -655,6 +678,62 @@
     }
     function pararProcessamento() { clearInterval(timer); processing.hidden = true; }
 
+    /* ── Relatório pré-cartelas (v12.1) ── */
+    function renderPreCartelas(rel) {
+        const cont = document.getElementById('precartelas-container');
+        const leitura = document.getElementById('precartelas-leitura');
+        if (!cont) return;
+        if (!rel || !rel.etapas || !rel.etapas.length) {
+            cont.innerHTML = '<div class="ordem-loading">relatório indisponível nesta decisão.</div>';
+            return;
+        }
+        if (leitura) leitura.innerHTML = '<i class="fas fa-clipboard-list"></i> ' +
+            (rel.titulo || 'Relatório pré-cartelas') + ' · iniciado ' + (rel.iniciado_em || '—') +
+            ' · ' + rel.resumo.total_etapas + ' etapas · ' +
+            Number(rel.resumo.tempo_total_ms || 0).toFixed(0) + ' ms no total';
+        const icone = s => ({ok:'✅', neutro:'⚪', aviso:'⚠️', erro:'❌', ignorado:'⏭️'}[s] || '•');
+        const linhas = rel.etapas.map(et => {
+            const det = Object.entries(et.detalhes || {}).slice(0, 6).map(([k, v]) => {
+                let txt = (typeof v === 'object' && v !== null) ? JSON.stringify(v) : String(v);
+                if (txt.length > 90) txt = txt.slice(0, 90) + '…';
+                return '<div class="precart-detalhe"><span>' + k + '</span><code>' + txt + '</code></div>';
+            }).join('');
+            return '<tr class="precart-linha ' + et.status + '">' +
+                '<td>' + et.ordem + '</td>' +
+                '<td>' + icone(et.status) + ' <strong>' + et.nome + '</strong>' +
+                (et.descricao ? '<small>' + et.descricao + '</small>' : '') +
+                ((et.avisos || []).length ? '<small class="precart-aviso">⚠ ' + et.avisos.join(' · ') + '</small>' : '') +
+                (det ? '<div class="precart-detalhes">' + det + '</div>' : '') + '</td>' +
+                '<td class="num">' + Number(et.duracao_ms || 0).toFixed(1) + ' ms</td></tr>';
+        }).join('');
+        cont.innerHTML =
+            '<table class="table precart-tabela"><thead><tr><th>#</th><th>etapa processada antes das cartelas</th><th>tempo</th></tr></thead>' +
+            '<tbody>' + linhas + '</tbody></table>';
+    }
+    async function carregarPreCartelas() {
+        const cont = document.getElementById('precartelas-container');
+        if (cont) cont.innerHTML = '<div class="ordem-loading">a Magna está reprocessando o pré-ciclo para o relatório…</div>';
+        try {
+            const resp = await fetch('/api/magna/pre-cartelas?quantidade=1');
+            const data = await resp.json();
+            if (data.status === 'erro') throw new Error(data.msg);
+            renderPreCartelas(data.relatorio);
+        } catch (e) {
+            if (cont) cont.innerHTML = '<div class="ordem-loading">erro: ' + e.message + '</div>';
+        }
+    }
+    (function ligaPreCartelas() {
+        const det = document.getElementById('det-pre-cartelas');
+        if (det) det.addEventListener('toggle', function () {
+            if (det.open && !det.dataset.carregado) {
+                det.dataset.carregado = '1';
+                carregarPreCartelas();
+            }
+        });
+        const btn = document.getElementById('precartelas-atualizar');
+        if (btn) btn.onclick = carregarPreCartelas;
+    })();
+
     function renderizar(payload) {
         const r = payload.resultado;
         const a = r.analise || {};
@@ -693,6 +772,19 @@
         }
 
         renderizarForja(r);
+        // v12.1 — o relatório do pré-processamento acompanha a decisão
+        if (r.relatorio_pre_cartelas) {
+            renderPreCartelas(r.relatorio_pre_cartelas);
+            const det = document.getElementById('det-pre-cartelas');
+            if (det) det.dataset.carregado = '1';
+        }
+        // juízo do lote (juiz 9 critérios) passa a aparecer no painel
+        const julg = r.julgamento_magna;
+        const auditEl = document.getElementById('magna-audit');
+        if (auditEl && julg && julg.veredito) {
+            auditEl.textContent += ' · JUIZ ' + julg.veredito + ' ' +
+                (julg.nota != null ? Number(julg.nota).toFixed(3) : '');
+        }
         const cards = document.getElementById('magna-cartelas');
         cards.innerHTML = '';
         (r.cartelas || []).forEach((c, i) => {

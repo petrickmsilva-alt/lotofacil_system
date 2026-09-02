@@ -40,9 +40,15 @@ def test_decisao_assimila_todos_os_conhecimentos(magna_decisao):
     # v11.4 — o acervo de abertura (base histórica inteira) entrou como
     # conhecimento assimilado: são 7 fontes de leitura dentro da Magna;
     # v11.7 — telemetria INMET por local do sorteio (8ª fonte assimilada);
-    # v11.8 — acervo de cores das bolas, tabela oficial MazuSoft (9ª fonte).
-    assert len(resultado["fontes_assimiladas"]) == 9
+    # v11.8 — acervo de cores das bolas, tabela oficial MazuSoft (9ª fonte);
+    # v12.1 — o juízo completo da Suprema passou a toda decisão: regime,
+    # memória episódica/vetorial, fingerprint, juiz+adversarial+NIST+p-value
+    # e backtest+curva+utilidade (14 processos assimilados no total).
+    assert len(resultado["fontes_assimiladas"]) == 14
     assert any("acervo" in f for f in resultado["fontes_assimiladas"])
+    assert any("juiz" in f for f in resultado["fontes_assimiladas"])
+    assert "julgamento_magna" in resultado
+    assert "relatorio_pre_cartelas" in resultado
     # v11.2 — clima entrou no consenso; v11.4 — a fonte `ordem` (módulo
     # paralelo) virou `abertura`: órgão da própria Magna; v11.7 — telemetria
     # INMET por local do sorteio entrou como fonte leve; v11.8 — `cor`
