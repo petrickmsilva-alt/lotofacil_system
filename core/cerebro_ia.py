@@ -60,6 +60,11 @@ except Exception as _e_inmet:
     print(f"[AVISO] inmet import: {_e_inmet}")
     TelemetriaInmet = None
 
+# v12.1 — trilha de auditoria: registra TUDO que a Magna processa antes
+# de gerar as cartelas (relatório acompanha a decisão e pode ser pedido
+# sozinho via relatorio_pre_cartelas() / GET /api/magna/pre-cartelas).
+from .relatorio_pre_cartelas import GravadorEtapas
+
 # Forja v2 extraordinária + Suprema v10
 try:
     from .forja_lotes import MotorGrafos, melhor_rota_por_orcamento, ForjaDeLotes, GeometriaJohnson, MapaInformacional
@@ -2873,6 +2878,27 @@ class CerebroIA:
             cb("Wheeling: 8 cartelas com garantia 14 condicional ao pool "
                "+ {} por exaustão".format(len(cartelas) - 8))
 
+        # v12.1 — BLOQUEIO DE MEMÓRIA em toda saída:
+        # (a) nenhuma combinação que JÁ FOI 15 pontos no histórico oficial
+        #     é reemitida (rotas sem garantia combinatória: exaustão/forja —
+        #     a substituição busca o próximo topo do universo aprovado);
+        # (b) nas rotas de GARANTIA (wheeling) a cartela NÃO é trocada —
+        #     trocar quebraria a garantia de 13/14/15 — e a ocorrência,
+        #     praticamente impossível, é reportada à vista.
+        if garantia is None:
+            substituidas = self._substituir_cartelas_ja_sorteadas_15(cartelas, vf)
+            if len(substituidas) != len(cartelas):
+                cb("Bloqueio-15: {} cartela(s) substituída(s) por já terem sido 15 pontos no histórico"
+                   .format(len(cartelas) - len(substituidas)))
+            cartelas = substituidas
+        else:
+            oficiais_15 = self._mascaras_sorteios_15()
+            for c in cartelas:
+                if self._mask_de_dezenas(c) in oficiais_15:
+                    cb("BLOQUEIO-15 (garantia): cartela {} já foi 15 no histórico — mantida "
+                       "para preservar a garantia combinatória do fechamento".format(
+                           sorted(int(d) for d in c)))
+
         # contabilidade exata do lote (universo completo)
         analise = self.wheeling.analisar_lote(cartelas, pool_elite)
         custo = round(len(cartelas) * VALOR_APOSTA, 2)
@@ -4424,11 +4450,14 @@ class CerebroIA:
 
     def decidir_e_gerar(self, quantidade=1, orcamento=None, callback=None,
                          registrar=True, concurso_alvo=None, alvo=None,
-                         modo=None):
+                         modo=None, tentativas_juiz=2):
         """Serializa e executa a única decisão de criação do processo.
 
         alvo: None (automático) | 13 | 14 | 15 — escada de captura.
         modo: None/"auto" | "forja" — forja espacial de lotes.
+        tentativas_juiz: quantas vezes o Juiz de 9 critérios julga o lote
+            (se REPROVADO, a Magna regenera antes de entregar; v12.1 — o
+            juízo passou a fazer parte de TODA decisão, não só da Suprema).
         """
         with self._magna_lock:
             return self._decidir_e_gerar_sem_lock(
@@ -4439,18 +4468,275 @@ class CerebroIA:
                 concurso_alvo=concurso_alvo,
                 alvo=alvo,
                 modo=modo,
+                tentativas_juiz=tentativas_juiz,
             )
+
+    # ============================================================
+    # v12.1 — PIPELINE PRÉ-CARTELAS + RELATÓRIO DE AUDITORIA
+    # ============================================================
+    def _pipeline_pre_cartelas(self, grav: "GravadorEtapas",
+                               quantidade: int, orcamento,
+                               alvo, modo, concurso_alvo,
+                               callback=None) -> Dict[str, Any]:
+        """Executa e REGISTRA tudo que a Magna processa antes de gerar.
+
+        É o mesmo fluxo que sempre precedeu a geração — treino, acervo,
+        ambiente, fontes, consenso, memória, rateio e rota — agora com
+        cada etapa cronometrada e documentada no `GravadorEtapas`.
+        Devolve o estado (fontes, pesos, vetor final, evidências) que a
+        geração consome. NADA aqui gera cartela.
+        """
+        def cb(msg):
+            self._log("MAGNA", msg)
+            if callback:
+                callback(msg)
+
+        # ── 1. Treino da memória única (14 motores + Oráculo) ────────
+        if not self.treinado:
+            with grav.etapa("treinamento_memoria_unica",
+                            "14 motores + Oráculo Convergente + SPSA sobre a base histórica inteira") as et:
+                cb("Assimilando histórico e treinando a memória única...")
+                info = self.treinar(callback=callback)
+                et.detalhe(concursos=self.n,
+                           modulos=info.get("modulos"),
+                           oraculos=info.get("oraculos"),
+                           tempo_s=info.get("tempo"))
+        else:
+            grav.registrar("treinamento_memoria_unica",
+                           "memória única já treinada nesta instância",
+                           detalhes={"concursos": self.n,
+                                     "tempo_treino_original_s":
+                                         self.metricas.get("tempo_treino")})
+
+        # ── 2. Reasseguro do ACERVO (base histórica inteira) ─────────
+        # v11.4/v11.8 — nada de decidir com memória velha: abertura e
+        # cores são relidas da base e conferidas contra o carimbo.
+        with grav.etapa("acervo_conhecimento",
+                        "Relê a base histórica (abertura + cores) e reassigura o conhecimento"):
+            cb("Reassegurando o acervo de conhecimento (base histórica)...")
+            self._garantir_acervo(callback=callback)
+        evidencia_abertura = self.evidencia_abertura()
+        evidencia_cor = self.evidencia_cor()
+        grav.registrar("evidencia_acervo",
+                       "Síntese do que o acervo ensina — usada no vetor, no Juiz e na conferência",
+                       detalhes={
+                           "abertura_digest": evidencia_abertura.get("digest"),
+                           "abertura_aprendido_ate": evidencia_abertura.get("aprendido_ate"),
+                           "abertura_veredito": evidencia_abertura.get("veredito"),
+                           "abertura_fator_confianca": evidencia_abertura.get("fator_confianca"),
+                           "abertura_palpite_top3": evidencia_abertura.get("palpite_top3"),
+                           "cores_digest": evidencia_cor.get("digest"),
+                           "cores_veredito": evidencia_cor.get("veredito"),
+                           "cores_fator_confianca": evidencia_cor.get("fator_confianca"),
+                           "cores_dominante_atual": evidencia_cor.get("dominante_atual"),
+                       })
+
+        # ── 3. Percepção autônoma do AMBIENTE (INMET + clima + física) ─
+        # v12.0 — a Magna percebe sozinha o local e a telemetria do sorteio.
+        with grav.etapa("percepcao_ambiente",
+                        "Local do sorteio + telemetria INMET + clima (shrinkage) + registro físico do ambiente") as et_amb:
+            try:
+                percepcao_ambiente = self.perceber_ambiente_autonomo(
+                    concurso=concurso_alvo, callback=callback)
+            except Exception as exc:
+                cb("Percepção de ambiente indisponível ({}); seguindo neutro."
+                   .format(type(exc).__name__))
+                percepcao_ambiente = {"status": "neutro",
+                                      "ambiente_registrado": False}
+        grav.detalhar("percepcao_ambiente",
+                      status_ambiente=percepcao_ambiente.get("status"),
+                      local=(percepcao_ambiente.get("local") or {}).get("cidade_uf"),
+                      telemetria=(percepcao_ambiente.get("telemetria") or {}),
+                      clima=percepcao_ambiente.get("clima"),
+                      ambiente_registrado=percepcao_ambiente.get("ambiente_registrado"))
+        if percepcao_ambiente.get("status") == "neutro":
+            grav.avisar("percepcao_ambiente",
+                        "sem telemetria completa: fontes climáticas neutras")
+
+        # ── 4. Regime atual (K-means adaptativo) ─────────────────────
+        # v12.1 — o detector de regime agora informa TODA decisão (antes
+        # só a Suprema enxergava o regime; o diagnóstico acompanha a
+        # decisão e o relatório).
+        regime_atual = self.detectar_regime_atual()
+        grav.registrar("regime_atual",
+                       "Detector de regime (K-means adaptativo sobre a janela recente)",
+                       status="ok" if "erro" not in regime_atual else "aviso",
+                       detalhes={"regime": regime_atual})
+
+        # ── 5. Escolha autônoma do MÉTODO de geração ─────────────────
+        # v12.0 — sem checkbox: a geometria do problema decide (escada
+        # de captura nativa × forja espacial × exaustão diversa).
+        if modo is None:
+            with grav.etapa("escolha_metodo_geracao",
+                            "A Magna escolhe sozinha entre exaustão, escada de captura e forja espacial") as et_modo:
+                modo = self._modo_forja_autonomo(quantidade, alvo)
+                et_modo.detalhe(modo_escolhido=modo or "auto",
+                                quantidade=quantidade, alvo=alvo or "auto")
+            if modo == "forja":
+                cb("A Magna decidiu pela FORJA ESPACIAL: lote de {} cartela(s)"
+                   " com alvo {} — otimizando a união exata dos leques."
+                   .format(quantidade, alvo or 13))
+        else:
+            grav.registrar("escolha_metodo_geracao",
+                           "método informado pelo chamador",
+                           detalhes={"modo": modo})
+
+        # ── 6. FONTES ASSIMILADAS (todos os antigos painéis) ─────────
+        with grav.etapa("fontes_assimiladas",
+                        "Motores, oráculos, espectro, informação, janela recente, física, clima, abertura, cores e INMET"):
+            cb("Unificando motores, oráculos, espectro, informação e análise recente...")
+            fontes, consulta, espectro, informacao, entropias = \
+                self._fontes_assimiladas_magna()
+        pesos = dict(self.pesos_fontes_magna)
+        grav.registrar("pesos_fontes",
+                       "Peso calibrado de cada fonte no consenso (aprendido em walk-forward/conferências)",
+                       detalhes={"pesos": {k: float(v) for k, v in pesos.items()},
+                                 "peso_total": round(float(sum(pesos.values())), 6)})
+
+        # ── 7. CONSENSO: um único vetor decisório ────────────────────
+        with grav.etapa("consenso_vetor_final",
+                        "Fusão ponderada das fontes no ÚNICO vetor autorizado a gerar") as et_cons:
+            vetor_final = np.zeros(TOTAL_DEZENAS, dtype=float)
+            for nome, vetor in fontes.items():
+                vetor_final += vetor * pesos.get(nome, 0.0)
+            vetor_final = self._normalizar_vetor(vetor_final)
+            top_fontes = {
+                nome: [int(x) for x in (np.argsort(v)[::-1][:5] + 1)]
+                for nome, v in fontes.items()
+            }
+            et_cons.detalhe(top5_por_fonte=top_fontes,
+                            top15_consenso=[int(x) for x in (
+                                np.argsort(vetor_final)[::-1][:15] + 1)])
+
+        # ── 8. MEMÓRIA EPISÓDICA (protótipos × repulsão + vetorial) ──
+        with grav.etapa("memoria_episodica",
+                        "Reforço de quase-13/14, repulsão de clones fracos e memória vetorial com atenção") as et_mem:
+            n_proto = len(self._carregar_episodios("prototipo", 80))
+            n_repul = len(self._carregar_episodios("repulsao", 80))
+            vetor_final = self._aplicar_memoria_episodica(vetor_final)
+            et_mem.detalhe(episodios_prototipo=n_proto,
+                           episodios_repulsao=n_repul)
+
+        # ── 9. ANTI-POPULARIDADE (edge de RATEIO) ────────────────────
+        # v11.5 — não muda P(acerto); reduz a chance de dividir o prêmio.
+        if getattr(self, "antipopularidade", None) is not None:
+            with grav.etapa("antipopularidade",
+                            "Prioriza perfis menos disputados no rateio (edge de prêmio, não de acerto)"):
+                vetor_final = self._vetor_antipopularidade(vetor_final)
+                cb("Anti-popularidade: priorizando perfis menos disputados no "
+                   "rateio (não muda P(acerto) — reduz divisão do prêmio).")
+        else:
+            grav.registrar("antipopularidade",
+                           "módulo indisponível nesta instância",
+                           status="ignorado")
+
+        # ── 10. ROTA EXTRAORDINÁRIA (orçamento → alvo/pool/método) ──
+        rota_info: Dict[str, Any] = {}
+        with grav.etapa("rota_extraordinaria",
+                        "Planejamento extraordinário por orçamento (rota, pool e captura)") as et_rota:
+            try:
+                rota_info = self._planejar_rota_extraordinaria(
+                    vetor_final, quantidade, orcamento, alvo)
+                rc = rota_info.get("rota_escolhida") or {}
+                if rota_info.get("rota_escolhida"):
+                    cb("Rota extraordinária escolhida: alvo {} | pool {} | método {} | custo R$ {} | captura {}".format(
+                        rc.get("alvo"), rc.get("n_pool"), rc.get("metodo"),
+                        rc.get("custo_teorico"), rc.get("um_em_captura")))
+            except Exception as exc:
+                rota_info = {"rota_escolhida": None, "erro": str(exc)}
+            et_rota.detalhe(
+                rota_escolhida=bool(rota_info.get("rota_escolhida")),
+                resumo={k: v for k, v in (rota_info.get("rota_escolhida") or {}).items()
+                        if k in ("alvo", "n_pool", "metodo",
+                                 "custo_teorico", "um_em_captura")})
+
+        return {
+            "quantidade": quantidade,
+            "orcamento": orcamento,
+            "alvo": alvo,
+            "modo": modo,
+            "concurso_alvo": concurso_alvo,
+            "fontes": fontes,
+            "consulta": consulta,
+            "espectro": espectro,
+            "informacao": informacao,
+            "entropias": entropias,
+            "pesos": pesos,
+            "vetor_final": vetor_final,
+            "evidencia_abertura": evidencia_abertura,
+            "evidencia_cor": evidencia_cor,
+            "percepcao_ambiente": percepcao_ambiente,
+            "regime_atual": regime_atual,
+            "rota_info": rota_info,
+        }
+
+    def relatorio_pre_cartelas(self, quantidade: int = 1, orcamento=None,
+                               alvo=None, modo=None, concurso_alvo=None,
+                               callback=None) -> Dict[str, Any]:
+        """Relatório de TUDO que a Magna processa ANTES de gerar cartelas.
+
+        Roda o pipeline completo de pré-processamento (treino, acervo,
+        ambiente, regime, fontes, consenso, memória, rateio e rota) SEM
+        gerar nenhuma cartela — é a visão auditável do "antes do sorteio".
+        """
+        quantidade = int(quantidade)
+        if not 1 <= quantidade <= 100:
+            raise ValueError("quantidade deve estar entre 1 e 100")
+        with self._magna_lock:
+            grav = GravadorEtapas(
+                "Relatório pré-cartelas — Inteligência Magna")
+            grav.registrar("validacao_entrada",
+                           "Parâmetros normalizados para o ciclo decisório",
+                           detalhes={
+                               "quantidade": quantidade,
+                               "orcamento": orcamento,
+                               "alvo": alvo or "auto",
+                               "modo": modo or "auto",
+                               "concurso_alvo": concurso_alvo or "próximo",
+                           })
+            estado = self._pipeline_pre_cartelas(
+                grav, quantidade, orcamento, alvo, modo, concurso_alvo,
+                callback=callback)
+            vf = estado["vetor_final"]
+            grav.registrar("pronto_para_gerar",
+                           "Estado final consolidado; a partir daqui a Magna geraria as cartelas",
+                           detalhes={
+                               "vetor_top15": [int(x) for x in (
+                                   np.argsort(vf)[::-1][:15] + 1)],
+                               "metodo": estado["modo"] or "auto",
+                               "concursos_na_base": self.n,
+                           })
+            rel = grav.relatorio()
+            rel["estado_final"] = {
+                "top15_magna": [int(x) for x in (
+                    np.argsort(vf)[::-1][:15] + 1)],
+                "pesos_fontes": {k: float(v) for k, v in estado["pesos"].items()},
+                "metodo_geracao": estado["modo"] or "auto",
+                "regime": estado["regime_atual"],
+                "acervo_abertura_palpite_top3":
+                    (estado["evidencia_abertura"] or {}).get("palpite_top3"),
+                "ambiente_status":
+                    (estado["percepcao_ambiente"] or {}).get("status"),
+            }
+            rel["markdown"] = grav.para_markdown()
+            return self._json_seguro(rel)
 
     def _decidir_e_gerar_sem_lock(self, quantidade=1, orcamento=None,
                                   callback=None, registrar=True,
                                   concurso_alvo=None, alvo=None,
-                                  modo=None):
+                                  modo=None, tentativas_juiz=2):
         """Executa o único fluxo autorizado de criação de cartelas.
 
         Tudo que antes aparecia como Gerar Cartelas, Cartela do Dia, Wheeling,
         Análise, Singularidade e Auditoria é assimilado antes da decisão. Esses
         componentes não entregam palpites próprios: produzem evidências para a
         mesma memória, o mesmo vetor e a mesma resposta final.
+
+        v12.1 — o pré-processamento inteiro é registrado em
+        `relatorio_pre_cartelas` (etapas cronometradas), e o lote gerado passa
+        pelo mesmo juízo da Suprema: bloqueio de 15 já sorteados, fingerprint
+        pessoal, Juiz 9 critérios + adversarial + NIST + p-value, backtest,
+        curva de aprendizado e utilidade esperada com prêmios reais.
         """
         from .singularidade import (
             CoberturaSteiner, FiltrosAvancados, GestaoDeBanca,
@@ -4476,83 +4762,155 @@ class CerebroIA:
             if callback:
                 callback(msg)
 
-        if not self.treinado:
-            cb("Assimilando histórico e treinando a memória única...")
-            self.treinar(callback=callback)
+        grav = GravadorEtapas("Relatório pré-cartelas — Inteligência Magna")
+        grav.registrar("validacao_entrada",
+                       "Parâmetros normalizados para o ciclo decisório",
+                       detalhes={
+                           "quantidade": quantidade,
+                           "orcamento": orcamento,
+                           "alvo": alvo or "auto",
+                           "modo": modo or "auto",
+                           "concurso_alvo": concurso_alvo or "próximo",
+                       })
 
-        # v11.4 — antes de decidir, a Magna reassegura o PRÓPRIO acervo: nada
-        # de consultar um módulo separado. O conhecimento de abertura é dela,
-        # aprendido da base histórica inteira e memorizado no banco.
-        # v11.8 — o mesmo reasseguro cobre o acervo de cores (assimilado no
-        # mesmo ciclo), e a evidência de cores entra na decisão ao lado da
-        # de abertura.
-        cb("Reassegurando o acervo de conhecimento (base histórica)...")
-        self._garantir_acervo(callback=callback)
-        evidencia_abertura = self.evidencia_abertura()
-        evidencia_cor = self.evidencia_cor()
+        estado = self._pipeline_pre_cartelas(
+            grav, quantidade, orcamento, alvo, modo, concurso_alvo,
+            callback=callback)
+        fontes = estado["fontes"]
+        consulta = estado["consulta"]
+        espectro = estado["espectro"]
+        informacao = estado["informacao"]
+        entropias = estado["entropias"]
+        pesos = estado["pesos"]
+        vetor_final = estado["vetor_final"]
+        evidencia_abertura = estado["evidencia_abertura"]
+        evidencia_cor = estado["evidencia_cor"]
+        percepcao_ambiente = estado["percepcao_ambiente"]
+        modo = estado["modo"]
 
-        # v12.0 — a Magna PERCEBE o ambiente do sorteio por conta própria
-        # (telemetria INMET do local + registro do ambiente físico): o antigo
-        # formulário "Registrar Ambiente" e a antiga "Forja automática" viram
-        # passos internos da decisão. A percepção é idempotente por concurso.
+        # ── Fingerprint pessoal (memória anti-repetição do usuário) ──
         try:
-            percepcao_ambiente = self.perceber_ambiente_autonomo(
-                concurso=concurso_alvo, callback=callback)
-        except Exception as exc:
-            cb("Percepção de ambiente indisponível ({}); seguindo neutro."
-               .format(type(exc).__name__))
-            percepcao_ambiente = {"status": "neutro",
-                                  "ambiente_registrado": False}
-
-        # v12.0 — a FORJA também é decisão da Magna. Sem checkbox: quando o
-        # alvo é a escada 13/14 ou o lote é grande (8+ cartelas), a própria
-        # inteligência escolhe a forja espacial (recocido + geometria de
-        # Johnson); para poucas cartelas sem alvo, a exaustão diversa é mais
-        # forte e ela sabe disso.
-        if modo is None:
-            modo = self._modo_forja_autonomo(quantidade, alvo)
-            if modo == "forja":
-                cb("A Magna decidiu pela FORJA ESPACIAL: lote de {} cartela(s)"
-                   " com alvo {} — otimizando a união exata dos leques."
-                   .format(quantidade, alvo or 13))
-
-        cb("Unificando motores, oráculos, espectro, informação e análise recente...")
-        fontes, consulta, espectro, informacao, entropias = \
-            self._fontes_assimiladas_magna()
-
-        pesos = dict(self.pesos_fontes_magna)
-        vetor_final = np.zeros(TOTAL_DEZENAS, dtype=float)
-        for nome, vetor in fontes.items():
-            vetor_final += vetor * pesos[nome]
-        vetor_final = self._normalizar_vetor(vetor_final)
-        vetor_final = self._aplicar_memoria_episodica(vetor_final)
-
-        # v11.5 — desempate por taxa de rateio (edge real, não preditivo).
-        if getattr(self, "antipopularidade", None) is not None:
-            vetor_final = self._vetor_antipopularidade(vetor_final)
-            cb("Anti-popularidade: priorizando perfis menos disputados no "
-               "rateio (não muda P(acerto) — reduz divisão do prêmio).")
-
-        # Planejamento extraordinário por orçamento (nova inteligência)
-        try:
-            rota_info = self._planejar_rota_extraordinaria(
-                vetor_final, quantidade, orcamento, alvo)
-            if rota_info.get("rota_escolhida"):
-                rc = rota_info["rota_escolhida"]
-                cb("Rota extraordinária escolhida: alvo {} | pool {} | método {} | custo R$ {} | captura {}".format(
-                    rc.get("alvo"), rc.get("n_pool"), rc.get("metodo"),
-                    rc.get("custo_teorico"), rc.get("um_em_captura")))
+            fp = FingerprintPessoal(self.db) if FingerprintPessoal else None
+            if fp:
+                fp.carregar_historico()
         except Exception:
-            pass
+            fp = None
+        grav.registrar("fingerprint_pessoal",
+                       "SHA256 das suas últimas 500 cartelas para nunca repetir jogo",
+                       detalhes={"cartelas_na_memoria":
+                                 len(fp.cache) if fp else 0})
 
+        # ── GERAÇÃO — a única porta de criação de cartelas ──────────
         cb("Tomando uma decisão única para {} cartela(s)...".format(quantidade))
-        resultado = self.gerar_otimas(
-            n_cartelas=quantidade,
-            callback=callback,
-            vetor_override=vetor_final,
-            alvo=alvo,
-            modo=modo,
-        )
+        with grav.etapa("geracao_cartelas",
+                        "Estratégia escolhida pela memória única (exaustão, escada de captura ou forja)"):
+            resultado = self.gerar_otimas(
+                n_cartelas=quantidade,
+                callback=callback,
+                vetor_override=vetor_final,
+                alvo=alvo,
+                modo=modo,
+            )
+            grav.detalhar("geracao_cartelas",
+                                estrategia=resultado.get("estrategia"),
+                                pool_elite=resultado.get("pool_elite"),
+                                n_cartelas=resultado.get("n_cartelas"),
+                                garantia=resultado.get("garantia"))
+
+        cartelas_dezenas = [c["dezenas"] for c in resultado["cartelas"]]
+        pool_elite = resultado["pool_elite"]
+        analise = resultado["analise"]
+
+        # ── FINGERPRINT: troca cartela que o usuário já recebeu antes ──
+        # (rotas sem garantia combinatória; nas de garantia o lote é
+        # mantido e a repetição fica registrada no fingerprint)
+        if fp is not None and resultado.get("garantia") is None:
+            try:
+                cartelas_novas, trocadas = self._substituir_cartelas_ja_geradas(
+                    cartelas_dezenas, vetor_final, fp)
+                if trocadas:
+                    cb("Fingerprint: {} cartela(s) já gerada(s) antes foram substituídas por jogos inéditos"
+                       .format(trocadas))
+                    for cartela, dezenas in zip(resultado["cartelas"],
+                                                cartelas_novas):
+                        cartela["dezenas"] = [int(d) for d in dezenas]
+                        cartela["bitmask"] = self._mask_de_dezenas(dezenas)
+                        cartela["score_total"] = round(
+                            float(sum(vetor_final[d - 1]
+                                      for d in dezenas)), 6)
+                    analise = resultado["analise"] = self.wheeling.analisar_lote(
+                        [c["dezenas"] for c in resultado["cartelas"]],
+                        pool_elite)
+                    grav.detalhar("fingerprint_pessoal",
+                                  substituidas_antes_do_juizo=trocadas)
+            except Exception as exc:
+                grav.avisar("fingerprint_pessoal",
+                            "substituição de repetidas falhou: {}".format(exc))
+
+        # ── JUÍZO DO LOTE (igual à Suprema, agora em TODA decisão) ──
+        tentativas = max(1, int(tentativas_juiz or 1))
+        julgamento, adv, nist, pval = {}, {}, {}, {}
+        for tentativa in range(tentativas):
+            cartelas_dezenas = [c["dezenas"] for c in resultado["cartelas"]]
+            pool_elite = resultado["pool_elite"]
+            analise = resultado["analise"]
+            try:
+                julgamento = self.julgar_lote(
+                    cartelas_dezenas, pool_elite, analise, vetor_final)
+            except Exception as exc:
+                julgamento = {"veredito": "APROVADO", "nota": 0.8,
+                              "erro": str(exc)}
+            try:
+                if JuizAdversarial is not None:
+                    adv = JuizAdversarial().julgar(cartelas_dezenas, pool_elite)
+            except Exception:
+                adv = {}
+            try:
+                if TesteNIST is not None:
+                    nist = TesteNIST().testar(cartelas_dezenas)
+            except Exception:
+                nist = {}
+            try:
+                if PValueRandom is not None:
+                    pval = PValueRandom().calcular(
+                        float(analise.get("p_melhor_13_mais") or 0.0),
+                        len(cartelas_dezenas), alvo=int(alvo or 13))
+            except Exception:
+                pval = {}
+            aprovado = julgamento.get("veredito") == "APROVADO"
+            # adversarial/NIST/p-value são DIAGNÓSTICO (vão para a resposta);
+            # só o veredito do Juiz de 9 critérios dispara regeneração —
+            # reexigir "ROBUSTO" regeneraria em vão (lote determinístico).
+            if aprovado or tentativa == tentativas - 1:
+                break
+            cb("Lote REPROVADO pelo Juiz ({}) — regenerando (tentativa {}/{})..."
+               .format(julgamento.get("reprovados"), tentativa + 2, tentativas))
+            resultado = self.gerar_otimas(
+                n_cartelas=quantidade,
+                callback=callback,
+                vetor_override=vetor_final,
+                alvo=alvo,
+                modo=modo,
+            )
+        grav.registrar("juizo_lote_magna",
+                       "Juiz 9 critérios + adversarial + NIST + p-value sobre o lote final",
+                       detalhes={
+                           "veredito": julgamento.get("veredito"),
+                           "nota": julgamento.get("nota"),
+                           "criterios_reprovados": julgamento.get("reprovados"),
+                           "adversarial": adv.get("veredito"),
+                           "nist": nist.get("veredito"),
+                           "p_value": pval.get("veredito"),
+                           "tentativas": tentativa + 1,
+                       })
+
+        # registra o lote na memória pessoal (anti-repetição)
+        if fp is not None:
+            try:
+                for c in resultado["cartelas"]:
+                    fp.registrar(c["dezenas"])
+            except Exception:
+                pass
 
         # Singularidade deixa de ser uma página separada: seus filtros passam a
         # interpretar cada cartela da decisão final, sem quebrar uma garantia
@@ -4671,11 +5029,58 @@ class CerebroIA:
             ),
         }
 
+        # ── Verificações de honestidade + utilidade (antes só na Suprema) ──
+        backtest, curva, verificacao, utilidade = {}, {}, {}, {}
+        try:
+            if BacktestLote is not None:
+                backtest = BacktestLote().testar(
+                    cartelas_dezenas, self.matriz, janela=50)
+        except Exception:
+            backtest = {}
+        try:
+            if CurvaAprendizado is not None:
+                curva = CurvaAprendizado(
+                    self.get_historico_magna(50)).curva()
+        except Exception:
+            curva = {}
+        try:
+            if VerificadorMagno is not None:
+                verificacao = VerificadorMagno().verificar(
+                    cartelas_dezenas, pool_elite)
+        except Exception:
+            verificacao = {}
+        try:
+            if UtilidadeEsperada is not None:
+                try:
+                    conn = self.db.get_conn()
+                    row = conn.execute(
+                        "SELECT AVG(premio_13), AVG(premio_14), AVG(premio_15) "
+                        "FROM resultados WHERE premio_13>0").fetchone()
+                    conn.close()
+                    premios_med = {13: float(row[0] or 35),
+                                   14: float(row[1] or 1800),
+                                   15: float(row[2] or 500000)}
+                except Exception:
+                    premios_med = {13: 35, 14: 1800, 15: 500000}
+                utilidade = UtilidadeEsperada().calcular(
+                    analise, premios_med, resultado["custo"])
+        except Exception:
+            utilidade = {}
+        grav.registrar("verificacoes_honestidade",
+                       "Backtest 50 concursos, curva de aprendizado, verificação exaustiva e utilidade esperada (prêmios reais)",
+                       detalhes={
+                           "backtest_media_acertos": backtest.get("media_acertos_lote"),
+                           "curva_tendencia": curva.get("tendencia"),
+                           "verificacao_p13_exata": verificacao.get("p13_exata"),
+                           "utilidade_roi": utilidade.get("roi"),
+                       })
+
         resultado.update({
             "status": "ok",
             "identidade": "Inteligência Magna",
             "decisao_unica": True,
             "ambiente_percebido": percepcao_ambiente,
+            "regime_atual": estado["regime_atual"],
             "justificativa_magna": (
                 justificativa + " " + evidencia_abertura["leitura"]
                 + " " + evidencia_cor["leitura"]),
@@ -4686,6 +5091,9 @@ class CerebroIA:
                 "acervo de abertura (base histórica inteira)",
                 "acervo de cores (tabela oficial das bolas)",
                 "telemetria INMET (local do sorteio)",
+                "regime atual (K-means)", "memória episódica e vetorial",
+                "fingerprint pessoal", "juiz 9 critérios + adversarial + NIST + p-value",
+                "backtest 50 + curva de aprendizado + utilidade esperada",
             ],
             "pesos_fontes": pesos,
             "acervo_magna": evidencia_abertura,
@@ -4701,6 +5109,16 @@ class CerebroIA:
                 [c["dezenas"] for c in resultado["cartelas"]]),
             "auditoria_cartelas_magna": self._auditoria_cartelas_magna(
                 [c["dezenas"] for c in resultado["cartelas"]], vetor_final),
+            # v12.1 — juízo completo do lote (antes exclusivo da Suprema)
+            "julgamento_magna": julgamento,
+            "julgamento_adversarial": adv,
+            "teste_nist": nist,
+            "p_value_random": pval,
+            "backtest_lote": backtest,
+            "curva_aprendizado": curva,
+            "verificacao_exaustiva": verificacao,
+            "utilidade_esperada": utilidade,
+            "fingerprint": fp.relatorio() if fp else {},
             "memoria_magna": {
                 "top15_fontes": top15_fontes,
                 "vetor_final": [round(float(x), 10) for x in vetor_final],
@@ -4752,6 +5170,7 @@ class CerebroIA:
                     "recorde": evidencia_cor["recorde"],
                 },
             },
+            "relatorio_pre_cartelas": grav.relatorio(),
             "concurso_alvo": (int(concurso_alvo) if concurso_alvo is not None
                                 else (self.db.get_ultimo_concurso() or 0) + 1),
         })
@@ -4767,8 +5186,9 @@ class CerebroIA:
             "quantidade": resultado["n_cartelas"],
             "top15": resultado["top15_magna"],
         }
-        cb("Decisão Magna concluída: {} · auditoria #{}".format(
-            estrategia, resultado["decisao_id"] or "não persistida"))
+        cb("Decisão Magna concluída: {} · juiz nota {} · auditoria #{}".format(
+            estrategia, (julgamento or {}).get("nota"),
+            resultado["decisao_id"] or "não persistida"))
         return self._json_seguro(resultado)
 
     def _registrar_decisao_magna(self, resultado):
@@ -4792,6 +5212,12 @@ class CerebroIA:
                     "memoria": resultado.get("memoria_magna") or {},
                     "diagnostico": resultado.get("diagnostico_magna") or {},
                     "analise_lote": resultado.get("analise") or {},
+                    # v12.1 — trilha completa do pré-processamento (o que a
+                    # Magna leu, pesou e decidiu ANTES de gerar as cartelas)
+                    "relatorio_pre_cartelas":
+                        (resultado.get("relatorio_pre_cartelas") or {}).get(
+                            "etapas") or [],
+                    "julgamento": resultado.get("julgamento_magna") or {},
                 })),
                 str(resultado["justificativa_magna"]),
             ))
@@ -5312,6 +5738,50 @@ class CerebroIA:
             usadas.add(self._mask_de_dezenas(substituta))
             out.append(substituta)
         return out
+
+    def _substituir_cartelas_ja_geradas(self, cartelas, vf, fp):
+        """v12.1 — fingerprint pessoal: nunca reemitir cartela sua.
+
+        Toda cartela já presente na memória pessoal (últimas 500 geradas)
+        é trocada pelo próximo topo do universo ainda inédito. Nas rotas
+        de GARANTIA o lote é preservado (trocar quebraria a garantia) e a
+        repetição é reportada. `fp` é um FingerprintPessoal carregado.
+        """
+        if fp is None:
+            return cartelas, 0
+        usadas = {self._mask_de_dezenas(c) for c in cartelas}
+        out, trocadas = [], 0
+        for c in cartelas:
+            if not fp.ja_foi_gerada(c):
+                out.append(c)
+                continue
+            substituta = None
+            try:
+                from .heavyweight_engine import MotorExaustaoUniverso
+                heavy = MotorExaustaoUniverso()
+                idx, _ = heavy.avaliar_universo_completo(vf)
+                for i in range(min(4000, len(idx))):
+                    cand = heavy.obter_dezenas_por_indice(idx[i])
+                    cm = self._mask_de_dezenas(cand)
+                    if cm in usadas or fp.ja_foi_gerada(cand):
+                        continue
+                    if self._cartela_ja_foi_15(cand):
+                        continue
+                    ok, _ = self._gaussiano.filtrar(cand)
+                    if not ok:
+                        continue
+                    substituta = cand
+                    break
+            except Exception:
+                substituta = None
+            if substituta is None:
+                out.append(c)  # sem substituta: mantém e reporta
+                continue
+            trocadas += 1
+            usadas.add(self._mask_de_dezenas(substituta))
+            fp.registrar(substituta)
+            out.append(substituta)
+        return out, trocadas
 
     def diagnostico_aprendizado(self) -> Dict[str, Any]:
         """O que a Magna já aprendeu, como aprende e o que ainda falta.

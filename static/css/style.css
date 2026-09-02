@@ -1858,3 +1858,25 @@ body {
     .ordem-freq-linha { grid-template-columns: 36px 1fr; }
     .ordem-freq-nums { grid-column: 2; }
 }
+
+/* ══ Relatório pré-cartelas (v12.1) ══ */
+.precart-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.precart-tabela th {
+    text-align: left; padding: 8px 10px; color: var(--muted, #9aa5b1);
+    border-bottom: 1px solid rgba(255,255,255,.12); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em;
+}
+.precart-tabela td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+.precart-tabela td.num { white-space: nowrap; color: var(--muted, #9aa5b1); text-align: right; }
+.precart-linha strong { font-size: 12.5px; }
+.precart-linha small { display: block; color: var(--muted, #9aa5b1); font-weight: 400; margin-top: 2px; }
+.precart-linha.aviso strong { color: #f1c40f; }
+.precart-linha.erro strong { color: #ff7675; }
+.precart-aviso { color: #f1c40f !important; }
+.precart-detalhes { margin-top: 6px; display: grid; gap: 2px; }
+.precart-detalhe { display: flex; gap: 8px; font-size: 11px; }
+.precart-detalhe span { color: var(--muted, #9aa5b1); min-width: 150px; }
+.precart-detalhe code {
+    background: var(--dark, #10141a); padding: 1px 6px; border-radius: 4px;
+    color: var(--success, #00b894); word-break: break-all;
+}

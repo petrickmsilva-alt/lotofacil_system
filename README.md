@@ -75,6 +75,34 @@ A resposta contém a estratégia escolhida, cartelas, interpretação, contribui
 das fontes, probabilidades exatas e ID da auditoria. As rotas antigas de geração
 delegam para essa mesma API ou redirecionam para `/cerebro`.
 
+## Relatório pré-cartelas e juízo em toda decisão (v12.1)
+
+A Magna agora documenta, etapa por etapa e com duração medida, **tudo que
+processa antes de gerar as cartelas** — e o lote entregue por QUALQUER decisão
+passa pelo mesmo juízo que antes só existia na Suprema:
+
+```text
+validação → treino (14 motores + oráculo) → acervo (abertura + cores)
+  → ambiente (INMET/clima/física) → regime → escolha do método
+  → 10 fontes assimiladas → consenso (vetor único) → memória episódica
+  → antipopularidade → rota extraordinária → fingerprint
+  → GERAÇÃO → bloqueio-15 → Juiz 9 critérios (+ adversarial + NIST + p-value)
+  → backtest 50 + curva + verificação exaustiva + utilidade esperada
+```
+
+```http
+GET /api/magna/pre-cartelas          # o relatório SEM gerar cartela nenhuma
+GET /api/magna/pre-cartelas?quantidade=1&alvo=13&orcamento=50
+```
+
+`POST /api/magna/decidir` traz `resultado.relatorio_pre_cartelas`,
+`julgamento_magna`, `teste_nist`, `p_value_random`, `backtest_lote`,
+`utilidade_esperada` e `regime_atual`. O painel `/cerebro` mostra a seção
+"Relatório pré-cartelas" e o veredito do Juiz no selo da decisão. Regeneração
+automática acontece somente quando o Juiz de 9 critérios REPROVA o lote
+(`tentativas_juiz=2` por padrão). Detalhes da auditoria: ver
+`RELATORIO_MAGNA_PRE_CARTELAS_2026-09-02.md`.
+
 ## Clima do sorteio (v11.2)
 
 A Magna assimila as condições do ambiente (temperatura × pressão × umidade)
