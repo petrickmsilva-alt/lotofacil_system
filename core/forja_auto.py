@@ -169,6 +169,7 @@ class ForjaAutomatica:
                    .format(type(exc).__name__))
 
         # 3. Condições do MotorClima (peso restrito + auto-auditoria)
+        ambiente_registrado = False
         if tele.get("condicoes_clima") and hasattr(magna, "clima"):
             try:
                 c = tele["condicoes_clima"]
@@ -179,6 +180,32 @@ class ForjaAutomatica:
                 cb("[AUTO] clima do local definido: {}/{} atm/{}% → {}".format(
                     c["temperatura"], c["pressao"], c["umidade"],
                     res_clima.get("status", "ok")))
+                # v12.0 — a Magna também REGISTRA o ambiente de sorteio na
+                # fonte física (tabela fisica_ambientes): o que antes era o
+                # formulário manual "Registrar Ambiente de Sorteio" agora é
+                # um passo interno do pipeline automático.
+                try:
+                    db_magna = getattr(magna, "db", None)
+                    concurso_alvo = (
+                        (db_magna.get_ultimo_concurso() if db_magna else 0)
+                        or 0) + 1
+                    magna.fisica.registrar_ambiente(
+                        concurso=concurso_alvo,
+                        maquina="padrao-caixa",
+                        conjunto_bolas="A",
+                        temperatura_K=float(c["temperatura"]) + 273.15,
+                        pressao_atm=float(c["pressao"]),
+                        umidade=float(c["umidade"]) / 100.0,
+                        velocidade_rotacao=30.0,
+                        duracao_mistura=60.0)
+                    ambiente_registrado = True
+                    cb("[AUTO] ambiente de sorteio registrado pela Magna "
+                       "(física): {:.1f}°C / {:.3f} atm / {:.0f}%".format(
+                           float(c["temperatura"]), float(c["pressao"]),
+                           float(c["umidade"])))
+                except Exception as exc:
+                    cb("[AUTO] registro de ambiente indisponível ({}); "
+                       "seguindo".format(type(exc).__name__))
             except Exception as exc:
                 cb("[AUTO] clima indisponível ({}); seguindo sem boletim"
                    .format(type(exc).__name__))
@@ -212,6 +239,7 @@ class ForjaAutomatica:
             "status": "ok",
             "local": local,
             "telemetria": tele,
+            "ambiente_registrado": ambiente_registrado,
             "decisao": decisao,
             "concurso_alvo": decisao.get("concurso_alvo"),
             "n_cartelas": decisao.get("n_cartelas"),

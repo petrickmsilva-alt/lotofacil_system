@@ -26,7 +26,9 @@ def test_hub_e_uma_interface_unica_sem_abas(client):
     body = response.data.decode("utf-8")
     assert 'id="magna-form"' in body
     assert 'id="magna-decidir"' in body
-    assert "Uma memória. Uma análise. Uma decisão." in body
+    # v12.0 — a Magna é autônoma: a interface proclama que ela aprende,
+    # julga, decide e cria sozinha.
+    assert "aprende, julga, decide e cria" in body
     assert 'id="cerebro-tabs"' not in body
     assert 'class="ctab' not in body
 
@@ -91,14 +93,24 @@ def test_api_magna_e_a_unica_porta_de_decisao(client, app_module, monkeypatch):
     assert data["resultado"]["concurso_alvo"] == 9999
 
 
-def test_painel_tem_forja_auto_sem_ancoras(client):
+def test_painel_e_autonomo_sem_comandos_manuais(client):
     body = client.get("/cerebro").data.decode("utf-8")
-    # v11.7 — forja automática com telemetria INMET substituiu as âncoras
-    assert 'id="magna-inmet-auto"' in body
-    assert 'id="magna-telemetria"' in body
-    assert 'id="magna-ancoras"' not in body
-    assert "/api/magna/ancoras-123" not in body
-    assert "/api/magna/forja-auto" in body
+    # v12.0 — a Magna faz tudo sozinha: NÃO há mais botões de reter a base,
+    # calibrar pesos, forja espacial/automática nem registrar ambiente.
+    for comando_removido in (
+        'id="magna-inmet-auto"',        # forja automática (botão)
+        'id="acervo-aprender"',         # reter a base inteira (botão)
+        'id="acervo-calibrar"',         # calibrar pesos (botão)
+        'id="magna-forja"',             # forja espacial (checkbox)
+        'id="ambiente-form-magna"',     # registrar ambiente (formulário)
+        "/api/magna/ancoras-123",
+    ):
+        assert comando_removido not in body, comando_removido
+    # Em vez dos comandos, a interface mostra o ESTADO autônomo (o que a
+    # própria Magna já fez) e o ambiente percebido é exibido na decisão.
+    assert 'id="magna-autonomo"' in body
+    assert 'id="auto-ambiente"' in body
+    assert 'id="magna-ambiente-linha"' in body
 
 
 def test_api_inmet_existe(client):
