@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Inteligência Magna — Decisão Única{% endblock %}
+{% block title %}Inteligência Magna{% endblock %}
 {% block page_title %}<i class="fas fa-brain"></i> Inteligência Magna{% endblock %}
 
 {% block content %}
 <section class="magna-hero">
     <div>
-        <span class="magna-kicker"><i class="fas fa-circle-nodes"></i> NÚCLEO UNIFICADO</span>
-        <h2>Uma memória. Uma análise. Uma decisão.</h2>
+        <span class="magna-kicker"><i class="fas fa-circle-nodes"></i> NÚCLEO AUTÔNOMO</span>
+        <h2>A Magna aprende, julga, decide e cria — sozinha.</h2>
         <p>
-            Não existem mais geradores concorrentes. Após cada sorteio da Caixa
-            a Magna treina sozinha, avalia, autocritica e reajusta a memória.
-            O antigo treino do Dashboard vive aqui — automático.
+            Ela retém a base inteira, calibra os próprios pesos, percebe o
+            ambiente do sorteio e forja os lotes sem comandos manuais. Você só
+            define o limite; a inteligência faz o resto.
         </p>
     </div>
     <div class="magna-orbe" aria-hidden="true">
@@ -19,123 +19,27 @@
     </div>
 </section>
 
-<section class="magna-assimilacao" aria-label="Conhecimentos assimilados">
-    <div><i class="fas fa-dice"></i><span>14 módulos</span></div>
-    <div><i class="fas fa-eye"></i><span>Consenso</span></div>
-    <div><i class="fas fa-diagram-project"></i><span>Wheeling</span></div>
-    <div><i class="fas fa-chart-line"></i><span>Análise temporal</span></div>
-    <div><i class="fas fa-atom"></i><span>Singularidade</span></div>
-    <div><i class="fas fa-shield-halved"></i><span>Auditoria</span></div>
-    <div><i class="fas fa-basketball"></i><span>Física</span></div>
-    <div title="O que a Magna aprendeu da própria base histórica"><i class="fas fa-book-open"></i><span>Acervo de abertura</span></div>
-    <div class="magna-fluxo"><span></span><i class="fas fa-arrow-right"></i><strong>DECISÃO MAGNA</strong></div>
+<!-- ══ ESTADO AUTÔNOMO: o que a Magna já fez sozinha ══ -->
+<section class="magna-autonomo" id="magna-autonomo" aria-label="Estado autônomo da Magna">
+    <div class="magna-autonomo-item" id="auto-base">
+        <i class="fas fa-database"></i>
+        <div><strong>Base retida</strong><span>consultando…</span></div>
+    </div>
+    <div class="magna-autonomo-item" id="auto-pesos">
+        <i class="fas fa-sliders"></i>
+        <div><strong>Pesos calibrados</strong><span>consultando…</span></div>
+    </div>
+    <div class="magna-autonomo-item" id="auto-ambiente">
+        <i class="fas fa-cloud-sun"></i>
+        <div><strong>Ambiente percebido</strong><span>neutro</span></div>
+    </div>
+    <div class="magna-autonomo-item" id="auto-forja">
+        <i class="fas fa-hammer"></i>
+        <div><strong>Forja da Magna</strong><span>automática</span></div>
+    </div>
 </section>
 
-<!-- ══════════════════════════════════════════════════════════════
-     ACERVO DE CONHECIMENTO — órgão da própria Inteligência Magna.
-     Não é painel paralelo: é a memória que a Magna lê da base
-     histórica antes de qualquer decisão, e que cada conferência
-     volta a julgar.
-     ══════════════════════════════════════════════════════════════ -->
-<section class="ordem-panel magna-acervo" id="magna-acervo" aria-label="Acervo de conhecimento da Magna">
-    <div class="magna-section-title">
-        <div>
-            <span>ACERVO NATIVO — A MAGNA LÊ A PRÓPRIA BASE</span>
-            <h3>O que a Magna já sabe antes de decidir</h3>
-        </div>
-        <div class="acervo-actions">
-            <button type="button" id="acervo-aprender" class="acervo-btn">
-                <i class="fas fa-book-open"></i> Reler a base inteira
-            </button>
-            <button type="button" id="acervo-calibrar" class="acervo-btn secundario">
-                <i class="fas fa-sliders"></i> Calibrar pesos
-            </button>
-        </div>
-    </div>
-
-    <p class="acervo-leitura" id="acervo-leitura">
-        <i class="fas fa-circle-notch fa-spin"></i> consultando o acervo da Magna…
-    </p>
-    <div class="acervo-meta" id="acervo-meta"></div>
-
-    <div class="ordem-grid-2">
-        <div>
-            <h4><i class="fas fa-bullseye"></i> Abertura do próximo concurso</h4>
-            <div id="acervo-previsao" class="ordem-candidatas-lista">
-                <div class="ordem-loading">carregando…</div>
-            </div>
-            <div id="acervo-decisiva" class="ordem-repeticao-box"></div>
-        </div>
-
-        <div>
-            <h4><i class="fas fa-scale-balanced"></i> Placar walk-forward
-                <small id="acervo-provas"></small></h4>
-            <div id="acervo-placar" class="ordem-placar">
-                <div class="ordem-loading">calculando…</div>
-            </div>
-            <p class="ordem-nota">Teto teórico = a melhor pontuação possível sob
-                independência: o melhor preditor é a própria margem. Quando o
-                veredito é <strong>RUÍDO</strong>, o vetor entra atenuado e a
-                leitura é publicada como conhecimento — nunca como promessa.</p>
-        </div>
-
-        <div>
-            <h4><i class="fas fa-code-branch"></i> Fontes do consenso e pesos</h4>
-            <div id="acervo-fontes" class="ordem-freqs">
-                <div class="ordem-loading">…</div>
-            </div>
-        </div>
-
-        <div>
-            <h4><i class="fas fa-table-list"></i> Ordem real das bolas
-                <small>(1ª bola física — canal <code>real</code>)</small></h4>
-            <div id="acervo-real" class="ordem-real">
-                <div class="ordem-loading">…</div>
-            </div>
-            <form id="acervo-ingestao" class="acervo-ingestao">
-                <label>Concurso
-                    <input type="number" id="acervo-concurso" min="1" placeholder="3774" required>
-                </label>
-                <label>Ordem das 15 bolas (ou só a 1ª)
-                    <input type="text" id="acervo-ordem"
-                           placeholder="07 01 22 03 … — ou apenas 07">
-                </label>
-                <button type="submit" class="acervo-btn mini">
-                    <i class="fas fa-download"></i> Memorizar
-                </button>
-            </form>
-            <p class="acervo-aviso" id="acervo-aviso"></p>
-        </div>
-
-        <div>
-            <h4><i class="fas fa-palette"></i> Cores das bolas
-                <small>(tabela oficial — último dígito)</small></h4>
-            <div id="cor-ranking" class="ordem-candidatas-lista">
-                <div class="ordem-loading">calculando…</div>
-            </div>
-            <div id="cor-placar" class="ordem-placar">
-                <div class="ordem-loading">calculando…</div>
-            </div>
-            <p class="ordem-nota">A cor de cada bola é o <strong>último
-                dígito</strong> (fonte: <code>mazusoft.com.br/lotofacil/
-                tabela-cor.php</code>): Grupo 1 tem 3 dezenas por cor
-                (vermelha, amarela, verde, marrom, azul) e o Grupo 2 tem 2
-                (rosa, preta, cinza, laranja, branca) — por isso toda análise
-                é proporcional à margem hipergeométrica. Veredito
-                <strong>RUÍDO</strong> → vetor atenuado; conhecimento
-                publicado, nunca promessa.</p>
-        </div>
-    </div>
-
-    <p class="ordem-honestidade">
-        <i class="fas fa-circle-info"></i>
-        Nada aqui é um módulo à parte: o acervo é memória da própria Magna, entra
-        no consenso com o peso que a medição justificou e é julgado a cada
-        conferência. Cada concurso é independente — a probabilidade
-        hipergeométrica de cada cartela e as garantias do fechamento não mudam.
-    </p>
-</section>
-
+<!-- ══ COMANDO ÚNICO: só o limite ══ -->
 <div class="magna-grid">
     <section class="magna-command">
         <div class="magna-section-title">
@@ -150,45 +54,23 @@
             <label>
                 Quantidade máxima de cartelas
                 <input id="magna-quantidade" type="number" min="1" max="100" value="1" required>
-                <small>1: escolha única · 2–7: diversidade · 8+: garantia condicional quando aplicável</small>
+                <small>1: escolha única · 2–7: diversidade · 8+: a Magna forja o lote</small>
             </label>
             <label>
                 Orçamento máximo (opcional)
                 <div class="magna-money"><span>R$</span><input id="magna-orcamento" type="number" min="{{ valor_aposta }}" step="0.50" placeholder="sem limite adicional"></div>
                 <small>A Magna nunca ultrapassa o menor limite informado.</small>
             </label>
-            <label>
-                Alvo de prêmio (escada de captura)
-                <select id="magna-alvo">
-                    <option value="">Automático (decisão da Magna)</option>
-                    <option value="13">13 pontos · captura até 1:843 (pool 19)</option>
-                    <option value="14">14 pontos · captura 1:24.032 (pool 17)</option>
-                    <option value="15">15 pontos · captura 1:204.297 (pool 16)</option>
-                </select>
-                <small>Garantia condicional: exige que o pool capture as 15 sorteadas.</small>
-            </label>
-            <label class="magna-check">
-                <input id="magna-forja" type="checkbox">
-                <span>Forja espacial: otimizar a união exata dos leques de 13/14 pontos (recocido + geometria de Johnson)</span>
-            </label>
-            <label class="magna-check">
-                <input id="magna-salvar" type="checkbox" checked>
-                <span>Salvar a decisão para conferência e aprendizado posterior</span>
-            </label>
-            <button id="magna-decidir" class="magna-primary" type="submit">
+            <button id="magna-decidir" class="magna-primary" type="submit" style="grid-column:1/3;">
                 <i class="fas fa-wand-magic-sparkles"></i>
                 Analisar tudo e tomar a decisão
-            </button>
-            <button id="magna-inmet-auto" class="magna-btn-secondary" type="button" style="grid-column:1/3;justify-content:center;">
-                <i class="fas fa-cloud-sun"></i>
-                Forja automática v11.7: local do sorteio → telemetria INMET → forja suprema
             </button>
         </form>
 
         <div class="magna-facts">
             <div><strong>{{ magna_status.total_concursos }}</strong><span>concursos assimilados</span></div>
-            <div><strong>14 / 14</strong><span>módulos agregados</span></div>
-            <div><strong>{{ magna_status.fisica.estado if magna_status.fisica is defined else "neutra" }}</strong><span>fonte física</span></div>
+            <div><strong>{{ magna_status.inteligencia_magna.modulos_agregados if magna_status.inteligencia_magna is defined else 14 }} / 14</strong><span>módulos agregados</span></div>
+            <div><strong id="fact-fisica">{{ magna_status.fisica.estado if magna_status.fisica is defined else "neutra" }}</strong><span>fonte física</span></div>
         </div>
     </section>
 
@@ -211,8 +93,8 @@
         </div>
         {% endfor %}
         <p class="magna-note">
-            Os pesos mudam somente depois da conferência real e cada alteração fica
-            ligada à decisão que a originou.
+            Os pesos são calibrados pela própria Magna em walk-forward e
+            reajustados depois de cada conferência real.
         </p>
     </aside>
 </div>
@@ -221,10 +103,11 @@
     <div class="magna-loader"><i class="fas fa-brain"></i><span></span></div>
     <div>
         <strong id="magna-processing-title">Assimilando todo o conhecimento…</strong>
-        <p id="magna-processing-text">Treinando a memória única e interpretando o universo combinatório.</p>
+        <p id="magna-processing-text">A Magna retém a base, percebe o ambiente e forja a decisão.</p>
     </div>
 </section>
 
+<!-- ══ DECISÃO ══ -->
 <section id="magna-result" class="magna-result" hidden>
     <header class="magna-result-head">
         <div>
@@ -234,6 +117,8 @@
         </div>
         <div class="magna-result-seal"><i class="fas fa-fingerprint"></i><span>ÚNICA</span></div>
     </header>
+
+    <div id="magna-ambiente-linha" class="magna-ambiente-linha" hidden></div>
 
     <div class="magna-metrics">
         <div><span>Concurso-alvo</span><strong id="m-concurso">—</strong></div>
@@ -248,7 +133,6 @@
         <div class="magna-panel">
             <h3><i class="fas fa-ranking-star"></i> Consenso final da Magna</h3>
             <div id="magna-top15" class="magna-balls"></div>
-            <p>Estas são as 15 dezenas mais fortes do vetor unificado. A estratégia final pode diversificá-las ou fechá-las matematicamente.</p>
         </div>
         <div class="magna-panel">
             <h3><i class="fas fa-wave-square"></i> Interpretação</h3>
@@ -266,7 +150,6 @@
         <small id="magna-saved"></small>
     </div>
     <div id="magna-cartelas" class="magna-cartelas"></div>
-    <small id="magna-telemetria" class="magna-telemetria"></small>
 
     <div class="magna-truth">
         <i class="fas fa-scale-balanced"></i>
@@ -274,245 +157,174 @@
     </div>
 </section>
 
-<!-- Seção de Engenharia Espacial (escada de captura + forja) -->
-<section class="magna-history" id="forja-section">
-    <div class="magna-section-title">
-        <div><span>ENGENHARIA ESPACIAL DE LOTES</span><h3>Escada de captura 13 · 14 · 15</h3></div>
-        <small id="forja-status">probabilidades exatas sobre o universo 3.268.760</small>
-    </div>
-    <div class="forja-grid">
-        <div class="magna-panel">
-            <h3><i class="fas fa-stairs"></i> Menu de captura condicional</h3>
-            <div class="table-container">
-                <table class="table" id="forja-menu">
-                    <thead><tr><th>Alvo</th><th>Pool</th><th>Método</th><th>Cartelas</th><th>Custo</th><th>Captura</th></tr></thead>
-                    <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
-                </table>
-            </div>
-            <p>A garantia é condicional: vale somente se o pool contiver as 15 dezenas sorteadas. Cada degrau acima multiplica a captura por ~8,4×.</p>
-        </div>
-        <div class="magna-panel">
-            <h3><i class="fas fa-satellite"></i> Mapa informacional (MDS da co-ocorrência)</h3>
-            <canvas id="forja-mapa" width="340" height="300"></canvas>
-            <p id="forja-leitura">A constelação em destaque é o lote decidido; a nuvem cinza é a geografia estatística das 25 dezenas.</p>
-        </div>
-        <div class="magna-panel">
-            <h3><i class="fas fa-wave-square"></i> Espectro de Johnson do lote</h3>
-            <div id="forja-espectro" class="forja-espectro">—</div>
-            <p id="forja-geometria">O espectro mostra as interseções par a par das cartelas — a formação da esquadrilha no espaço J(25,15).</p>
-        </div>
-    </div>
-</section>
+<!-- ══ ÁREAS DE CONHECIMENTO (recolhíveis — a Magna cuida de tudo) ══ -->
+<details class="magna-details" id="det-conhecimento">
+    <summary><i class="fas fa-book-open"></i> Conhecimento da Magna: acervo, placar e fontes</summary>
+    <div class="magna-details-body">
+        <p class="acervo-leitura" id="acervo-leitura">
+            <i class="fas fa-circle-notch fa-spin"></i> consultando o acervo da Magna…
+        </p>
+        <div class="acervo-meta" id="acervo-meta"></div>
 
-<section class="magna-history" id="rateio-section">
-    <div class="magna-section-title">
-        <div>
-            <span>EDGE DE RATEIO (V11.5)</span>
-            <h3>Anti-popularidade: menos disputa no mesmo prêmio</h3>
-        </div>
-        <div class="acervo-actions">
-            <button type="button" id="rateio-ver" class="acervo-btn">
-                <i class="fas fa-chart-line"></i> Ver panorama + rateio
-            </button>
-        </div>
-    </div>
-    <p class="acervo-leitura" id="rateio-leitura">
-        <i class="fas fa-circle-notch fa-spin"></i> consultando efeito de rateio…
-    </p>
-    <div id="rateio-resultado" class="ordem-grid-2">
-        <div class="magna-panel">
-            <h3><i class="fas fa-stairs"></i> Escada 13 · 14 · 15 com EV</h3>
-            <div class="table-container">
-                <table class="table" id="rateio-captura">
-                    <thead><tr><th>Alvo</th><th>Pool</th><th>Cartelas</th><th>Custo</th><th>Captura</th><th>EV/lote</th></tr></thead>
-                    <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-        <div class="magna-panel">
-            <h3><i class="fas fa-users"></i> O que a base ensina sobre o rateio</h3>
-            <div id="rateio-popularidade" class="ordem-placar">carregando…</div>
-            <p class="ordem-nota">
-                A anti-popularidade usa apenas o EFEITO DE RATEIO: menor nº de
-                ganhadores por faixa = prêmio menos dividido quando acertar.
-                <strong>Não aumenta P(acerto)</strong> — é estrutura de prêmio.
-            </p>
-        </div>
-    </div>
-</section>
-
-<section class="magna-history" id="lab-section">
-    <div class="magna-section-title">
-        <div>
-            <span>APRENDIZADO DINÂMICO (V11.6)</span>
-            <h3>Laboratório: medir, auditar, explorar e recalibrar</h3>
-        </div>
-        <div class="acervo-actions">
-            <button type="button" id="lab-benchmark" class="acervo-btn">
-                <i class="fas fa-flask"></i> Rodar benchmark walk-forward
-            </button>
-            <button type="button" id="lab-explorar" class="acervo-btn secundario">
-                <i class="fas fa-microscope"></i> Explorar propostas
-            </button>
-            <button type="button" id="lab-ruins" class="acervo-btn secundario">
-                <i class="fas fa-radiation"></i> Jogos ruins históricos
-            </button>
-        </div>
-    </div>
-    <p class="acervo-leitura" id="lab-leitura">
-        <i class="fas fa-circle-notch fa-spin"></i> consultando o laboratório…
-    </p>
-    <div id="lab-resultado" class="ordem-grid-2">
-        <div class="magna-panel">
-            <h3><i class="fas fa-chart-line"></i> Placar das estratégias</h3>
-            <div id="lab-placar" class="ordem-placar">carregando…</div>
-        </div>
-        <div class="magna-panel">
-            <h3><i class="fas fa-ban"></i> Quarentena + pesos recomendados</h3>
-            <div id="lab-quarentena" class="ordem-placar">carregando…</div>
-        </div>
-    </div>
-    <div id="lab-detalhes" class="magna-panel" style="margin-top:12px"></div>
-    <p class="ordem-nota">
-        O laboratório é o árbitro interno da Magna: treina só no passado, mede
-        no futuro, compara com o acaso e põe em <strong>quarentena</strong> o que
-        não funciona. Nada aqui promete prever o sorteio — ele impede o sistema
-        de se enganar e permite evoluir as estratégias com evidência.
-    </p>
-</section>
-
-<section class="magna-history">
-    <div class="magna-section-title">
-        <div><span>RASTREABILIDADE</span><h3>Decisões anteriores da mesma inteligência</h3></div>
-    </div>
-    {% if historico_magna %}
-    <div class="table-container">
-        <table class="table">
-            <thead><tr><th>ID</th><th>Concurso</th><th>Estratégia</th><th>Cartelas</th><th>Status</th><th>Resultado</th><th>Data</th></tr></thead>
-            <tbody>
-            {% for d in historico_magna %}
-                <tr>
-                    <td>#{{ d.id }}</td>
-                    <td>{{ d.concurso_alvo }}</td>
-                    <td>{{ d.estrategia }}</td>
-                    <td>{{ d.quantidade }}</td>
-                    <td><span class="magna-status {{ d.status }}">{{ d.status }}</span></td>
-                    <td>{% if d.status == 'conferida' %}melhor {{ d.melhor_acertos }} · média {{ "%.1f"|format(d.media_acertos) }}{% else %}aguardando sorteio{% endif %}</td>
-                    <td>{{ d.timestamp }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="magna-empty"><i class="fas fa-fingerprint"></i><p>A primeira decisão unificada criará a memória auditável.</p></div>
-    {% endif %}
-</section>
-
-<!-- Seção de Física do Sorteio (integrada na Magna) -->
-<section class="magna-physics">
-    <div class="magna-section-title">
-        <div><span>FÍSICA DO SORTEIO</span><h3>Perfil das bolas e condições ambientais</h3></div>
-        <span class="magna-physics-status {{ 'ativa' if magna_status.fisica.tem_dados_reais else 'neutra' }}">
-            <i class="fas {{ 'fa-check-circle' if magna_status.fisica.tem_dados_reais else 'fa-minus-circle' }}"></i>
-            {{ magna_status.fisica.estado }}
-        </span>
-    </div>
-    
-    <div class="magna-physics-grid">
-        <div class="magna-physics-stats">
-            <div><strong>{{ magna_status.fisica.bolas_registradas }}</strong><span>Bolas medidas</span></div>
-            <div><strong>{{ magna_status.fisica.ambientes_registrados }}</strong><span>Ambientes</span></div>
-            <div><strong>{{ "%.1f"|format(pesos.fisica * 100) }}%</strong><span>Peso na decisão</span></div>
-        </div>
-        
-        <div class="magna-physics-info">
-            <p><strong>Como funciona:</strong> Cada bola tem propriedades físicas individuais (massa, cor, desgaste). O ambiente registra temperatura, pressão e umidade. Quando existem medições reais, a física diferencia as dezenas.</p>
-            <p><strong>Estado atual:</strong> {% if magna_status.fisica.tem_dados_reais %}A fonte física está ATIVA e influencia a decisão.{% else %}Sem medições reais — fonte neutra (não influencia).{% endif %}</p>
-        </div>
-    </div>
-    
-    {% if bolas %}
-    <div class="magna-physics-bolas">
-        <h4>Perfil das 25 Bolas</h4>
-        <div class="magna-bolas-grid">
-            {% for bola in bolas %}
-            <div class="magna-bola-card">
-                <div class="magna-bola-numero" style="background: {{ cores_rgb[bola.cor] }}">
-                    {{ bola.numero }}
+        <div class="ordem-grid-2">
+            <div>
+                <h4><i class="fas fa-bullseye"></i> Abertura do próximo concurso</h4>
+                <div id="acervo-previsao" class="ordem-candidatas-lista">
+                    <div class="ordem-loading">carregando…</div>
                 </div>
-                <div class="magna-bola-info">
-                    <span>{{ bola.cor }}</span>
-                    <span>{{ bola.massa_g }}g</span>
-                    <span>Desgaste: {{ "%.0f"|format(bola.indice_desgaste * 100) }}%</span>
+                <div id="acervo-decisiva" class="ordem-repeticao-box"></div>
+            </div>
+            <div>
+                <h4><i class="fas fa-scale-balanced"></i> Placar walk-forward <small id="acervo-provas"></small></h4>
+                <div id="acervo-placar" class="ordem-placar"><div class="ordem-loading">calculando…</div></div>
+            </div>
+            <div>
+                <h4><i class="fas fa-code-branch"></i> Fontes do consenso e pesos</h4>
+                <div id="acervo-fontes" class="ordem-freqs"><div class="ordem-loading">…</div></div>
+            </div>
+            <div>
+                <h4><i class="fas fa-palette"></i> Cores das bolas</h4>
+                <div id="cor-ranking" class="ordem-candidatas-lista"><div class="ordem-loading">calculando…</div></div>
+                <div id="cor-placar" class="ordem-placar"><div class="ordem-loading">calculando…</div></div>
+            </div>
+        </div>
+        <p class="ordem-honestidade">
+            <i class="fas fa-circle-info"></i>
+            O acervo é a memória da própria Magna: lido da base inteira,
+            calibrado em walk-forward e julgado a cada conferência. Nenhum
+            comando manual — ela mesma faz a retenção e a calibragem.
+        </p>
+    </div>
+</details>
+
+<details class="magna-details" id="det-engenharia">
+    <summary><i class="fas fa-satellite"></i> Engenharia de lotes: escada de captura, forja e rateio</summary>
+    <div class="magna-details-body">
+        <div class="forja-grid">
+            <div class="magna-panel">
+                <h3><i class="fas fa-stairs"></i> Escada de captura 13 · 14 · 15</h3>
+                <div class="table-container">
+                    <table class="table" id="forja-menu">
+                        <thead><tr><th>Alvo</th><th>Pool</th><th>Método</th><th>Cartelas</th><th>Custo</th><th>Captura</th></tr></thead>
+                        <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
+                    </table>
                 </div>
             </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-    
-    <!-- Formulário de Ambiente -->
-    <div class="magna-physics-form">
-        <h4>Registrar Ambiente de Sorteio</h4>
-        <form id="ambiente-form-magna">
-            <div class="form-row-magna">
-                <label>
-                    Concurso
-                    <input type="number" name="concurso" placeholder="Ex: 3771">
-                </label>
-                <label>
-                    Temperatura (°C)
-                    <input type="number" name="temperatura_C" value="21.5" step="0.1" required>
-                </label>
-                <label>
-                    Pressão (atm)
-                    <input type="number" name="pressao_atm" value="0.92" step="0.01" required>
-                </label>
-                <label>
-                    Umidade (%)
-                    <input type="number" name="umidade_pct" value="55" step="1" required>
-                </label>
+            <div class="magna-panel">
+                <h3><i class="fas fa-satellite"></i> Mapa informacional (MDS)</h3>
+                <canvas id="forja-mapa" width="340" height="300"></canvas>
             </div>
-            <button type="submit" class="magna-btn-secondary">
-                <i class="fas fa-save"></i> Registrar Ambiente
-            </button>
-        </form>
-        <div id="ambiente-resultado-magna" class="magna-resultado" hidden></div>
+            <div class="magna-panel">
+                <h3><i class="fas fa-wave-square"></i> Espectro de Johnson</h3>
+                <div id="forja-espectro" class="forja-espectro">—</div>
+            </div>
+        </div>
+        <div class="ordem-grid-2" style="margin-top:14px">
+            <div class="magna-panel">
+                <h3><i class="fas fa-chart-line"></i> Escada com EV honesto</h3>
+                <div class="table-container">
+                    <table class="table" id="rateio-captura">
+                        <thead><tr><th>Alvo</th><th>Pool</th><th>Cartelas</th><th>Custo</th><th>Captura</th><th>EV/lote</th></tr></thead>
+                        <tbody><tr><td colspan="6">carregando…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="magna-panel">
+                <h3><i class="fas fa-users"></i> Anti-popularidade (edge de rateio)</h3>
+                <div id="rateio-popularidade" class="ordem-placar">carregando…</div>
+                <p class="ordem-nota">Menos disputa no mesmo prêmio — não aumenta P(acerto); é estrutura de prêmio.</p>
+            </div>
+        </div>
+        <p class="acervo-leitura" id="rateio-leitura" style="margin-top:12px"></p>
     </div>
-</section>
+</details>
 
-<!-- Seção de Avaliação (integrada na Magna) -->
-<section class="magna-avaliacao">
-    <div class="magna-section-title">
-        <div><span>AVALIAÇÃO DE DESEMPENHO</span><h3>A Magna avalia e aprende com os resultados</h3></div>
-    </div>
-    
-    <div class="magna-avaliacao-grid">
-        <div class="magna-avaliacao-stats">
-            <div><strong>{{ historico_magna|selectattr('status', 'equalto', 'conferida')|list|length }}</strong><span>Decisões conferidas</span></div>
-            <div><strong>{{ "%.1f"|format(media_acertos) }}</strong><span>Média de acertos</span></div>
-            <div><strong>{{ melhor_acertos }}</strong><span>Melhor resultado</span></div>
+<details class="magna-details" id="det-laboratorio">
+    <summary><i class="fas fa-flask"></i> Laboratório: benchmark, auditoria e jogos ruins</summary>
+    <div class="magna-details-body">
+        <div class="acervo-actions">
+            <button type="button" id="lab-benchmark" class="acervo-btn"><i class="fas fa-flask"></i> Benchmark walk-forward</button>
+            <button type="button" id="lab-explorar" class="acervo-btn secundario"><i class="fas fa-microscope"></i> Explorar propostas</button>
+            <button type="button" id="lab-ruins" class="acervo-btn secundario"><i class="fas fa-radiation"></i> Jogos ruins históricos</button>
         </div>
-        
-        <div class="magna-avaliacao-info">
-            <p><strong>Como a Magna aprende:</strong> Após cada sorteio real, a Magna compara suas previsões com o resultado. Fontes que acertam mais ganham peso; fontes que erram perdem peso. Cada ajuste fica registrado na memória auditável.</p>
-            <p><strong>Backtesting:</strong> A Magna pode testar suas previsões contra dados históricos para validar se os motores batem o acaso.</p>
+        <p class="acervo-leitura" id="lab-leitura" style="margin-top:12px">
+            <i class="fas fa-circle-notch fa-spin"></i> consultando o laboratório…
+        </p>
+        <div class="ordem-grid-2">
+            <div class="magna-panel"><h3><i class="fas fa-chart-line"></i> Placar das estratégias</h3><div id="lab-placar" class="ordem-placar">carregando…</div></div>
+            <div class="magna-panel"><h3><i class="fas fa-ban"></i> Quarentena + pesos recomendados</h3><div id="lab-quarentena" class="ordem-placar">carregando…</div></div>
         </div>
+        <div id="lab-detalhes" class="magna-panel" style="margin-top:12px"></div>
     </div>
-    
-    <!-- Botões de Avaliação -->
-    <div class="magna-avaliacao-actions">
-        <button id="btn-backtest" class="magna-btn-secondary">
-            <i class="fas fa-flask"></i> Executar Backtest
-        </button>
-        <button id="btn-conferir" class="magna-btn-secondary">
-            <i class="fas fa-check-double"></i> Conferir Pendentes
-        </button>
+</details>
+
+<details class="magna-details" id="det-fisica">
+    <summary><i class="fas fa-basketball"></i> Física do sorteio: perfil das bolas e ambiente</summary>
+    <div class="magna-details-body">
+        <div class="magna-physics-grid">
+            <div class="magna-physics-stats">
+                <div><strong>{{ magna_status.fisica.bolas_registradas }}</strong><span>Bolas medidas</span></div>
+                <div><strong>{{ magna_status.fisica.ambientes_registrados }}</strong><span>Ambientes</span></div>
+                <div><strong>{{ "%.1f"|format(pesos.fisica * 100) }}%</strong><span>Peso na decisão</span></div>
+            </div>
+            <div class="magna-physics-info">
+                <p><strong>A Magna cuida do ambiente sozinha:</strong> a telemetria do
+                local do sorteio (INMET) é coletada e o ambiente é registrado
+                automaticamente antes de cada decisão. Não há mais formulário manual.</p>
+                <p><strong>Perfil das bolas:</strong> massa, cor e desgaste diferenciam
+                as dezenas apenas quando existem medições reais; sem elas, a fonte é neutra.</p>
+            </div>
+        </div>
+        {% if bolas %}
+        <div class="magna-physics-bolas">
+            <h4>Perfil das 25 bolas</h4>
+            <div class="magna-bolas-grid">
+                {% for bola in bolas %}
+                <div class="magna-bola-card">
+                    <div class="magna-bola-numero" style="background: {{ cores_rgb[bola.cor] }}">{{ bola.numero }}</div>
+                    <div class="magna-bola-info">
+                        <span>{{ bola.cor }}</span>
+                        <span>{{ bola.massa_g }}g</span>
+                        <span>Desgaste {{ "%.0f"|format(bola.indice_desgaste * 100) }}%</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
-    
-    <div id="avaliacao-resultado" class="magna-resultado" hidden></div>
-</section>
+</details>
+
+<details class="magna-details" id="det-historico">
+    <summary><i class="fas fa-fingerprint"></i> Rastreabilidade: decisões anteriores e conferência</summary>
+    <div class="magna-details-body">
+        <div class="table-container">
+            <table class="table">
+                <thead><tr><th>ID</th><th>Concurso</th><th>Estratégia</th><th>Cartelas</th><th>Status</th><th>Resultado</th><th>Data</th></tr></thead>
+                <tbody>
+                {% for d in historico_magna %}
+                    <tr>
+                        <td>#{{ d.id }}</td>
+                        <td>{{ d.concurso_alvo }}</td>
+                        <td>{{ d.estrategia }}</td>
+                        <td>{{ d.quantidade }}</td>
+                        <td><span class="magna-status {{ d.status }}">{{ d.status }}</span></td>
+                        <td>{% if d.status == 'conferida' %}melhor {{ d.melhor_acertos }} · média {{ "%.1f"|format(d.media_acertos) }}{% else %}aguardando{% endif %}</td>
+                        <td>{{ d.timestamp }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="7" class="magna-empty">A primeira decisão criará a memória auditável.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="magna-avaliacao-actions" style="margin-top:14px">
+            <button id="btn-backtest" class="magna-btn-secondary"><i class="fas fa-flask"></i> Executar backtest</button>
+            <button id="btn-conferir" class="magna-btn-secondary"><i class="fas fa-check-double"></i> Conferir pendentes</button>
+        </div>
+        <div id="avaliacao-resultado" class="magna-resultado" hidden style="margin-top:12px"></div>
+    </div>
+</details>
 {% endblock %}
 
 {% block scripts %}
@@ -523,266 +335,326 @@
     const processing = document.getElementById('magna-processing');
     const resultBox = document.getElementById('magna-result');
     const stages = [
-        ['Reassegurando o acervo de conhecimento…', 'A Magna lê a própria base histórica inteira antes de decidir: aberturas, streaks, placar walk-forward.'],
-        ['Assimilando o histórico…', 'Frequência, transições, distribuição e leitura recente.'],
-        ['Fundindo todas as evidências…', 'Consenso, espectro e teoria da informação entram na mesma memória.'],
-        ['Interpretando risco e cobertura…', 'Filtros avançados, valor esperado e garantia condicional.'],
-        ['Tomando uma decisão única…', 'Somente a Inteligência Magna pode liberar as cartelas finais.']
+        ['Retendo a base histórica…', 'A Magna lê e memoriza a base inteira antes de decidir.'],
+        ['Percebendo o ambiente do sorteio…', 'Telemetria do local (INMET) e condições físicas, coletadas por ela mesma.'],
+        ['Fundindo todas as evidências…', 'Consenso, espectro, teoria da informação e acervo na mesma memória.'],
+        ['Forjando e julgando…', 'A Magna decide a estratégia, forja o lote e o juiz aprova.'],
+        ['Tomando uma decisão única…', 'Somente a Inteligência Magna libera as cartelas finais.']
     ];
     let timer;
 
-    function brl(v) {
-        return Number(v || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
-    }
-    function pct(v, casas) {
-        return (Number(v || 0) * 100).toFixed(casas == null ? 4 : casas) + '%';
-    }
+    function brl(v) { return Number(v || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
+    function pct(v, c) { return (Number(v || 0) * 100).toFixed(c == null ? 4 : c) + '%'; }
     function bolas(dezenas) {
         return (dezenas || []).map(d => '<span>' + String(d).padStart(2, '0') + '</span>').join('');
     }
 
-    /* ── Engenharia Espacial: menu da escada, mapa e espectro ── */
-    let mapaDezenas = null;   // coordenadas MDS vindas da forja (25×2)
-    let loteAtual = null;     // cartelas da última decisão
-
-    function carregarMenuForja() {
-        fetch('/api/magna/forja/menu')
-            .then(r => r.json())
-            .then(data => {
-                if (data.status !== 'ok') return;
-                const tb = document.querySelector('#forja-menu tbody');
-                tb.innerHTML = (data.menu || []).map(l => {
-                    const custo = l.custo_teorico ? brl(l.custo_teorico) : 'dinâmico';
-                    return '<tr><td><strong>' + l.alvo + ' pts</strong></td>' +
-                        '<td>' + l.n_pool + ' dezenas</td>' +
-                        '<td>' + l.metodo + '</td>' +
-                        '<td>' + (l.cartelas_teoricas || '≈') + '</td>' +
-                        '<td>' + custo + '</td>' +
-                        '<td>1 em ' + Number(l.um_em_captura).toLocaleString('pt-BR') + '</td></tr>';
-                }).join('');
-            })
-            .catch(() => { });
-    }
-
-    /* ── Laboratório dinâmico (v11.6) ── */
-    function carregarLab() {
-        const leitura = document.getElementById('lab-leitura');
-        const placar = document.getElementById('lab-placar');
-        const quar = document.getElementById('lab-quarentena');
-        const det = document.getElementById('lab-detalhes');
-        fetch('/api/magna/lab').then(r => r.json()).then(d => {
-            if (!d || d.status === 'erro') {
-                if (leitura) leitura.innerHTML = 'Sem placar persistido ainda. Rode o benchmark.';
-                return;
-            }
-            const rows = (d.placar_historico || []).map(p =>
-                '<div class="ordem-freq-item"><span>' + p.fonte + '</span><b>' +
-                Number(p.media_acertos || 0).toFixed(2) + '</b> <span style="color:#777">' +
-                p.veredito + '</span></div>').join('');
-            if (placar) placar.innerHTML = rows || '<div class="ordem-loading">Sem dados</div>';
-            const q = (d.quarentena || []).join(', ') || '—';
-            const pes = Object.entries(d.pesos_recomendados || {}).map(([k, v]) =>
-                k + ': ' + (Number(v) * 100).toFixed(1) + '%').join(' · ');
-            if (quar) quar.innerHTML = '<span>Quarentena: ' + q + '</span><br>' +
-                '<span>Pesos recomendados: ' + (pes || '—') + '</span>';
+    /* ── Estado autônomo (topo) ── */
+    function carregarEstadoAutonomo() {
+        fetch('/api/magna/conhecimento?detalhes=0').then(r => r.json()).then(kn => {
+            const base = kn.base || {};
+            const elBase = document.querySelector('#auto-base span');
+            if (elBase) elBase.textContent = (base.concursos || '—') + ' concursos · até o ' + (base.ultimo || '—');
+            const elPesos = document.querySelector('#auto-pesos span');
+            if (elPesos) elPesos.textContent = kn.calibrado ? 'walk-forward ativo' : 'defaults até a 1ª calibração';
+        }).catch(() => {});
+        fetch('/api/magna/fisica').then(r => r.json()).then(f => {
+            const st = (f.fisica || {});
+            const el = document.querySelector('#auto-ambiente span');
+            const fact = document.getElementById('fact-fisica');
+            if (el) el.textContent = st.tem_dados_reais ? (st.estado + ' · ' + st.ambientes_registrados + ' ambientes') : 'neutro';
+            if (fact) fact.textContent = st.estado || 'neutra';
         }).catch(() => {});
     }
 
-    function labMsg(txt, tipo) {
-        const det = document.getElementById('lab-detalhes');
-        if (det) det.innerHTML = '<div class="magna-resultado ' + (tipo || 'sucesso') + '">' + txt + '</div>';
-    }
-
-    const labBench = document.getElementById('lab-benchmark');
-    if (labBench) labBench.addEventListener('click', async function () {
-        labBench.disabled = true;
-        labMsg('Rodando benchmark walk-forward (treina no passado, mede no futuro)…');
-        try {
-            const resp = await fetch('/api/magna/lab/benchmark', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({n_testes: 40, janela: 50, n_aleatorio: 120})
-            });
-            const d = await resp.json();
-            if (d.status === 'erro') throw new Error(d.msg);
-            carregarLab();
-            const q = (d.quarentena || []).join(', ') || '—';
-            labMsg('Benchmark concluído · quarentena: ' + q +
-                ' · veredito: ' + (d.veredito_geral || ''));
-        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
-        finally { labBench.disabled = false; }
-    });
-
-    const labExpl = document.getElementById('lab-explorar');
-    if (labExpl) labExpl.addEventListener('click', async function () {
-        labExpl.disabled = true;
-        labMsg('Explorando novas janelas/combinações…');
-        try {
-            const ensaios = [
-                {janela: 30}, {janela: 80}, {janela: 120}, {janela: 200},
-                {janela: 50, pesos: {freq_global: 0.3, freq_recente: 0.3, markov: 0.2, reversao: 0.1, espectral: 0.1}},
-                {janela: 50, transformacao: 'log'}
-            ];
-            const resp = await fetch('/api/magna/lab/explorar', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ensaios: ensaios, n_testes: 20})
-            });
-            const d = await resp.json();
-            if (d.status === 'erro') throw new Error(d.msg);
-            carregarLab();
-            const melhores = (d.melhores_propostas || []).map(x =>
-                'janela ' + x.janela + ': ' + x.media_acertos +
-                ' (ganho ' + x.ganho_vs_base + ') — ' + x.veredito).join('<br>');
-            labMsg('Exploração concluída<br>' + (melhores || 'Nenhuma melhora relevante.'));
-        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
-        finally { labExpl.disabled = false; }
-    });
-
-    const labRuins = document.getElementById('lab-ruins');
-    if (labRuins) labRuins.addEventListener('click', async function () {
-        labRuins.disabled = true;
-        try {
-            const resp = await fetch('/api/magna/lab/jogos-ruins');
-            const d = await resp.json();
-            if (d.status === 'erro') throw new Error(d.msg);
-            const jogos = (d.jogos || []).slice(0, 8).map(j =>
-                '<div class="ordem-freq-item"><span>' + j.dezenas.join('-') +
-                '</span><b>' + j.motivo + '</b></div>').join('');
-            labMsg('Jogos ruins históricos: ' + (d.n || 0) + '<br>' + jogos);
-        } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
-        finally { labRuins.disabled = false; }
-    });
-
-    /* ── Anti-popularidade / edge de rateio (v11.5) ── */
-    function carregarRateio() {
-        const ler = (url, cb) => fetch(url).then(r => r.json()).then(cb).catch(() => cb({status:'erro'}));
-        const captura = document.querySelector('#rateio-captura tbody');
-        const pop = document.getElementById('rateio-popularidade');
-        const leitura = document.getElementById('rateio-leitura');
-        ler('/api/magna/captura', data => {
+    /* ── Engenharia (carrega só quando a área é aberta) ── */
+    let mapaDezenas = null, loteAtual = null, engenhariaCarregada = false;
+    function carregarMenuForja() {
+        fetch('/api/magna/forja/menu').then(r => r.json()).then(data => {
             if (data.status !== 'ok') return;
-            const tabela = (data.escala || []).map(l =>
-                '<tr><td><strong>' + l.alvo + ' pts</strong></td>' +
-                '<td>' + l.n_pool + '</td>' +
-                '<td>' + l.cartelas_teoricas + '</td>' +
-                '<td>' + brl(l.custo_teorico) + '</td>' +
-                '<td>1 em ' + Number(l.um_em_captura).toLocaleString('pt-BR') + '</td>' +
-                '<td>' + brl(l.ev_esperado_lote) + '</td></tr>').join('');
-            if (captura) captura.innerHTML = tabela || '<tr><td colspan="6">—</td></tr>';
-            if (leitura) leitura.innerHTML = 'Base: ' + data.concursos_na_base +
-                ' concursos · bônus de rateio médio ' + data.bonus_rateio_medio_x + '×';
-        });
-        ler('/api/magna/popularidade', data => {
+            const tb = document.querySelector('#forja-menu tbody');
+            if (!tb) return;
+            tb.innerHTML = (data.menu || []).map(l =>
+                '<tr><td><strong>' + l.alvo + ' pts</strong></td><td>' + l.n_pool + ' dezenas</td>' +
+                '<td>' + l.metodo + '</td><td>' + (l.cartelas_teoricas || '≈') + '</td>' +
+                '<td>' + (l.custo_teorico ? brl(l.custo_teorico) : 'dinâmico') + '</td>' +
+                '<td>1 em ' + Number(l.um_em_captura).toLocaleString('pt-BR') + '</td></tr>'
+            ).join('');
+        }).catch(() => {});
+    }
+    function carregarRateio() {
+        fetch('/api/magna/captura').then(r => r.json()).then(data => {
+            if (data.status !== 'ok') return;
+            const tb = document.querySelector('#rateio-captura tbody');
+            if (tb) tb.innerHTML = (data.escala || []).map(l =>
+                '<tr><td><strong>' + l.alvo + ' pts</strong></td><td>' + l.n_pool + '</td><td>' +
+                l.cartelas_teoricas + '</td><td>' + brl(l.custo_teorico) + '</td><td>1 em ' +
+                Number(l.um_em_captura).toLocaleString('pt-BR') + '</td><td>' + brl(l.ev_esperado_lote) + '</td></tr>'
+            ).join('');
+            const ler = document.getElementById('rateio-leitura');
+            if (ler) ler.textContent = 'Base: ' + data.concursos_na_base + ' concursos · bônus de rateio médio ' + data.bonus_rateio_medio_x + '×';
+        }).catch(() => {});
+        fetch('/api/magna/popularidade').then(r => r.json()).then(data => {
             if (data.status !== 'ok') return;
             const ap = data.anti_popularidade || {};
-            const aud = (ap.auto_auditoria || {});
+            const aud = ap.auto_auditoria || {};
             const rows = [
                 ['Concursos com rateio', ap.concursos_calibrados],
                 ['Média ganhadores 13', Number(ap.media_ganhadores_13).toLocaleString('pt-BR')],
                 ['Menos populares (teste)', aud.media_ganhadores_menos_populares ? Number(aud.media_ganhadores_menos_populares).toLocaleString('pt-BR') : '—'],
-                ['Mais populares (teste)', aud.media_ganhadores_mais_populares ? Number(aud.media_ganhadores_mais_populares).toLocaleString('pt-BR') : '—'],
-                ['Razão menos/popular', aud.razao_menos_popular_vs_popular || '—']
+                ['Mais populares (teste)', aud.media_ganhadores_mais_populares ? Number(aud.media_ganhadores_mais_populares).toLocaleString('pt-BR') : '—']
             ];
-            if (pop) {
-                pop.innerHTML = rows.map(r =>
-                    '<div class="ordem-freq-item"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('');
-                pop.classList.add('ordem-placar');
-            }
-        });
+            const pop = document.getElementById('rateio-popularidade');
+            if (pop) pop.innerHTML = rows.map(r =>
+                '<div class="ordem-freq-item"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('');
+        }).catch(() => {});
     }
-
     function desenharMapa() {
         const cv = document.getElementById('forja-mapa');
         if (!cv) return;
         const ctx = cv.getContext('2d');
         const W = cv.width, H = cv.height, pad = 24;
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#11121d';
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#11121d'; ctx.fillRect(0, 0, W, H);
         if (!mapaDezenas || !mapaDezenas.length) {
-            ctx.fillStyle = '#777990';
-            ctx.font = '11px Inter, sans-serif';
-            ctx.fillText('Faça uma decisão com a Forja Espacial ativa', 40, H / 2);
+            ctx.fillStyle = '#777990'; ctx.font = '11px Inter, sans-serif';
+            ctx.fillText('Faça uma decisão — a constelação aparece aqui', 30, H/2);
             return;
         }
         const xs = mapaDezenas.map(p => p[0]), ys = mapaDezenas.map(p => p[1]);
-        const minx = Math.min(...xs), maxx = Math.max(...xs);
-        const miny = Math.min(...ys), maxy = Math.max(...ys);
-        const sx = v => pad + (v - minx) / (maxx - minx + 1e-9) * (W - 2 * pad);
-        const sy = v => H - pad - (v - miny) / (maxy - miny + 1e-9) * (H - 2 * pad);
+        const sx = v => pad + (v - Math.min(...xs)) / (Math.max(...xs) - Math.min(...xs) + 1e-9) * (W - 2*pad);
+        const sy = v => H - pad - (v - Math.min(...ys)) / (Math.max(...ys) - Math.min(...ys) + 1e-9) * (H - 2*pad);
         const noLote = new Set((loteAtual || []).flat());
         mapaDezenas.forEach((p, i) => {
             const d = i + 1;
             ctx.beginPath();
-            ctx.arc(sx(p[0]), sy(p[1]), noLote.has(d) ? 8 : 4, 0, Math.PI * 2);
+            ctx.arc(sx(p[0]), sy(p[1]), noLote.has(d) ? 8 : 4, 0, Math.PI*2);
             if (noLote.has(d)) {
-                ctx.fillStyle = '#8e7cf2';
-                ctx.shadowColor = '#8e7cf2'; ctx.shadowBlur = 12;
+                ctx.fillStyle = '#8e7cf2'; ctx.shadowColor = '#8e7cf2'; ctx.shadowBlur = 12;
                 ctx.fill(); ctx.shadowBlur = 0;
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 9px Inter, sans-serif';
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Inter, sans-serif';
                 ctx.fillText(String(d), sx(p[0]) - 3, sy(p[1]) + 3);
             } else {
-                ctx.fillStyle = '#4a4c63';
-                ctx.fill();
-                ctx.fillStyle = '#6f7188';
-                ctx.font = '8px Inter, sans-serif';
+                ctx.fillStyle = '#4a4c63'; ctx.fill();
+                ctx.fillStyle = '#6f7188'; ctx.font = '8px Inter, sans-serif';
                 ctx.fillText(String(d), sx(p[0]) - 2, sy(p[1]) - 6);
             }
         });
     }
+    function carregarEngenharia() {
+        if (engenhariaCarregada) { desenharMapa(); return; }
+        engenhariaCarregada = true;
+        carregarMenuForja(); carregarRateio(); desenharMapa();
+    }
+
+    /* ── Laboratório ── */
+    function carregarLab() {
+        fetch('/api/magna/lab').then(r => r.json()).then(d => {
+            if (!d || d.status === 'erro') return;
+            const plac = document.getElementById('lab-placar');
+            if (plac) plac.innerHTML = (d.placar_historico || []).map(p =>
+                '<div class="ordem-freq-item"><span>' + p.fonte + '</span><b>' +
+                Number(p.media_acertos || 0).toFixed(2) + '</b> <span style="color:#777">' + p.veredito + '</span></div>'
+            ).join('') || '<div class="ordem-loading">Sem dados</div>';
+            const quar = document.getElementById('lab-quarentena');
+            if (quar) {
+                const q = (d.quarentena || []).join(', ') || '—';
+                const pes = Object.entries(d.pesos_recomendados || {}).map(([k,v]) => k + ': ' + (Number(v)*100).toFixed(1) + '%').join(' · ');
+                quar.innerHTML = '<span>Quarentena: ' + q + '</span><br><span>Pesos: ' + (pes || '—') + '</span>';
+            }
+        }).catch(() => {});
+    }
+    function labMsg(txt, tipo) {
+        const det = document.getElementById('lab-detalhes');
+        if (det) det.innerHTML = '<div class="magna-resultado ' + (tipo || 'sucesso') + '">' + txt + '</div>';
+    }
+    function ligaLab() {
+        const b = document.getElementById('lab-benchmark');
+        if (b) b.onclick = async function () {
+            b.disabled = true; labMsg('Rodando benchmark walk-forward…');
+            try {
+                const r = await fetch('/api/magna/lab/benchmark', {method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({n_testes: 40, janela: 50, n_aleatorio: 120})});
+                const d = await r.json();
+                if (d.status === 'erro') throw new Error(d.msg);
+                carregarLab();
+                labMsg('Benchmark concluído · quarentena: ' + ((d.quarentena||[]).join(', ') || '—') + ' · ' + (d.veredito_geral || ''));
+            } catch (e) { labMsg('Erro: ' + e.message, 'erro'); }
+            finally { b.disabled = false; }
+        };
+        const e = document.getElementById('lab-explorar');
+        if (e) e.onclick = async function () {
+            e.disabled = true; labMsg('Explorando novas janelas/combinações…');
+            try {
+                const r = await fetch('/api/magna/lab/explorar', {method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ensaios: [{janela:30},{janela:80},{janela:120},{janela:200}], n_testes: 20})});
+                const d = await r.json();
+                if (d.status === 'erro') throw new Error(d.msg);
+                carregarLab();
+                labMsg('Exploração concluída: ' + ((d.melhores_propostas||[]).map(x => 'janela ' + x.janela + ' (' + x.veredito + ')').join('<br>') || 'Nenhuma melhora relevante.'));
+            } catch (err) { labMsg('Erro: ' + err.message, 'erro'); }
+            finally { e.disabled = false; }
+        };
+        const ru = document.getElementById('lab-ruins');
+        if (ru) ru.onclick = async function () {
+            ru.disabled = true;
+            try {
+                const r = await fetch('/api/magna/lab/jogos-ruins');
+                const d = await r.json();
+                if (d.status === 'erro') throw new Error(d.msg);
+                labMsg('Jogos ruins históricos: ' + (d.n || 0) + '<br>' +
+                    (d.jogos || []).slice(0,8).map(j =>
+                        '<div class="ordem-freq-item"><span>' + j.dezenas.join('-') + '</span><b>' + j.motivo + '</b></div>').join(''));
+            } catch (err) { labMsg('Erro: ' + err.message, 'erro'); }
+            finally { ru.disabled = false; }
+        };
+    }
+
+    /* ── Acervo (conhecimento) ── */
+    function acPct(v, c) { return (v == null) ? '—' : (Number(v)*100).toFixed(c == null ? 1 : c) + '%'; }
+    function acBola(d) { return String(d).padStart(2, '0'); }
+    function acNum(v) { return (v == null) ? '—' : Number(v).toLocaleString('pt-BR'); }
+    function acCandidata(r, i, maior) {
+        const forca = Math.max(4, Math.round((r.prob||0)/(maior||1)*100));
+        return '<div class="ordem-candidata' + (i===0?' lider':'') + '"><div class="ordem-dezena">' + acBola(r.dezena) + '</div>' +
+            '<div class="ordem-candidata-info"><div class="ordem-candidata-rotulo">abertura prevista</div>' +
+            '<div class="ordem-bar"><div class="ordem-bar-fill' + (i===0?' verde':'') + '" style="width:' + forca + '%"></div></div>' +
+            '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div>' +
+            '<div class="ordem-candidata-rotulo">teto ' + acPct(r.prob_teorica) + ' · ' + acNum(r.vezes_na_base) + '× na base</div></div></div>';
+    }
+    function acLinhaPlacar(rotulo, taxa, teto, cor) {
+        const larg = Math.max(2, Math.min(100, Math.round((taxa||0)*100)));
+        return '<div class="ordem-placar-linha"><div class="ordem-placar-rotulo">' + rotulo + '</div>' +
+            '<div class="ordem-bar"><div class="ordem-bar-fill ' + cor + '" style="width:' + larg + '%"></div></div>' +
+            '<div class="ordem-placar-nums"><strong>' + acPct(taxa,1) + '</strong>' +
+            (teto != null ? ' · teto ' + acPct(teto,1) : '') + '</div></div>';
+    }
+    function corChip(cor) {
+        const cores = {vermelha:'#e74c3c',amarela:'#f1c40f',verde:'#2ecc71',marrom:'#a0522d',azul:'#3498db',
+            rosa:'#ff6b9d',preta:'#2c3e50',cinza:'#95a5a6',laranja:'#e67e22',branca:'#ecf0f1'};
+        const hex = cores[cor] || '#888';
+        const escura = ['branca','amarela','cinza'].includes(cor);
+        return '<span class="cor-chip" style="display:inline-block;padding:3px 12px;margin:1px 0;border-radius:12px;background:' +
+            hex + ';color:' + (escura ? '#222' : '#fff') + ';font-size:10px;font-weight:700;border:1px solid rgba(255,255,255,.25)">' +
+            cor.charAt(0).toUpperCase() + cor.slice(1) + '</span>';
+    }
+    function renderAcervo(ev, kn) {
+        const leitura = document.getElementById('acervo-leitura');
+        if (leitura) leitura.innerHTML = '<i class="fas fa-brain"></i> ' + ((ev && ev.leitura) || (kn && kn.leitura) || 'Acervo em assimilação.');
+        const meta = document.getElementById('acervo-meta');
+        if (meta) {
+            const pesoAb = ((kn && kn.pesos_fontes) || {}).abertura;
+            const itens = [
+                ['aprendido até', (ev && ev.aprendido_ate != null) ? ('concurso ' + ev.aprendido_ate) : '—'],
+                ['concursos lidos', ev ? acNum(ev.concursos_da_base) : '—'],
+                ['veredito', (ev && ev.veredito) || '—'],
+                ['peso no consenso', pesoAb == null ? '—' : Number(pesoAb).toFixed(3)]
+            ];
+            meta.innerHTML = itens.map(p => '<div class="acervo-meta-item"><span>' + p[0] + '</span><strong>' + p[1] + '</strong></div>').join('');
+        }
+        const prev = document.getElementById('acervo-previsao');
+        if (prev) {
+            const rank = (ev && ev.ranking_completo) || [];
+            prev.innerHTML = rank.length ? rank.map((r,i) => acCandidata(r,i,rank[0].prob)).join('') : '<div class="ordem-vazio">assimilando…</div>';
+        }
+        const plac = document.getElementById('acervo-placar');
+        if (plac) {
+            const w = (ev && ev.placar) || {};
+            const pv = document.getElementById('acervo-provas');
+            if (pv) pv.textContent = w.n_provas ? '(' + acNum(w.n_provas) + ' provas)' : '';
+            const linhas = [];
+            if (w.margem_da_magna_top1) linhas.push(acLinhaPlacar('prever a abertura nº 1', w.margem_da_magna_top1.taxa, w.margem_da_magna_top1.teto_teorico, 'verde'));
+            if (w.cobertura_top2) linhas.push(acLinhaPlacar('cobrir as 2 mais prováveis', w.cobertura_top2.taxa, w.cobertura_top2.teto_teorico, 'roxo'));
+            const mem = (kn && kn.placar_abertura) || {};
+            if (mem.provas) linhas.push(acLinhaPlacar('palpites da Magna conferidos (' + acNum(mem.provas) + ')', mem.acerto_top1, (mem.margem_teorica||{}).top1, 'roxo'));
+            const aud = (ev && ev.auto_auditoria) || {};
+            plac.innerHTML = (linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>') +
+                (aud.veredito ? '<div class="ordem-aud-nums">auto-auditoria: ' + aud.veredito + ' · lift ' + Number(aud.lift||0).toFixed(4) + '</div>' : '');
+        }
+        const fon = document.getElementById('acervo-fontes');
+        if (fon) {
+            const pesos = (kn && kn.pesos_fontes) || {};
+            const chaves = Object.keys(pesos);
+            const maior = Math.max.apply(null, [0.0001].concat(chaves.map(k => pesos[k])));
+            fon.innerHTML = chaves.map(nome => {
+                const larg = Math.max(2, Math.round(pesos[nome]/maior*100));
+                return '<div class="ordem-freq-linha"><div class="ordem-freq-dezena">' + nome.slice(0,3).toUpperCase() + '</div>' +
+                    '<div class="ordem-bar"><div class="ordem-bar-fill' + (nome==='abertura'?' verde':'') + '" style="width:' + larg + '%"></div></div>' +
+                    '<div class="ordem-freq-nums"><strong>' + Number(pesos[nome]).toFixed(4) + '</strong></div></div>';
+            }).join('') || '<div class="ordem-vazio">…</div>';
+        }
+    }
+    function renderCores(evCor) {
+        const rank = document.getElementById('cor-ranking');
+        if (rank) {
+            const lista = (evCor && evCor.ranking_completo) || [];
+            rank.innerHTML = lista.length ? lista.map((r,i) => {
+                const forca = Math.max(4, Math.round((r.prob||0)/(lista[0].prob||1)*100));
+                return '<div class="ordem-candidata' + (i===0?' lider':'') + '"><div class="ordem-dezena" style="background:none;padding:0">' + corChip(r.cor) + '</div>' +
+                    '<div class="ordem-candidata-info"><div class="ordem-candidata-rotulo">' + r.nome + ' · Grupo ' + r.grupo + '</div>' +
+                    '<div class="ordem-bar"><div class="ordem-bar-fill' + (i===0?' verde':'') + '" style="width:' + forca + '%"></div></div>' +
+                    '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div></div></div>';
+            }).join('') : '<div class="ordem-vazio">assimilando…</div>';
+        }
+        const plac = document.getElementById('cor-placar');
+        if (plac) {
+            const w = (evCor && evCor.placar) || {};
+            const linhas = [];
+            if (w.margem_da_magna_top1) linhas.push(acLinhaPlacar('cor mais provável', w.margem_da_magna_top1.taxa, w.margem_da_magna_top1.teto_teorico, 'verde'));
+            if (w.cor_forte_top1) linhas.push(acLinhaPlacar('cor forte acertada', w.cor_forte_top1.taxa, w.cor_forte_top1.teto_teorico, 'roxo'));
+            plac.innerHTML = linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>';
+        }
+    }
+    let acervoCarregado = false;
+    function carregarAcervo() {
+        Promise.all([
+            fetch('/api/magna/abertura').then(r => r.json()).catch(() => ({})),
+            fetch('/api/magna/conhecimento?detalhes=1').then(r => r.json()).catch(() => {}),
+            fetch('/api/magna/cor').then(r => r.json()).catch(() => {})
+        ]).then(res => {
+            renderAcervo(res[0] || {}, res[1] || {});
+            renderCores(res[2] || {});
+        });
+    }
+
+    /* ── Carregamento preguiçoso das áreas recolhíveis ── */
+    document.getElementById('det-conhecimento').addEventListener('toggle', function () {
+        if (this.open && !acervoCarregado) { acervoCarregado = true; carregarAcervo(); }
+    });
+    document.getElementById('det-engenharia').addEventListener('toggle', function () {
+        if (this.open) carregarEngenharia();
+    });
+    document.getElementById('det-laboratorio').addEventListener('toggle', function () {
+        if (this.open) carregarLab();
+    });
 
     function renderizarForja(r) {
         const g = r.geometria_johnson;
-        if (r.mapa_dezenas) { mapaDezenas = r.mapa_dezenas; }
+        if (r.mapa_dezenas) mapaDezenas = r.mapa_dezenas;
         loteAtual = (r.cartelas || []).map(c => c.dezenas || c);
         if (g) {
             const esp = g.espectro_intersecoes || {};
             const max = Math.max(1, ...Object.values(esp));
-            document.getElementById('forja-espectro').innerHTML =
-                Object.entries(esp).map(([k, n]) =>
-                    '<div class="forja-bar"><span>' + k + ' em comum</span>' +
-                    '<i style="width:' + Math.round(100 * n / max) + '%"></i>' +
-                    '<b>' + n + '</b></div>').join('');
-            document.getElementById('forja-geometria').textContent =
-                g.leitura + ' · interseção média ' + g.intersecao_media +
-                ' (acaso ' + g.intersecao_media_acaso + ') · leque 13 do lote: ' +
-                Number(g.leque_13_total).toLocaleString('pt-BR') +
-                ' sorteios (' + g.amplificacao_leque + '× uma cartela)';
-        }
-        if (r.forja) {
-            document.getElementById('forja-status').textContent =
-                'forja: ' + r.forja.moves + ' movimentos · ' + r.forja.k_robusto +
-                ' vetores Dirichlet · P(melhor ≥ ' + r.forja.alvo + ') = 1 em ' +
-                Number(r.forja.um_em_exata).toLocaleString('pt-BR');
-        } else if (r.garantia) {
-            document.getElementById('forja-status').textContent =
-                'garantia condicional ' + r.garantia + ' pontos · captura do pool 1 em ' +
-                Number(r.um_em_captura).toLocaleString('pt-BR');
+            const el = document.getElementById('forja-espectro');
+            if (el) el.innerHTML = Object.entries(esp).map(([k,n]) =>
+                '<div class="forja-bar"><span>' + k + ' em comum</span><i style="width:' + Math.round(100*n/max) + '%"></i><b>' + n + '</b></div>').join('');
         }
         desenharMapa();
     }
 
-    carregarMenuForja();
-    carregarRateio();
-    carregarLab();
-    desenharMapa();
-
     function iniciarProcessamento() {
         let i = 0;
-        processing.hidden = false;
-        resultBox.hidden = true;
+        processing.hidden = false; resultBox.hidden = true;
         document.getElementById('magna-processing-title').textContent = stages[0][0];
         document.getElementById('magna-processing-text').textContent = stages[0][1];
         timer = setInterval(() => {
-            i = Math.min(i + 1, stages.length - 1);
+            i = Math.min(i+1, stages.length-1);
             document.getElementById('magna-processing-title').textContent = stages[i][0];
             document.getElementById('magna-processing-text').textContent = stages[i][1];
         }, 1800);
     }
-    function pararProcessamento() {
-        clearInterval(timer);
-        processing.hidden = true;
-    }
+    function pararProcessamento() { clearInterval(timer); processing.hidden = true; }
+
     function renderizar(payload) {
         const r = payload.resultado;
         const a = r.analise || {};
@@ -801,10 +673,26 @@
         document.getElementById('m-entropia').textContent = d.entropia_permutacao_media;
         document.getElementById('m-filtro').textContent = pct(d.taxa_aprovacao_filtro, 1);
         document.getElementById('m-kelly').textContent = d.kelly + ' · não apostar por EV';
-        document.getElementById('magna-saved').textContent = payload.salvas + ' cartela(s) salva(s) atomicamente';
+        document.getElementById('magna-saved').textContent = payload.salvas + ' cartela(s) salva(s)';
         document.getElementById('magna-truth-text').textContent = r.verdade_honesta;
-        renderizarForja(r);
 
+        // ambiente percebido pela Magna
+        const amb = r.ambiente_percebido;
+        const linha = document.getElementById('magna-ambiente-linha');
+        if (linha) {
+            if (amb && amb.telemetria) {
+                const t = amb.telemetria;
+                linha.hidden = false;
+                linha.innerHTML = '<i class="fas fa-cloud-sun"></i> Ambiente percebido pela Magna: ' +
+                    (amb.local && amb.local.cidade_uf ? amb.local.cidade_uf : 'local do sorteio') +
+                    ' · ' + t.temperatura_c + '°C · ' + t.pressao_atm + ' atm · ' + t.umidade_pct + '% umidade' +
+                    ' (fonte ' + amb.fonte + ')' + (amb.ambiente_registrado ? ' · registrado' : '');
+            } else {
+                linha.hidden = true;
+            }
+        }
+
+        renderizarForja(r);
         const cards = document.getElementById('magna-cartelas');
         cards.innerHTML = '';
         (r.cartelas || []).forEach((c, i) => {
@@ -812,57 +700,15 @@
             const conv = ((c.interpretacao_magna || {}).convergencia_media || 0) * 100;
             const el = document.createElement('article');
             el.className = 'magna-ticket';
-            const bonusRateio = (((c.interpretacao_magna || {}).popularidade || {}).bonus_rateio_estimado_x);
-            const regiao = (((c.interpretacao_magna || {}).popularidade || {}).regiao) || '—';
             el.innerHTML =
-                '<header><span>CARTELA ' + String(i + 1).padStart(2, '0') + '</span><strong>' + Number(c.score_total || 0).toFixed(4) + '</strong></header>' +
+                '<header><span>CARTELA ' + String(i+1).padStart(2,'0') + '</span><strong>' + Number(c.score_total||0).toFixed(4) + '</strong></header>' +
                 '<div class="magna-balls">' + bolas(c.dezenas) + '</div>' +
-                '<footer><span>plausibilidade ' + Number(av || 0).toFixed(2) + '</span><span>convergência ' + conv.toFixed(1) + '%</span></footer>' +
-                '<footer><span>rateio: ' + regiao + '</span><span>bonus ' + (bonusRateio ? Number(bonusRateio).toFixed(2) + '×' : '—') + '</span></footer>';
+                '<footer><span>plausibilidade ' + Number(av||0).toFixed(2) + '</span><span>convergência ' + conv.toFixed(1) + '%</span></footer>';
             cards.appendChild(el);
         });
         resultBox.hidden = false;
         resultBox.scrollIntoView({behavior:'smooth', block:'start'});
-    }
-
-    const btnInmetAuto = document.getElementById('magna-inmet-auto');
-    if (btnInmetAuto) {
-        btnInmetAuto.addEventListener('click', async function () {
-            btnInmetAuto.disabled = true;
-            if (btn) btn.disabled = true;
-            iniciarProcessamento();
-            try {
-                const response = await fetch('/api/magna/forja-auto', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        salvar: document.getElementById('magna-salvar').checked,
-                        usar_inmet: true,
-                        segundos_forja: 20
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na forja automática');
-                renderizar({
-                    resultado: data.decisao,
-                    salvas: data.salvas || 0
-                });
-                const telBox = document.getElementById('magna-telemetria');
-                if (telBox) {
-                    const tel = data.telemetria || {};
-                    const local = data.local_do_sorteio || {};
-                    telBox.textContent = 'INMET: ' + (tel.status || 'neutro') +
-                        ' · ' + (local.cidade_uf || local.cidade || '?') +
-                        ' · fonte ' + (tel.fonte || 'padrão');
-                }
-            } catch (err) {
-                alert('Inteligência Magna: ' + err.message);
-            } finally {
-                pararProcessamento();
-                btnInmetAuto.disabled = false;
-                if (btn) btn.disabled = false;
-            }
-        });
+        carregarEstadoAutonomo();
     }
 
     form.addEventListener('submit', async function (ev) {
@@ -874,20 +720,15 @@
             const response = await fetch('/api/magna/decidir', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        quantidade: Number(document.getElementById('magna-quantidade').value),
-                        orcamento: orc === '' ? null : Number(orc),
-                        alvo: document.getElementById('magna-alvo').value || null,
-                        modo: document.getElementById('magna-forja').checked ? 'forja' : 'auto',
-                        salvar: document.getElementById('magna-salvar').checked
-                    })
+                body: JSON.stringify({
+                    quantidade: Number(document.getElementById('magna-quantidade').value),
+                    orcamento: orc === '' ? null : Number(orc),
+                    salvar: true
+                })
             });
             const data = await response.json();
             if (!response.ok || data.status !== 'ok') throw new Error(data.msg || 'Falha na decisão');
             renderizar(data);
-            // a decisão é registrada com o digest do acervo que a produziu —
-            // o painel do conhecimento acompanha o estado logo em seguida
-            if (typeof carregarAcervo === 'function') carregarAcervo();
         } catch (err) {
             alert('Inteligência Magna: ' + err.message);
         } finally {
@@ -896,481 +737,193 @@
         }
     });
 
-    // Formulário de Ambiente (Física)
-    const ambForm = document.getElementById('ambiente-form-magna');
-    if (ambForm) {
-        ambForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const form = e.target;
-            const btn = form.querySelector('button');
-            const resultado = document.getElementById('ambiente-resultado-magna');
-            
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
-            
-            const dados = {
-                concurso: form.concurso.value ? parseInt(form.concurso.value) : null,
-                maquina: "Padrao Caixa SP",
-                conjunto_bolas: "A",
-                temperatura_K: parseFloat(form.temperatura_C.value) + 273.15,
-                pressao_atm: parseFloat(form.pressao_atm.value),
-                umidade: parseFloat(form.umidade_pct.value) / 100,
-                velocidade_rotacao: 30.0,
-                duracao_mistura: 60.0,
-                data_ultima_manutencao: null
-            };
-            
-            try {
-                const response = await fetch('/api/magna/fisica/ambiente', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(dados)
-                });
-                const data = await response.json();
-                
-                if (data.status === 'ok') {
-                    resultado.className = 'magna-resultado sucesso';
-                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> Ambiente registrado com sucesso!';
-                    resultado.hidden = false;
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    throw new Error(data.msg || 'Erro desconhecido');
-                }
-            } catch (err) {
-                resultado.className = 'magna-resultado erro';
-                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
-                resultado.hidden = false;
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-save"></i> Registrar Ambiente';
-            }
-        });
-    }
-
-    // Botão de Backtest
+    // Backtest / Conferir (área de rastreabilidade)
     const btnBacktest = document.getElementById('btn-backtest');
-    if (btnBacktest) {
-        btnBacktest.addEventListener('click', async function() {
-            const resultado = document.getElementById('avaliacao-resultado');
-            btnBacktest.disabled = true;
-            btnBacktest.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executando...';
-            
-            try {
-                const response = await fetch('/api/cerebro/backtesting', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({n_testes: 10, n_random: 100})
-                });
-                const data = await response.json();
-                
-                if (data.status === 'ok') {
-                    resultado.className = 'magna-resultado sucesso';
-                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> Backtest concluído: ' + 
-                        data.concursos_testados + ' concursos testados';
-                    resultado.hidden = false;
-                } else {
-                    throw new Error(data.msg || 'Erro no backtest');
-                }
-            } catch (err) {
-                resultado.className = 'magna-resultado erro';
-                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
-                resultado.hidden = false;
-            } finally {
-                btnBacktest.disabled = false;
-                btnBacktest.innerHTML = '<i class="fas fa-flask"></i> Executar Backtest';
-            }
-        });
-    }
-
-    // Botão de Conferir
+    if (btnBacktest) btnBacktest.onclick = async function () {
+        const res = document.getElementById('avaliacao-resultado');
+        btnBacktest.disabled = true;
+        try {
+            const r = await fetch('/api/cerebro/backtesting', {method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({n_testes: 10, n_random: 100})});
+            const d = await r.json();
+            if (d.status === 'ok') {
+                res.className = 'magna-resultado sucesso'; res.hidden = false;
+                res.innerHTML = '<i class="fas fa-check-circle"></i> Backtest concluído: ' + d.concursos_testados + ' concursos';
+            } else throw new Error(d.msg || 'Erro no backtest');
+        } catch (e) {
+            res.className = 'magna-resultado erro'; res.hidden = false;
+            res.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + e.message;
+        } finally { btnBacktest.disabled = false; }
+    };
     const btnConferir = document.getElementById('btn-conferir');
-    if (btnConferir) {
-        btnConferir.addEventListener('click', async function() {
-            const resultado = document.getElementById('avaliacao-resultado');
-            btnConferir.disabled = true;
-            btnConferir.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conferindo...';
-            
-            try {
-                const response = await fetch('/api/conferir', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
-                });
-                const data = await response.json();
-                
-                if (data.status === 'ok') {
-                    resultado.className = 'magna-resultado sucesso';
-                    resultado.innerHTML = '<i class="fas fa-check-circle"></i> ' + 
-                        data.conferidas + ' cartelas conferidas em ' + data.concursos + ' concursos';
-                    resultado.hidden = false;
-                    setTimeout(() => location.reload(), 2000);
-                } else {
-                    throw new Error(data.msg || 'Erro na conferência');
-                }
-            } catch (err) {
-                resultado.className = 'magna-resultado erro';
-                resultado.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro: ' + err.message;
-                resultado.hidden = false;
-            } finally {
-                btnConferir.disabled = false;
-                btnConferir.innerHTML = '<i class="fas fa-check-double"></i> Conferir Pendentes';
-            }
-        });
-    }
+    if (btnConferir) btnConferir.onclick = async function () {
+        const res = document.getElementById('avaliacao-resultado');
+        btnConferir.disabled = true;
+        try {
+            const r = await fetch('/api/conferir', {method:'POST', headers:{'Content-Type':'application/json'}});
+            const d = await r.json();
+            if (d.status === 'ok') {
+                res.className = 'magna-resultado sucesso'; res.hidden = false;
+                res.innerHTML = '<i class="fas fa-check-circle"></i> ' + d.conferidas + ' cartelas conferidas em ' + d.concursos + ' concursos';
+                carregarEstadoAutonomo();
+            } else throw new Error(d.msg || 'Erro na conferência');
+        } catch (e) {
+            res.className = 'magna-resultado erro'; res.hidden = false;
+            res.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + e.message;
+        } finally { btnConferir.disabled = false; }
+    };
 
-    /* ══════════════════════════════════════════════════════════
-       ACERVO — a Magna expõe a própria memória (abertura + pesos
-       do consenso + placar walk-forward). Um só cérebro: os dados
-       vêm dos endpoints da Magna, não de um módulo paralelo.
-       ══════════════════════════════════════════════════════════ */
-    function acPct(v, c) {
-        return (v == null) ? '—' : (Number(v) * 100).toFixed(c == null ? 1 : c) + '%';
-    }
-    function acBola(d) { return String(d).padStart(2, '0'); }
-    function acNum(v) { return (v == null) ? '—' : Number(v).toLocaleString('pt-BR'); }
-
-    function acCandidata(r, i, maior) {
-        const forca = Math.max(4, Math.round((r.prob || 0) / (maior || 1) * 100));
-        return '<div class="ordem-candidata' + (i === 0 ? ' lider' : '') + '">' +
-            '<div class="ordem-dezena">' + acBola(r.dezena) + '</div>' +
-            '<div class="ordem-candidata-info">' +
-            '<div class="ordem-candidata-rotulo">abertura prevista</div>' +
-            '<div class="ordem-bar"><div class="ordem-bar-fill' + (i === 0 ? ' verde' : '') +
-            '" style="width:' + forca + '%"></div></div>' +
-            '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div>' +
-            '<div class="ordem-candidata-rotulo">teto ' + acPct(r.prob_teorica) +
-            ' · ' + acNum(r.vezes_na_base) + '× na base</div>' +
-            '</div></div>';
-    }
-
-    function acLinhaPlacar(rotulo, taxa, teto, cor) {
-        const larg = Math.max(2, Math.min(100, Math.round((taxa || 0) * 100)));
-        return '<div class="ordem-placar-linha">' +
-            '<div class="ordem-placar-rotulo">' + rotulo + '</div>' +
-            '<div class="ordem-bar"><div class="ordem-bar-fill ' + cor +
-            '" style="width:' + larg + '%"></div></div>' +
-            '<div class="ordem-placar-nums"><strong>' + acPct(taxa, 1) + '</strong>' +
-            (teto != null ? ' · teto teórico ' + acPct(teto, 1) : '') + '</div></div>';
-    }
-
-    function renderAcervo(ev, kn) {
-        const leitura = document.getElementById('acervo-leitura');
-        if (leitura) {
-            leitura.innerHTML = '<i class="fas fa-brain"></i> ' +
-                ((ev && ev.leitura) || (kn && kn.leitura) ||
-                 'Ainda não há acervo assimilado — use “Reler a base inteira”.');
-        }
-
-        const meta = document.getElementById('acervo-meta');
-        if (meta) {
-            const pesoAb = ((kn && kn.pesos_fontes) || {}).abertura;
-            const itens = [
-                ['versão do acervo', (kn && kn.versao_acervo) || (ev && ev.versao) || '—'],
-                ['aprendido até', (ev && ev.aprendido_ate != null) ? ('concurso ' + ev.aprendido_ate) : '—'],
-                ['concursos lidos', ev ? acNum(ev.concursos_da_base) : '—'],
-                ['com ordem real', ev ? acNum(ev.concursos_com_ordem_real) : '—'],
-                ['veredito', (ev && ev.veredito) ? (ev.veredito + ' · fator ' + Number(ev.fator_confianca).toFixed(2)) : '—'],
-                ['peso no consenso', pesoAb == null ? '—' : Number(pesoAb).toFixed(3)],
-                ['impressão', String((ev && ev.digest) || '—').replace('sha256:', '').slice(0, 16)]
-            ];
-            meta.innerHTML = itens.map(function (par) {
-                return '<div class="acervo-meta-item"><span>' + par[0] + '</span><strong>' +
-                    par[1] + '</strong></div>';
-            }).join('');
-        }
-
-        const prev = document.getElementById('acervo-previsao');
-        if (prev) {
-            const rank = (ev && ev.ranking_completo) || [];
-            prev.innerHTML = rank.length
-                ? rank.map(function (r, i) { return acCandidata(r, i, rank[0].prob); }).join('')
-                : '<div class="ordem-vazio">sem acervo assimilado ainda</div>';
-        }
-
-        const dec = document.getElementById('acervo-decisiva');
-        if (dec) {
-            const pd = (ev && ev.pergunta_decisiva) || {};
-            const med = pd.medicao_no_historico || {};
-            dec.style.display = pd.descricao ? '' : 'none';
-            if (pd.descricao) {
-                dec.innerHTML = '<strong><i class="fas fa-question"></i> ' + pd.descricao + '</strong>' +
-                    '<div class="ordem-aud-nums">' +
-                    (med.taxa_real != null
-                        ? 'medido: ' + acPct(med.taxa_real) + ' em ' + acNum(med.provas) +
-                          ' provas · margem ' + acPct(med.taxa_teorica)
-                        : 'sem provas no histórico: vale a taxa da margem') +
-                    (pd.veredito_operacional ? '<br><span class="ordem-veredito ruido">' +
-                        pd.veredito_operacional + '</span>' : '') +
-                    '</div>';
-            }
-        }
-
-        const plac = document.getElementById('acervo-placar');
-        const pv = document.getElementById('acervo-provas');
-        if (plac) {
-            const w = (ev && ev.placar) || {};
-            if (pv) pv.textContent = w.n_provas ? '(' + acNum(w.n_provas) + ' provas sem vazamento)' : '';
-            const linhas = [];
-            if (w.margem_da_magna_top1) {
-                linhas.push(acLinhaPlacar('prever sempre a abertura nº 1', w.margem_da_magna_top1.taxa,
-                    w.margem_da_magna_top1.teto_teorico, 'verde'));
-            }
-            if (w.cobertura_top2) {
-                linhas.push(acLinhaPlacar('cober as 2 aberturas mais prováveis', w.cobertura_top2.taxa,
-                    w.cobertura_top2.teto_teorico, 'roxo'));
-            }
-            if (w.regra_popular_de_exclusao) {
-                linhas.push(acLinhaPlacar('excluir a abertura em sequência (regra popular)',
-                    w.regra_popular_de_exclusao.taxa, null, 'tracejado'));
-            }
-            const mem = (kn && kn.placar_abertura) || {};
-            if (mem.provas) {
-                linhas.push(acLinhaPlacar('palpites da Magna conferidos (' + acNum(mem.provas) +
-                    ' decisão(ões))', mem.acerto_top1, ((mem.margem_teorica || {}).top1), 'roxo'));
-            }
-            const aud = (ev && ev.auto_auditoria) || {};
-            plac.innerHTML = (linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>') +
-                (aud.veredito ? '<div class="ordem-aud-nums">auto-auditoria: ' + aud.veredito +
-                    ' · lift ' + Number(aud.lift == null ? 0 : aud.lift).toFixed(4) +
-                    ' · p-valor ' + Number(aud.p_valor == null ? 1 : aud.p_valor).toFixed(3) +
-                    ' · ' + (w.leitura || '') + '</div>' : '');
-        }
-
-        const fon = document.getElementById('acervo-fontes');
-        if (fon) {
-            const pesos = (kn && kn.pesos_fontes) || {};
-            const chaves = Object.keys(pesos);
-            const maior = Math.max.apply(null, [0.0001].concat(chaves.map(function (k) { return pesos[k]; })));
-            fon.innerHTML = chaves.map(function (nome) {
-                const larg = Math.max(2, Math.round(pesos[nome] / maior * 100));
-                const marca = nome === 'abertura'
-                    ? (kn.calibrado ? 'calibrado em walk-forward' : 'default; calibrar para medir')
-                    : '';
-                return '<div class="ordem-freq-linha"><div class="ordem-freq-dezena" title="' +
-                    nome + '">' + nome.slice(0, 3).toUpperCase() + '</div>' +
-                    '<div class="ordem-bar"><div class="ordem-bar-fill ' +
-                    (nome === 'abertura' ? 'verde' : '') + '" style="width:' + larg +
-                    '%"></div></div><div class="ordem-freq-nums"><strong>' +
-                    Number(pesos[nome]).toFixed(4) + '</strong>' +
-                    (marca ? ' <em>· ' + marca + '</em>' : '') + '</div></div>';
-            }).join('') || '<div class="ordem-vazio">sem pesos carregados</div>';
-        }
-
-        const real = document.getElementById('acervo-real');
-        if (real) {
-            const can = ((((kn || {}).abertura_relatorio || {}).canais) || {}).real;
-            if (!can || !can.n_registros) {
-                real.innerHTML = '<div class="ordem-backfill"><i class="fas fa-info-circle"></i> ' +
-                    'O canal <code>real</code> (1ª bola física) só tem o que você alimentar: ' +
-                    'grave os concursos manualmente abaixo ou rode <code>python backfill_ordem.py</code>. ' +
-                    'A fonte <code>abertura</code> da Magna não depende disso — ela lê as ' +
-                    '3.700+ aberturas já no banco.</div>';
-            } else {
-                const lista = (((can.previsao || {}).ranking) || []).slice(0, 5).map(function (r, i) {
-                    return acCandidata(r, i, can.previsao.ranking[0].prob);
-                }).join('');
-                const atual = (can.previsao || {}).abertura_atual;
-                real.innerHTML = '<div class="ordem-aud-nums">' + acNum(can.n_registros) +
-                    ' concursos com ordem real · ' + (atual
-                        ? 'abre hoje <strong>' + acBola(atual.dezena) + '</strong> há ' + atual.streak +
-                          ' concurso(s) (desde o ' + atual.desde_o_concurso + ')'
-                        : 'sem sequência ativa') + '</div>' +
-                    '<div class="ordem-candidatas-lista" style="margin-top:10px">' + lista + '</div>';
-            }
-        }
-    }
-
-    function corChip(cor) {
-        const coresHex = {
-            vermelha: '#e74c3c', amarela: '#f1c40f', verde: '#2ecc71',
-            marrom: '#a0522d', azul: '#3498db', rosa: '#ff6b9d',
-            preta: '#2c3e50', cinza: '#95a5a6', laranja: '#e67e22',
-            branca: '#ecf0f1'
-        };
-        const hex = coresHex[cor] || '#888';
-        const escura = cor === 'branca' || cor === 'amarela' || cor === 'cinza';
-        return '<span class="cor-chip" style="display:inline-block;padding:3px 12px;margin:1px 0;' +
-            'border-radius:12px;background:' + hex + ';color:' + (escura ? '#222' : '#fff') +
-            ';font-size:10px;font-weight:700;border:1px solid rgba(255,255,255,.25);white-space:nowrap">' +
-            cor.charAt(0).toUpperCase() + cor.slice(1) + '</span>';
-    }
-
-    /* v11.8 — Cores das bolas: o acervo de cores da própria Magna
-       (tabela oficial MazuSoft — a cor é o último dígito da bola). */
-    function renderCores(evCor) {
-        const rank = document.getElementById('cor-ranking');
-        if (rank) {
-            const lista = (evCor && evCor.ranking_completo) || [];
-            rank.innerHTML = lista.length
-                ? lista.map(function (r, i) {
-                    const forca = Math.max(4, Math.round((r.prob || 0) / (lista[0].prob || 1) * 100));
-                    return '<div class="ordem-candidata' + (i === 0 ? ' lider' : '') + '">' +
-                        '<div class="ordem-dezena" style="background:none;padding:0">' + corChip(r.cor) + '</div>' +
-                        '<div class="ordem-candidata-info">' +
-                        '<div class="ordem-candidata-rotulo">' + r.nome + ' · Grupo ' + r.grupo +
-                        ' · P(aparecer no sorteio)</div>' +
-                        '<div class="ordem-bar"><div class="ordem-bar-fill' + (i === 0 ? ' verde' : '') +
-                        '" style="width:' + forca + '%"></div></div>' +
-                        '<div class="ordem-candidata-pct">' + acPct(r.prob) + '</div>' +
-                        '<div class="ordem-candidata-rotulo">teto ' + acPct(r.prob_teorica) +
-                        ' · ' + acNum(r.vezes_na_base) + '× na base</div>' +
-                        '</div></div>';
-                }).join('')
-                : '<div class="ordem-vazio">sem acervo de cores assimilado ainda</div>';
-        }
-        const plac = document.getElementById('cor-placar');
-        if (plac) {
-            const w = (evCor && evCor.placar) || {};
-            const aud = (evCor && evCor.auto_auditoria) || {};
-            const linhas = [];
-            if (w.margem_da_magna_top1) {
-                linhas.push(acLinhaPlacar('cor mais provável apareceu',
-                    w.margem_da_magna_top1.taxa, w.margem_da_magna_top1.teto_teorico, 'verde'));
-            }
-            if (w.cor_forte_top1) {
-                linhas.push(acLinhaPlacar('cor forte (2+ bolas) acertada',
-                    w.cor_forte_top1.taxa, w.cor_forte_top1.teto_teorico, 'roxo'));
-            }
-            if (w.regra_popular_da_repeticao) {
-                linhas.push(acLinhaPlacar('repetir a cor dominante (regra popular)',
-                    w.regra_popular_da_repeticao.taxa,
-                    w.regra_popular_da_repeticao.teto_teorico, 'tracejado'));
-            }
-            plac.innerHTML = (linhas.join('') || '<div class="ordem-vazio">sem provas ainda</div>') +
-                (aud.veredito ? '<div class="ordem-aud-nums">auto-auditoria: ' + aud.veredito +
-                    ' · lift ' + Number(aud.lift == null ? 0 : aud.lift).toFixed(4) +
-                    ' · p-valor ' + Number(aud.p_valor == null ? 1 : aud.p_valor).toFixed(3) +
-                    ' · ' + ((evCor && evCor.leitura) || '') + '</div>' : '');
-        }
-    }
-
-    function carregarAcervo() {
-        Promise.all([
-            fetch('/api/magna/abertura').then(function (r) { return r.json(); }).catch(function () { return {}; }),
-            fetch('/api/magna/conhecimento?detalhes=1').then(function (r) { return r.json(); }).catch(function () { return {}; }),
-            fetch('/api/magna/cor').then(function (r) { return r.json(); }).catch(function () { return {}; })
-        ]).then(function (res) {
-            renderAcervo(res[0] || {}, res[1] || {});
-            renderCores(res[2] || {});
-        });
-    }
-
-    function acervoAprender(calibrar) {
-        const btn = document.getElementById(calibrar ? 'acervo-calibrar' : 'acervo-aprender');
-        const aviso = document.getElementById('acervo-aviso');
-        const original = btn ? btn.innerHTML : '';
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> ' + (calibrar ? 'calibrando…' : 'lendo a base…'); }
-        if (aviso) aviso.textContent = calibrar
-            ? 'Calibrar refaz o walk-forward das 8 fontes sobre a base inteira — um minuto por vez, com orçamento de tempo.'
-            : '';
-        fetch('/api/magna/conhecimento/assimilar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ forcar: true, calibrar_fontes: !!calibrar,
-                                   limite_segundos: calibrar ? 120 : 30 })
-        }).then(function (r) { return r.json(); }).then(function (d) {
-            if (aviso) aviso.textContent = (d.status || 'ok') + ' — ' + (d.leitura || d.msg || '');
-            carregarAcervo();
-        }).catch(function (e) {
-            if (aviso) aviso.textContent = 'a Magna não conseguiu aprender agora: ' + e;
-        }).finally(function () {
-            if (btn) { btn.disabled = false; btn.innerHTML = original; }
-        });
-    }
-
-    const acBtnAprender = document.getElementById('acervo-aprender');
-    if (acBtnAprender) acBtnAprender.addEventListener('click', function () { acervoAprender(false); });
-    const acBtnCalibrar = document.getElementById('acervo-calibrar');
-    if (acBtnCalibrar) acBtnCalibrar.addEventListener('click', function () { acervoAprender(true); });
-
-    const acForm = document.getElementById('acervo-ingestao');
-    if (acForm) acForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        const aviso = document.getElementById('acervo-aviso');
-        const conc = parseInt(document.getElementById('acervo-concurso').value, 10);
-        const nums = (document.getElementById('acervo-ordem').value || '')
-            .split(/[^0-9]+/).filter(Boolean).map(Number);
-        if (!conc || !nums.length) {
-            if (aviso) aviso.textContent = 'informe o concurso e pelo menos a primeira bola.';
-            return;
-        }
-        const corpo = nums.length === 1 ? { concurso: conc, abertura: nums[0] }
-                                        : { concurso: conc, ordem: nums };
-        if (aviso) aviso.textContent = 'memorizando…';
-        fetch('/api/magna/ordem/ingestao', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(corpo)
-        }).then(function (r) { return r.json(); }).then(function (d) {
-            if (aviso) aviso.textContent = (d.status === 'erro')
-                ? 'erro: ' + d.msg
-                : 'gravado · abertura real ' + acBola(d.abertura_real) + ' · acervo até ' +
-                  ((d.acervo || {}).aprendido_ate || '—');
-            carregarAcervo();
-        }).catch(function (e) { if (aviso) aviso.textContent = 'falhou: ' + e; });
-    });
-
-    carregarAcervo();
-    if (document.getElementById('magna-result') && !document.getElementById('magna-result').hidden) {
-        carregarAcervo();
-    }
-
+    carregarEstadoAutonomo();
+    ligaLab();
 })();
 </script>
 
 <style>
-.magna-acervo{padding:26px 28px;margin-bottom:18px;border-color:rgba(0,184,148,.28)}.magna-acervo .acervo-actions{display:flex;gap:8px}.acervo-btn{border:1px solid rgba(0,184,148,.5);border-radius:10px;background:rgba(0,184,148,.12);color:#7ce0c6;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer}.acervo-btn.secundario{border-color:rgba(108,92,231,.5);background:rgba(108,92,231,.12);color:#b6a9ff}.acervo-btn.mini{padding:8px 12px}.acervo-btn:disabled{opacity:.5;cursor:wait}.acervo-leitura{margin:0;padding:14px 16px;border-left:2px solid #00b894;background:#11121c;border-radius:10px;color:#a8b3ae;font-size:12px;line-height:1.65}.acervo-leitura i{color:#68d9b4;margin-right:6px}.acervo-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:14px 0 4px}.acervo-meta-item{padding:10px 12px;border:1px solid #262839;border-radius:10px;background:#12131e}.acervo-meta-item span,.acervo-meta-item strong{display:block}.acervo-meta-item span{color:#6f7188;font-size:9px;text-transform:uppercase;letter-spacing:.6px}.acervo-meta-item strong{margin-top:4px;color:#d7d4f5;font-size:12px}.acervo-ingestao{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:end;margin-top:14px}.acervo-ingestao label{display:flex;flex-direction:column;gap:6px;color:#9a9cb2;font-size:10px}.acervo-ingestao input{border:1px solid #34364b;border-radius:9px;background:#11121d;color:#fff;padding:9px 10px;font-size:12px;outline:none}.acervo-ingestao input:focus{border-color:#4fd1a5}.acervo-aviso{color:#7ce0c6;font-size:10px;margin:8px 0 0;min-height:14px}.magna-acervo .ordem-grid-2>div>h4{margin:0 0 10px;color:#8f92ad;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.magna-acervo .ordem-aud-nums{font-size:11px}.magna-acervo .ordem-candidata{padding:10px}.magna-acervo .ordem-dezena{font-size:1.15rem;padding:7px 9px}@media(max-width:900px){.acervo-ingestao{grid-template-columns:1fr}}
-
-.magna-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;min-height:250px;padding:38px 42px;margin-bottom:18px;border:1px solid rgba(132,94,247,.3);border-radius:22px;background:radial-gradient(circle at 85% 20%,rgba(108,92,231,.28),transparent 34%),linear-gradient(135deg,#17182b 0%,#222044 100%)}
+.magna-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;min-height:200px;padding:32px 38px;margin-bottom:16px;border:1px solid rgba(132,94,247,.3);border-radius:22px;background:radial-gradient(circle at 85% 20%,rgba(108,92,231,.28),transparent 34%),linear-gradient(135deg,#17182b 0%,#222044 100%)}
 .magna-hero:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,#000,transparent)}
-.magna-hero>div:first-child{position:relative;z-index:2;max-width:720px}.magna-kicker,.magna-section-title span,.magna-cartelas-head span{color:#9b8cff;font-size:11px;font-weight:800;letter-spacing:1.8px}.magna-hero h2{font-size:34px;line-height:1.1;margin:12px 0;color:#fff}.magna-hero p{font-size:15px;line-height:1.7;color:#b8b9cf;max-width:680px}.magna-orbe{position:relative;width:155px;height:155px;display:grid;place-items:center;margin-right:24px;border-radius:50%;border:1px solid rgba(155,140,255,.35);box-shadow:0 0 60px rgba(108,92,231,.28),inset 0 0 35px rgba(108,92,231,.2)}.magna-orbe>i{font-size:55px;color:#b9adff;filter:drop-shadow(0 0 16px #6c5ce7)}.magna-orbe span{position:absolute;inset:-12px;border:1px solid rgba(155,140,255,.2);border-radius:50%;animation:magnaPulse 3s infinite}.magna-orbe span:nth-child(2){inset:-26px;animation-delay:.8s}.magna-orbe span:nth-child(3){inset:-42px;animation-delay:1.6s}@keyframes magnaPulse{50%{opacity:.25;transform:scale(1.04)}}
-.magna-assimilacao{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:13px 16px;margin-bottom:18px;border:1px solid var(--border,#2a2d42);border-radius:14px;background:#171827}.magna-assimilacao>div:not(.magna-fluxo){display:flex;align-items:center;gap:7px;white-space:nowrap;padding:7px 10px;color:#a9abc0;font-size:11px}.magna-assimilacao i{color:#8174db}.magna-fluxo{margin-left:auto;display:flex;align-items:center;gap:11px;white-space:nowrap;color:#b8adff;font-size:11px}.magna-fluxo span{width:35px;height:1px;background:#6c5ce7}
-.magna-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.75fr);gap:18px;margin-bottom:18px}.magna-command,.magna-memory,.magna-result,.magna-history{border:1px solid var(--border,#2a2d42);border-radius:18px;background:#181925;padding:24px}.magna-section-title,.magna-cartelas-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.magna-section-title h3,.magna-cartelas-head h3{margin:4px 0 0;color:#f2f2fa}.magna-live{display:flex;align-items:center;gap:7px;color:#68d9b4!important;letter-spacing:0!important}.magna-live i{width:7px;height:7px;border-radius:50%;background:#00b894;box-shadow:0 0 10px #00b894}.magna-command form{display:grid;grid-template-columns:1fr 1fr;gap:16px}.magna-command label{display:flex;flex-direction:column;gap:7px;color:#d5d5e2;font-size:12px;font-weight:600}.magna-command small{color:#777990;font-size:10px;font-weight:400;line-height:1.4}.magna-command input[type=number]{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d;color:#fff;padding:12px;font-size:14px;outline:none}.magna-command input:focus{border-color:#786ae4;box-shadow:0 0 0 3px rgba(108,92,231,.14)}.magna-money{position:relative}.magna-money span{position:absolute;left:12px;top:12px;color:#888aa0}.magna-money input{padding-left:38px!important}.magna-check{grid-column:1/3;flex-direction:row!important;align-items:center}.magna-check input{accent-color:#6c5ce7}.magna-primary{grid-column:1/3;border:0;border-radius:11px;padding:14px 20px;color:#fff;background:linear-gradient(135deg,#6c5ce7,#8e77f3);font-weight:800;cursor:pointer;box-shadow:0 10px 25px rgba(108,92,231,.22)}.magna-primary:disabled{opacity:.55;cursor:wait}.magna-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.magna-facts div{padding:12px;border-radius:10px;background:#11121d}.magna-facts strong,.magna-facts span{display:block}.magna-facts strong{color:#fff}.magna-facts span{margin-top:3px;color:#777990;font-size:9px;text-transform:uppercase;letter-spacing:.7px}
-.magna-weight{margin:16px 0}.magna-weight>div:first-child{display:flex;justify-content:space-between;color:#b8b9ca;font-size:11px}.magna-weight strong{color:#dad6ff}.magna-weight-track{height:5px;margin-top:7px;border-radius:5px;background:#292a3b;overflow:hidden}.magna-weight-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#6c5ce7,#a892ff)}.magna-note{padding:12px;margin-top:20px;border-left:2px solid #6c5ce7;background:#13141f;color:#777990;font-size:10px;line-height:1.6}
-.magna-processing{display:flex;align-items:center;gap:20px;padding:20px 24px;margin-bottom:18px;border:1px solid rgba(108,92,231,.35);border-radius:14px;background:#19182a}.magna-loader{position:relative;width:50px;height:50px;display:grid;place-items:center;color:#b5a9ff}.magna-loader span{position:absolute;inset:0;border:2px solid transparent;border-top-color:#8f7cf5;border-radius:50%;animation:magnaSpin 1s linear infinite}@keyframes magnaSpin{to{transform:rotate(360deg)}}.magna-processing p{margin:4px 0;color:#85879e;font-size:11px}
-.magna-result{margin-bottom:18px;border-color:rgba(108,92,231,.45);box-shadow:0 18px 45px rgba(0,0,0,.15)}.magna-result-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid #2a2b3d}.magna-result-head>div>span{color:#68d9b4;font-size:10px;font-weight:800;letter-spacing:1.5px}.magna-result-head h2{margin:7px 0;color:#fff}.magna-result-head p{margin:0;max-width:760px;color:#9294aa;font-size:12px;line-height:1.5}.magna-result-seal{width:64px;height:64px;border:1px solid #4f477e;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ab9eff}.magna-result-seal span{font-size:8px;font-weight:800;letter-spacing:1px}.magna-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}.magna-metrics div{padding:14px;border:1px solid #292a3b;border-radius:11px;background:#12131e}.magna-metrics span,.magna-metrics strong{display:block}.magna-metrics span{color:#72748b;font-size:9px;text-transform:uppercase}.magna-metrics strong{margin-top:5px;color:#efeff7;font-size:16px}.magna-decision-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.magna-panel{padding:18px;border-radius:12px;background:#12131e}.magna-panel h3{margin:0 0 15px;color:#dcddea;font-size:13px}.magna-panel h3 i{color:#8e7cf2;margin-right:6px}.magna-panel p{color:#707289;font-size:10px;line-height:1.5}.magna-balls{display:flex;flex-wrap:wrap;gap:7px}.magna-balls span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(145deg,#7464d7,#4e429e);color:#fff;font-size:11px;font-weight:800;box-shadow:inset 0 1px 1px rgba(255,255,255,.22)}.magna-diagnostics{margin:0}.magna-diagnostics div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #252636;font-size:10px}.magna-diagnostics dt{color:#777990}.magna-diagnostics dd{margin:0;color:#d5d1fa;font-weight:700}.magna-cartelas-head{margin:24px 0 13px}.magna-cartelas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.magna-ticket{padding:15px;border:1px solid #2b2c3e;border-radius:12px;background:linear-gradient(145deg,#13141f,#191a29)}.magna-ticket header,.magna-ticket footer{display:flex;justify-content:space-between}.magna-ticket header{margin-bottom:12px;color:#85879c;font-size:9px;letter-spacing:1px}.magna-ticket header strong{color:#a99cff}.magna-ticket .magna-balls span{width:28px;height:28px;font-size:9px}.magna-ticket footer{margin-top:12px;color:#6f7188;font-size:9px}.magna-truth{display:flex;align-items:flex-start;gap:12px;padding:15px;margin-top:18px;border-radius:10px;background:#11121c;color:#7f8197;font-size:10px;line-height:1.55}.magna-truth i{color:#e0b75d;margin-top:2px}.magna-truth p{margin:0}.magna-history{margin-bottom:20px}.magna-status{padding:4px 7px;border-radius:10px;background:#292a3b;color:#aaa;font-size:9px}.magna-status.conferida{background:rgba(0,184,148,.15);color:#62d9bd}.magna-empty{text-align:center;padding:28px;color:#696b82}.magna-empty i{font-size:28px;color:#6c5ce7}.magna-empty p{font-size:11px}
-@media(max-width:900px){.magna-grid,.magna-decision-grid{grid-template-columns:1fr}.magna-orbe{display:none}.magna-metrics{grid-template-columns:repeat(2,1fr)}.magna-command form{grid-template-columns:1fr}.magna-check,.magna-primary{grid-column:1}.magna-hero{padding:28px}.magna-hero h2{font-size:27px}.magna-physics-grid,.magna-avaliacao-grid{grid-template-columns:1fr}.form-row-magna{grid-template-columns:1fr}.magna-bolas-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}
+.magna-hero>div:first-child{position:relative;z-index:2;max-width:720px}
+.magna-kicker,.magna-section-title span,.magna-cartelas-head span{color:#9b8cff;font-size:11px;font-weight:800;letter-spacing:1.8px}
+.magna-hero h2{font-size:28px;line-height:1.15;margin:10px 0;color:#fff}
+.magna-hero p{font-size:14px;line-height:1.65;color:#b8b9cf;max-width:660px;margin:0}
+.magna-orbe{position:relative;width:140px;height:140px;display:grid;place-items:center;margin-right:20px;border-radius:50%;border:1px solid rgba(155,140,255,.35);box-shadow:0 0 60px rgba(108,92,231,.28),inset 0 0 35px rgba(108,92,231,.2)}
+.magna-orbe>i{font-size:48px;color:#b9adff;filter:drop-shadow(0 0 16px #6c5ce7)}
+.magna-orbe span{position:absolute;inset:-12px;border:1px solid rgba(155,140,255,.2);border-radius:50%;animation:magnaPulse 3s infinite}
+.magna-orbe span:nth-child(2){inset:-26px;animation-delay:.8s}
+.magna-orbe span:nth-child(3){inset:-40px;animation-delay:1.6s}
+@keyframes magnaPulse{50%{opacity:.25;transform:scale(1.04)}}
 
-/* Seções de Física e Avaliação */
-.magna-physics,.magna-avaliacao{border:1px solid var(--border,#2a2d42);border-radius:18px;background:#181925;padding:24px;margin-bottom:18px}
-.magna-physics-status{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700}
-.magna-physics-status.ativa{background:rgba(0,184,148,.15);color:#00b894}
-.magna-physics-status.neutra{background:rgba(255,234,167,.15);color:#ffeaa7}
-.magna-physics-grid,.magna-avaliacao-grid{display:grid;grid-template-columns:1fr 1.5fr;gap:20px;margin-bottom:20px}
-.magna-physics-stats,.magna-avaliacao-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.magna-physics-stats div,.magna-avaliacao-stats div{background:#11121d;border-radius:10px;padding:14px;text-align:center}
-.magna-physics-stats strong,.magna-avaliacao-stats strong{display:block;font-size:22px;color:#fff;margin-bottom:4px}
-.magna-physics-stats span,.magna-avaliacao-stats span{font-size:10px;color:#777990;text-transform:uppercase}
-.magna-physics-info,.magna-avaliacao-info{background:#11121d;border-radius:10px;padding:16px}
-.magna-physics-info p,.magna-avaliacao-info p{margin:6px 0;color:#b8b9cf;font-size:12px;line-height:1.5}
-.magna-physics-info strong,.magna-avaliacao-info strong{color:#fff}
-.magna-physics-bolas{margin-top:20px}
-.magna-physics-bolas h4{margin:0 0 12px;color:#d5d5e2;font-size:14px}
-.magna-bolas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
-.magna-bola-card{display:flex;align-items:center;gap:8px;background:#11121d;border-radius:8px;padding:8px}
-.magna-bola-numero{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff}
-.magna-bola-info{display:flex;flex-direction:column;gap:2px;font-size:10px;color:#777990}
-.magna-physics-form{margin-top:20px;background:#11121d;border-radius:10px;padding:16px}
-.magna-physics-form h4{margin:0 0 12px;color:#d5d5e2;font-size:14px}
-.form-row-magna{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
-.form-row-magna label{display:flex;flex-direction:column;gap:4px;color:#777990;font-size:10px}
-.form-row-magna input{background:#181925;border:1px solid #34364b;border-radius:6px;padding:8px;color:#fff;font-size:12px;outline:none}
-.form-row-magna input:focus{border-color:#6c5ce7}
-.magna-btn-secondary{background:#292a3b;color:#b8b9cf;border:1px solid #34364b;border-radius:8px;padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
-.magna-btn-secondary:hover{background:#34364b;color:#fff}
-.magna-resultado{margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:6px}
-.magna-resultado.sucesso{background:rgba(0,184,148,.15);color:#00b894}
-.magna-resultado.erro{background:rgba(255,118,117,.15);color:#ff7675}
-.magna-avaliacao-actions{display:flex;gap:10px;margin-top:16px}
+/* Estado autônomo */
+.magna-autonomo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.magna-autonomo-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border,#2a2d42);border-radius:14px;background:#171827}
+.magna-autonomo-item i{font-size:18px;color:#8e7cf2;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:rgba(108,92,231,.14)}
+.magna-autonomo-item strong{display:block;color:#efeff7;font-size:12px}
+.magna-autonomo-item span{display:block;color:#777990;font-size:10px;margin-top:2px;line-height:1.4}
+
+.magna-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.75fr);gap:18px;margin-bottom:18px}
+.magna-command,.magna-memory,.magna-result{border:1px solid var(--border,#2a2d42);border-radius:18px;background:#181925;padding:24px}
+.magna-section-title,.magna-cartelas-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.magna-section-title h3,.magna-cartelas-head h3{margin:4px 0 0;color:#f2f2fa}
+.magna-live{display:flex;align-items:center;gap:7px;color:#68d9b4!important;letter-spacing:0!important}
+.magna-live i{width:7px;height:7px;border-radius:50%;background:#00b894;box-shadow:0 0 10px #00b894}
+.magna-command form{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.magna-command label{display:flex;flex-direction:column;gap:7px;color:#d5d5e2;font-size:12px;font-weight:600}
+.magna-command small{color:#777990;font-size:10px;font-weight:400;line-height:1.4}
+.magna-command input[type=number]{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d;color:#fff;padding:12px;font-size:14px;outline:none}
+.magna-command input:focus{border-color:#786ae4;box-shadow:0 0 0 3px rgba(108,92,231,.14)}
+.magna-money{position:relative}
+.magna-money span{position:absolute;left:12px;top:12px;color:#888aa0}
+.magna-money input{padding-left:38px!important}
+.magna-primary{border:0;border-radius:11px;padding:15px 20px;color:#fff;background:linear-gradient(135deg,#6c5ce7,#8e77f3);font-weight:800;cursor:pointer;box-shadow:0 10px 25px rgba(108,92,231,.22);font-size:14px}
+.magna-primary:disabled{opacity:.55;cursor:wait}
+.magna-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.magna-facts div{padding:12px;border-radius:10px;background:#11121d}
+.magna-facts strong,.magna-facts span{display:block}
+.magna-facts strong{color:#fff;font-size:15px}
+.magna-facts span{margin-top:3px;color:#777990;font-size:9px;text-transform:uppercase;letter-spacing:.7px}
+.magna-weight{margin:16px 0}
+.magna-weight>div:first-child{display:flex;justify-content:space-between;color:#b8b9ca;font-size:11px}
+.magna-weight strong{color:#dad6ff}
+.magna-weight-track{height:5px;margin-top:7px;border-radius:5px;background:#292a3b;overflow:hidden}
+.magna-weight-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#6c5ce7,#a892ff)}
+.magna-note{padding:12px;margin-top:20px;border-left:2px solid #6c5ce7;background:#13141f;color:#777990;font-size:10px;line-height:1.6}
+
+.magna-processing{display:flex;align-items:center;gap:20px;padding:20px 24px;margin-bottom:18px;border:1px solid rgba(108,92,231,.35);border-radius:14px;background:#19182a}
+.magna-loader{position:relative;width:50px;height:50px;display:grid;place-items:center;color:#b5a9ff}
+.magna-loader span{position:absolute;inset:0;border:2px solid transparent;border-top-color:#8f7cf5;border-radius:50%;animation:magnaSpin 1s linear infinite}
+@keyframes magnaSpin{to{transform:rotate(360deg)}}
+.magna-processing p{margin:4px 0;color:#85879e;font-size:11px}
+
+.magna-result{margin-bottom:18px;border-color:rgba(108,92,231,.45);box-shadow:0 18px 45px rgba(0,0,0,.15)}
+.magna-result-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:18px;border-bottom:1px solid #2a2b3d}
+.magna-result-head>div>span{color:#68d9b4;font-size:10px;font-weight:800;letter-spacing:1.5px}
+.magna-result-head h2{margin:7px 0;color:#fff;font-size:20px}
+.magna-result-head p{margin:0;max-width:760px;color:#9294aa;font-size:12px;line-height:1.5}
+.magna-result-seal{width:60px;height:60px;border:1px solid #4f477e;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ab9eff;flex-shrink:0}
+.magna-result-seal span{font-size:8px;font-weight:800;letter-spacing:1px}
+.magna-ambiente-linha{display:flex;align-items:center;gap:8px;margin:14px 0;padding:10px 14px;border-radius:10px;background:rgba(0,184,148,.1);color:#7ce0c6;font-size:11px}
+.magna-ambiente-linha i{color:#68d9b4}
+.magna-metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:18px 0}
+.magna-metrics div{padding:12px;border:1px solid #292a3b;border-radius:11px;background:#12131e}
+.magna-metrics span,.magna-metrics strong{display:block}
+.magna-metrics span{color:#72748b;font-size:9px;text-transform:uppercase}
+.magna-metrics strong{margin-top:5px;color:#efeff7;font-size:14px}
+.magna-decision-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+.magna-panel{padding:16px;border-radius:12px;background:#12131e}
+.magna-panel h3{margin:0 0 14px;color:#dcddea;font-size:13px}
+.magna-panel h3 i{color:#8e7cf2;margin-right:6px}
+.magna-balls{display:flex;flex-wrap:wrap;gap:7px}
+.magna-balls span{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:linear-gradient(145deg,#7464d7,#4e429e);color:#fff;font-size:11px;font-weight:800;box-shadow:inset 0 1px 1px rgba(255,255,255,.22)}
+.magna-diagnostics{margin:0}
+.magna-diagnostics div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #252636;font-size:10px}
+.magna-diagnostics dt{color:#777990}
+.magna-diagnostics dd{margin:0;color:#d5d1fa;font-weight:700}
+.magna-cartelas-head{margin:22px 0 13px}
+.magna-cartelas{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.magna-ticket{padding:15px;border:1px solid #2b2c3e;border-radius:12px;background:linear-gradient(145deg,#13141f,#191a29)}
+.magna-ticket header,.magna-ticket footer{display:flex;justify-content:space-between}
+.magna-ticket header{margin-bottom:12px;color:#85879c;font-size:9px;letter-spacing:1px}
+.magna-ticket header strong{color:#a99cff}
+.magna-ticket .magna-balls span{width:28px;height:28px;font-size:9px}
+.magna-ticket footer{margin-top:12px;color:#6f7188;font-size:9px}
+.magna-truth{display:flex;align-items:flex-start;gap:12px;padding:15px;margin-top:18px;border-radius:10px;background:#11121c;color:#7f8197;font-size:10px;line-height:1.55}
+.magna-truth i{color:#e0b75d;margin-top:2px}
+.magna-truth p{margin:0}
+
+/* Áreas recolhíveis */
+.magna-details{border:1px solid var(--border,#2a2d42);border-radius:16px;background:#181925;margin-bottom:12px;overflow:hidden}
+.magna-details summary{list-style:none;cursor:pointer;padding:18px 22px;font-size:13px;font-weight:700;color:#d5d5e2;display:flex;align-items:center;gap:10px}
+.magna-details summary::-webkit-details-marker{display:none}
+.magna-details summary i{color:#8e7cf2}
+.magna-details summary:before{content:"\f078";font-family:"Font Awesome 6 Free";font-weight:900;margin-left:auto;color:#6f7188;font-size:11px;transition:transform .2s}
+.magna-details[open] summary:before{transform:rotate(180deg)}
+.magna-details-body{padding:0 22px 22px}
+.acervo-btn{border:1px solid rgba(0,184,148,.5);border-radius:10px;background:rgba(0,184,148,.12);color:#7ce0c6;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer}
+.acervo-btn.secundario{border-color:rgba(108,92,231,.5);background:rgba(108,92,231,.12);color:#b6a9ff}
+.acervo-btn:disabled{opacity:.5;cursor:wait}
+.acervo-leitura{margin:0 0 12px;padding:12px 14px;border-left:2px solid #00b894;background:#11121c;border-radius:10px;color:#a8b3ae;font-size:11px;line-height:1.6}
+.acervo-leitura i{color:#68d9b4;margin-right:6px}
+.acervo-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.acervo-meta-item{padding:10px 12px;border:1px solid #262839;border-radius:10px;background:#12131e}
+.acervo-meta-item span,.acervo-meta-item strong{display:block}
+.acervo-meta-item span{color:#6f7188;font-size:9px;text-transform:uppercase;letter-spacing:.6px}
+.acervo-meta-item strong{margin-top:4px;color:#d7d4f5;font-size:12px}
+.magna-details-body .ordem-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.magna-details-body .ordem-grid-2>div>h4{margin:0 0 10px;color:#8f92ad;font-size:11px;text-transform:uppercase;letter-spacing:.7px}
 .forja-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.forja-grid .magna-panel{display:flex;flex-direction:column}
-.forja-grid table.table{font-size:10px}
-.forja-grid table.table td,.forja-grid table.table th{padding:6px 8px}
 .forja-espectro{display:flex;flex-direction:column;gap:6px}
 .forja-bar{display:grid;grid-template-columns:80px 1fr 28px;align-items:center;gap:8px;font-size:10px;color:#9fa1b6}
 .forja-bar i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,#6c5ce7,#a892ff);min-width:4px}
 .forja-bar b{color:#d5d1fa;text-align:right}
-#magna-alvo,#forja-mapa{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d;color:#fff;padding:12px;font-size:13px;outline:none}
-#magna-alvo:focus{border-color:#786ae4;box-shadow:0 0 0 3px rgba(108,92,231,.14)}
-#magna-alvo option{background:#11121d}
-@media(max-width:900px){.forja-grid{grid-template-columns:1fr}}
+#forja-mapa{width:100%;box-sizing:border-box;border:1px solid #34364b;border-radius:10px;background:#11121d}
+.forja-grid table.table{font-size:10px}
+.forja-grid table.table td,.forja-grid table.table th{padding:6px 8px}
+.magna-btn-secondary{background:#292a3b;color:#b8b9cf;border:1px solid #34364b;border-radius:8px;padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.magna-btn-secondary:hover{background:#34364b;color:#fff}
+.magna-resultado{padding:10px 14px;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:6px}
+.magna-resultado.sucesso{background:rgba(0,184,148,.15);color:#00b894}
+.magna-resultado.erro{background:rgba(255,118,117,.15);color:#ff7675}
+.magna-status{padding:4px 7px;border-radius:10px;background:#292a3b;color:#aaa;font-size:9px}
+.magna-status.conferida{background:rgba(0,184,148,.15);color:#62d9bd}
+.magna-empty{text-align:center;color:#696b82;font-size:11px;padding:14px}
+.magna-physics-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.magna-physics-stats div{background:#11121d;border-radius:10px;padding:14px;text-align:center}
+.magna-physics-stats strong{display:block;font-size:20px;color:#fff;margin-bottom:4px}
+.magna-physics-stats span{font-size:10px;color:#777990;text-transform:uppercase}
+.magna-physics-info{background:#11121d;border-radius:10px;padding:16px}
+.magna-physics-info p{margin:6px 0;color:#b8b9cf;font-size:12px;line-height:1.5}
+.magna-physics-info strong{color:#fff}
+.magna-bolas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:10px}
+.magna-bola-card{display:flex;align-items:center;gap:8px;background:#11121d;border-radius:8px;padding:8px}
+.magna-bola-numero{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff}
+.magna-bola-info{display:flex;flex-direction:column;gap:2px;font-size:10px;color:#777990}
+.magna-avaliacao-actions{display:flex;gap:10px}
+@media(max-width:900px){
+    .magna-autonomo{grid-template-columns:1fr 1fr}
+    .magna-grid,.magna-decision-grid,.forja-grid,.magna-details-body .ordem-grid-2{grid-template-columns:1fr}
+    .magna-orbe{display:none}
+    .magna-metrics{grid-template-columns:repeat(2,1fr)}
+    .magna-command form{grid-template-columns:1fr}
+    .magna-hero{padding:24px}.magna-hero h2{font-size:22px}
+}
 </style>
 {% endblock %}

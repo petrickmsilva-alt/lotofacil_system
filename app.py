@@ -344,9 +344,21 @@ def _responder_decisao_magna(dados):
 def api_magna_decidir():
     """Única porta pública de análise, interpretação e criação de cartelas.
 
+    v12.0 — a Magna é autônoma: o usuário só informa o limite (quantidade e,
+    opcionalmente, orçamento). Ela mesma, sem comandos manuais:
+      • retém a base histórica inteira e reassimila o próprio acervo;
+      • calibra os pesos das fontes em walk-forward (no boot e após cada
+        sorteio, via calibração autônoma);
+      • percebe o ambiente do sorteio (telemetria INMET do local + registro
+        do ambiente físico + condições de clima) — o antigo "Registrar
+        Ambiente" e a "Forja automática" são passos internos;
+      • decide SOZINHA se forja espacialmente (lotes grandes) ou se usa a
+        escada de captura nativa / exaustão (lotes pequenos).
+
     Campos opcionais do corpo:
       alvo: 13 | 14 | 15 — escada de captura condicional;
-      modo: "forja" — forja espacial de lotes (união exata dos leques).
+      modo: reservado/compatibilidade — quando ausente, a própria Magna
+            escolhe entre forja espacial e estratégia nativa.
     """
     try:
         return jsonify(_responder_decisao_magna(request.get_json() or {}))
@@ -1746,6 +1758,27 @@ def _iniciar_sincronizacao_historico(completo=False):
                     )
                 finally:
                     status_sistema["treinando"] = False
+
+                # v12.0 — CALIBRAÇÃO AUTÔNOMA: depois de cada sorteio novo a
+                # Magna relê a base inteira e recalibra SOZINHA o peso das
+                # fontes em walk-forward (o antigo botão "Calibrar pesos").
+                # Roda em thread própria com orçamento de tempo para não
+                # segurar a interface; o lock dela serializa com as decisões.
+                def _calibrar_sozinha():
+                    try:
+                        print("[MAGNA] Calibração autônoma pós-sorteio "
+                              "iniciada (walk-forward da base)...")
+                        with magna._magna_lock:
+                            cal = magna.assimilar_acervo(
+                                forcar=False, calibrar_fontes=True,
+                                limite_segundos=60.0)
+                        print("[MAGNA] Calibração autônoma: {}".format(
+                            cal.get("status")))
+                    except Exception as exc_cal:
+                        print("[AVISO] calibração autônoma: {}".format(exc_cal))
+
+                threading.Thread(target=_calibrar_sozinha, daemon=True,
+                                 name="magna-calibracao-auto").start()
         except Exception as exc:
             traceback.print_exc()
             status_sistema["erro_atualizacao"] = str(exc)

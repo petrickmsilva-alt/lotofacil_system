@@ -4027,6 +4027,177 @@ class CerebroIA:
                 "parcial": bool(provas < len(checkpoints)),
                 "cobertura": [int(checkpoints[0]), int(checkpoints[-1] + 1)]}
 
+    # ============================================================
+    # v12.0 — PERCEPÇÃO AUTÔNOMA DO AMBIENTE DE SORTEIO
+    # A Magna é a OBTERENTA de toda informação: ela mesma descobre o
+    # local do sorteio, busca a telemetria (INMET oficial → contingência
+    # Open-Meteo → banco local → neutro), define o clima no motor físico-
+    # estatístico e REGISTRA o ambiente de sorteio — sem botão, sem
+    # formulário, sem comando humano. Idempotente por concurso: a primeira
+    # percepção do concurso-alvo é memorizada e as decisões seguintes
+    # reaproveitam o mesmo ambiente (a decisão nasce com o ambiente que a
+    # cerca, não com condições que mudam a cada clique).
+    # ============================================================
+    def perceber_ambiente_autonomo(self, concurso: Optional[int] = None,
+                                   permitir_rede: bool = True,
+                                   usar_cache: bool = True,
+                                   callback=None) -> Dict[str, Any]:
+        def cb(msg):
+            self._log("AMBIENTE", msg)
+            if callback:
+                callback(msg)
+
+        alvo = int(concurso) if concurso else (
+            (self.db.get_ultimo_concurso() or 0) + 1)
+        cache = getattr(self, "_ambiente_percebido", None)
+        if usar_cache and cache and cache.get("concurso") == alvo:
+            return cache
+
+        percepcao: Dict[str, Any] = {
+            "concurso": alvo, "status": "neutro",
+            "local": None, "telemetria": None, "clima": None,
+            "ambiente_registrado": False, "fonte": "neutro",
+            "leitura": "ambiente neutro: sem telemetria disponível",
+        }
+        try:
+            # 0. Telemetria persistida para ESTE concurso (ciclo noturno já
+            #    pode tê-la coletado) — reaproveita sem tocar na rede.
+            tele_db: Optional[Dict[str, Any]] = None
+            if getattr(self, "inmet", None) is not None:
+                try:
+                    tele_db = self.inmet.por_concurso(alvo)
+                except Exception:
+                    tele_db = None
+            if tele_db is None and permitir_rede:
+                # 1. A própria Magna percebe: local do sorteio + telemetria.
+                #    ForjaAutomatica nunca levanta exceção por rede e tem
+                #    timeout curto (INMET 6s + contingência); se tudo falha,
+                #    a Magna segue neutra e a decisão não quebra.
+                try:
+                    from .forja_auto import ForjaAutomatica
+                    auto = ForjaAutomatica(magna=self, db_path=self.db_path)
+                    local = auto.local_do_sorteio(usar_rede=True)
+                    # só persiste telemetria com MEDIÇÕES reais: um resultado
+                    # "neutro" (rede sem dados) não vira registro no banco —
+                    # a Magna nunca decora a própria ausência de informação.
+                    parcela = auto.coletar_telemetria(
+                        local_dados=local, concurso=alvo, salvar=False)
+                    dados = parcela.get("telemetria") or {}
+                    cond = parcela.get("condicoes_clima")
+                    if cond and getattr(self, "inmet", None) is not None:
+                        try:
+                            dados["_registro_id"] = self.inmet.registrar(
+                                dados, concurso=alvo)
+                        except Exception:
+                            pass
+                    tele_db = {
+                        "status": dados.get("status", "neutro"),
+                        "fonte": dados.get("fonte"),
+                        "cidade": local.get("cidade"),
+                        "uf": local.get("uf"),
+                        "cidade_uf": local.get("cidade_uf"),
+                        "local_fonte": local.get("fonte"),
+                        "temperatura": (cond or {}).get("temperatura"),
+                        "pressao": (cond or {}).get("pressao"),
+                        "umidade": (cond or {}).get("umidade"),
+                    }
+                    percepcao["local"] = {
+                        "cidade": local.get("cidade"), "uf": local.get("uf"),
+                        "cidade_uf": local.get("cidade_uf"),
+                        "fonte": local.get("fonte"),
+                    }
+                except Exception as exc:
+                    cb("percepção INMET indisponível ({}); seguindo neutro"
+                       .format(type(exc).__name__))
+            elif tele_db is not None:
+                percepcao["local"] = {
+                    "cidade": tele_db.get("cidade"),
+                    "uf": tele_db.get("uf"),
+                    "cidade_uf": tele_db.get("cidade_uf"),
+                    "fonte": "banco_local",
+                }
+
+            temp = tele_db.get("temperatura") if tele_db else None
+            pressao = tele_db.get("pressao") if tele_db else None
+            umidade = tele_db.get("umidade") if tele_db else None
+
+            if all(v is not None for v in (temp, pressao, umidade)):
+                # 2. A Magna alimenta o motor de clima (shrinkage e
+                #    auto-auditoria walk-forward são internos ao motor).
+                try:
+                    clima = self.clima.definir_condicoes(
+                        temperatura=float(temp),
+                        pressao=float(pressao),
+                        umidade=float(umidade))
+                    percepcao["clima"] = clima.get("status", "ok")
+                except Exception as exc:
+                    cb("clima não atualizado ({}); ambiente segue registrado"
+                       .format(type(exc).__name__))
+
+                # 3. A Magna REGISTRA o ambiente de sorteio na fonte física
+                #    (era o formulário manual "Registrar Ambiente").
+                try:
+                    self.fisica.registrar_ambiente(
+                        concurso=alvo,
+                        maquina="padrao-caixa",
+                        conjunto_bolas="A",
+                        temperatura_K=float(temp) + 273.15,
+                        pressao_atm=float(pressao),
+                        umidade=float(umidade) / 100.0,
+                        velocidade_rotacao=30.0,
+                        duracao_mistura=60.0)
+                    percepcao["ambiente_registrado"] = True
+                except Exception as exc:
+                    cb("registro de ambiente falhou ({}); decisão segue"
+                       .format(type(exc).__name__))
+
+                percepcao["status"] = str((tele_db or {}).get(
+                    "status", "ok"))
+                percepcao["fonte"] = str((tele_db or {}).get(
+                    "fonte") or "telemetria")
+                percepcao["telemetria"] = {
+                    "temperatura_c": round(float(temp), 1),
+                    "pressao_atm": round(float(pressao), 3),
+                    "umidade_pct": round(float(umidade), 1),
+                }
+                cb("ambiente do concurso {} percebido pela Magna: {} · "
+                   "{:.1f}°C · {:.3f} atm · {:.0f}% umidade (fonte {})"
+                   .format(alvo, percepcao["local"].get("cidade_uf", "SP"),
+                           float(temp), float(pressao), float(umidade),
+                           percepcao["fonte"]))
+            else:
+                cb("telemetria sem medições completas para o concurso {}; "
+                   "fonte ambiental neutra".format(alvo))
+        except Exception as exc:
+            self._log("AVISO", "percepção autônoma do ambiente: {}"
+                      .format(exc))
+
+        if not hasattr(self, "_ambiente_percebido"):
+            self._ambiente_percebido = None
+        self._ambiente_percebido = percepcao
+        return percepcao
+
+    def _modo_forja_autonomo(self, quantidade: int,
+                             alvo: Optional[int]) -> Optional[str]:
+        """v12.0 — a Magna decide SOZINHA se forja o lote espacialmente.
+
+        Não há mais checkbox nem botão de forja: a escolha segue a geometria
+        do problema.
+          • alvo 13/14/15 informado: a escada de captura NATIVA da Magna
+            (wheeling com garantia condicional, pool 16/18/19) é a rota
+            provada e auditada — ela prefere essa rota (modo auto);
+          • 8+ cartelas SEM alvo: lote grande caça 14 pontos, e a forja
+            espacial (recocido + geometria de Johnson) maximiza a união
+            exata dos leques — forja;
+          • poucas cartelas (1–7) sem alvo: a exaustão do universo com
+            diversidade é o melhor uso do consenso — modo auto.
+        """
+        if alvo in (13, 14, 15):
+            return None
+        if int(quantidade) >= 8:
+            return "forja"
+        return None
+
     def _garantir_acervo(self, callback=None, orcamento_segundos=12.0) -> None:
         """Chamado por TODA decisão: a Magna nunca decide com memória velha.
 
@@ -4320,6 +4491,31 @@ class CerebroIA:
         evidencia_abertura = self.evidencia_abertura()
         evidencia_cor = self.evidencia_cor()
 
+        # v12.0 — a Magna PERCEBE o ambiente do sorteio por conta própria
+        # (telemetria INMET do local + registro do ambiente físico): o antigo
+        # formulário "Registrar Ambiente" e a antiga "Forja automática" viram
+        # passos internos da decisão. A percepção é idempotente por concurso.
+        try:
+            percepcao_ambiente = self.perceber_ambiente_autonomo(
+                concurso=concurso_alvo, callback=callback)
+        except Exception as exc:
+            cb("Percepção de ambiente indisponível ({}); seguindo neutro."
+               .format(type(exc).__name__))
+            percepcao_ambiente = {"status": "neutro",
+                                  "ambiente_registrado": False}
+
+        # v12.0 — a FORJA também é decisão da Magna. Sem checkbox: quando o
+        # alvo é a escada 13/14 ou o lote é grande (8+ cartelas), a própria
+        # inteligência escolhe a forja espacial (recocido + geometria de
+        # Johnson); para poucas cartelas sem alvo, a exaustão diversa é mais
+        # forte e ela sabe disso.
+        if modo is None:
+            modo = self._modo_forja_autonomo(quantidade, alvo)
+            if modo == "forja":
+                cb("A Magna decidiu pela FORJA ESPACIAL: lote de {} cartela(s)"
+                   " com alvo {} — otimizando a união exata dos leques."
+                   .format(quantidade, alvo or 13))
+
         cb("Unificando motores, oráculos, espectro, informação e análise recente...")
         fontes, consulta, espectro, informacao, entropias = \
             self._fontes_assimiladas_magna()
@@ -4479,6 +4675,7 @@ class CerebroIA:
             "status": "ok",
             "identidade": "Inteligência Magna",
             "decisao_unica": True,
+            "ambiente_percebido": percepcao_ambiente,
             "justificativa_magna": (
                 justificativa + " " + evidencia_abertura["leitura"]
                 + " " + evidencia_cor["leitura"]),
@@ -5482,6 +5679,19 @@ class CerebroIA:
             # v11.8 — acervo de cores das bolas: a Magna suprema também decide
             # com o conhecimento de cores assimilado no mesmo ciclo.
             evidencia_cor = self.evidencia_cor()
+
+            # v12.0 — percepção autônoma do ambiente: a antiga "forja
+            # automática INMET" é um passo interno da decisão suprema. A
+            # telemetria é coletada (ou reaproveitada do banco), o clima é
+            # definido e o ambiente de sorteio é registrado pela própria Magna.
+            try:
+                percepcao_ambiente = self.perceber_ambiente_autonomo(
+                    concurso=concurso_alvo, callback=callback)
+            except Exception as exc:
+                cb("Percepção de ambiente indisponível ({}); seguindo neutro."
+                   .format(type(exc).__name__))
+                percepcao_ambiente = {"status": "neutro",
+                                      "ambiente_registrado": False}
             cb("Acervo v11.8 · {} concursos · {}".format(
                 evidencia_abertura["concursos_da_base"],
                 evidencia_abertura["leitura"]))
@@ -5743,6 +5953,7 @@ class CerebroIA:
             resultado.update({
                 "status": "ok",
                 "identidade": "Inteligência Magna Suprema v11 — Única Pessoal",
+                "ambiente_percebido": percepcao_ambiente,
                 "versao_suprema": "11.0",
                 "versao_evolucao": "v11.8-EWC-Meta-MCTS-MultiRota-JuizAdv-NIST-Explain-Chat-Fingerprint-Backtest-ClimaFisico-AcervoCor",
                 "decisao_unica": True,
